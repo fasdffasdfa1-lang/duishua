@@ -144,6 +144,7 @@ class WashTradeDetector:
         
         if missing_cols:
             st.error(f"❌ 缺少必要列: {missing_cols}")
+            st.write("可用的列:", df.columns.tolist())
             return False
         
         # 检查彩种列，如果没有则创建
@@ -171,20 +172,40 @@ class WashTradeDetector:
                 if col in df_clean.columns:
                     df_clean[col] = df_clean[col].astype(str).str.strip()
             
-            # 提取投注金额
-            df_clean['投注金额'] = df_clean['金额'].apply(lambda x: self.extract_bet_amount(x))
+            # 显示数据样本用于调试
+            with st.expander("🔍 查看数据样本（前5行）", expanded=False):
+                st.write(df_clean.head())
+            
+            # 提取投注金额 - 修复版本
+            df_clean['投注金额'] = df_clean['金额'].apply(lambda x: self.extract_bet_amount_safe(x))
+            
+            # 显示金额提取结果用于调试
+            with st.expander("🔍 查看金额提取结果", expanded=False):
+                st.write("金额列样本:", df_clean[['金额', '投注金额']].head(10))
+                st.write(f"成功提取金额的记录数: {len(df_clean[df_clean['投注金额'] > 0])}")
+                st.write(f"金额为0的记录数: {len(df_clean[df_clean['投注金额'] == 0])}")
             
             # 提取投注方向
             df_clean['投注方向'] = df_clean['内容'].apply(lambda x: self.extract_direction_from_content(x))
             
+            # 显示方向提取结果用于调试
+            with st.expander("🔍 查看方向提取结果", expanded=False):
+                direction_stats = df_clean['投注方向'].value_counts()
+                st.write("方向分布:", dict(direction_stats))
+                st.write(f"未识别方向的记录数: {len(df_clean[df_clean['投注方向'] == ''])}")
+            
             # 过滤有效记录
             df_valid = df_clean[
                 (df_clean['投注方向'] != '') & 
-                (df_clean['投注金額'] >= self.config.min_amount)
+                (df_clean['投注金额'] >= self.config.min_amount)
             ].copy()
             
             if len(df_valid) == 0:
                 st.error("❌ 过滤后没有有效记录")
+                st.write("可能的原因:")
+                st.write("- 金额提取失败")
+                st.write("- 方向识别失败") 
+                st.write("- 金额低于最小阈值")
                 return pd.DataFrame()
             
             # 修改：按彩种计算每个账户的投注期数统计
@@ -209,58 +230,52 @@ class WashTradeDetector:
         except Exception as e:
             logger.error(f"数据解析失败: {str(e)}")
             st.error(f"数据解析失败: {str(e)}")
+            st.error(f"详细错误: {traceback.format_exc()}")
             return pd.DataFrame()
     
-    def calculate_account_period_stats_by_lottery(self, df_valid):
-        """按彩种计算每个账户的投注期数统计 - 修复版本"""
-        # 重置统计字典
-        self.account_period_stats_by_lottery = defaultdict(dict)
-        self.account_record_stats_by_lottery = defaultdict(dict)
-        
-        # 按彩种和账户分组，计算每个账户在每个彩种的投注期数和记录数
-        for lottery in df_valid['彩种'].unique():
-            df_lottery = df_valid[df_valid['彩种'] == lottery]
-            
-            # 计算每个账户的投注期数（唯一期号数）
-            period_counts = df_lottery.groupby('会员账号')['期号'].nunique().to_dict()
-            self.account_period_stats_by_lottery[lottery] = period_counts
-            
-            # 计算每个账户的记录数
-            record_counts = df_lottery.groupby('会员账号').size().to_dict()
-            self.account_record_stats_by_lottery[lottery] = record_counts
-    
-    def extract_bet_amount(self, amount_text):
-        """从复杂文本中提取投注金额"""
+    def extract_bet_amount_safe(self, amount_text):
+        """安全提取投注金额 - 修复版本"""
         try:
             if pd.isna(amount_text):
                 return 0
             
             text = str(amount_text).strip()
             
-            # 先尝试直接转换
+            # 调试信息
+            if len(text) > 50:  # 避免过长的文本
+                text_sample = text[:50] + "..."
+            else:
+                text_sample = text
+            
+            # 先尝试直接转换数字
             try:
-                cleaned_text = text.replace(',', '').replace('，', '')
-                amount = float(cleaned_text)
-                if amount >= self.config.min_amount:
-                    return amount
+                # 移除逗号等分隔符
+                cleaned_text = text.replace(',', '').replace('，', '').replace(' ', '')
+                # 尝试匹配数字（包括小数）
+                if re.match(r'^-?\d+(\.\d+)?$', cleaned_text):
+                    amount = float(cleaned_text)
+                    if amount >= self.config.min_amount:
+                        return amount
             except:
                 pass
             
             # 多种金额提取模式
             patterns = [
                 r'投注[:：]?\s*(\d+[,，]?\d*\.?\d*)',
-                r'投注\s*(\d+[,，]?\d*\.?\d*)',
+                r'下注[:：]?\s*(\d+[,，]?\d*\.?\d*)',
                 r'金额[:：]?\s*(\d+[,，]?\d*\.?\d*)',
+                r'总额[:：]?\s*(\d+[,，]?\d*\.?\d*)',
                 r'(\d+[,，]?\d*\.?\d*)\s*元',
                 r'￥\s*(\d+[,，]?\d*\.?\d*)',
                 r'¥\s*(\d+[,，]?\d*\.?\d*)',
-                r'(\d+[,，]?\d*\.?\d*)',
+                r'[\$￥¥]?\s*(\d+[,，]?\d*\.?\d+)',
+                r'(\d+[,，]?\d*\.?\d+)',
             ]
             
             for pattern in patterns:
                 match = re.search(pattern, text)
                 if match:
-                    amount_str = match.group(1).replace(',', '').replace('，', '')
+                    amount_str = match.group(1).replace(',', '').replace('，', '').replace(' ', '')
                     try:
                         amount = float(amount_str)
                         if amount >= self.config.min_amount:
@@ -268,10 +283,25 @@ class WashTradeDetector:
                     except:
                         continue
             
+            # 如果以上都失败，尝试提取文本中的第一个数字
+            numbers = re.findall(r'\d+\.?\d*', text)
+            if numbers:
+                try:
+                    amount = float(numbers[0])
+                    if amount >= self.config.min_amount:
+                        return amount
+                except:
+                    pass
+            
             return 0
+            
         except Exception as e:
             logger.warning(f"金额提取失败: {amount_text}, 错误: {e}")
             return 0
+    
+    def extract_bet_amount(self, amount_text):
+        """兼容旧版本的金额提取函数"""
+        return self.extract_bet_amount_safe(amount_text)
     
     def extract_direction_from_content(self, content):
         """从内容列提取投注方向"""
@@ -290,6 +320,24 @@ class WashTradeDetector:
         except Exception as e:
             logger.warning(f"方向提取失败: {content}, 错误: {e}")
             return ""
+    
+    def calculate_account_period_stats_by_lottery(self, df_valid):
+        """按彩种计算每个账户的投注期数统计 - 修复版本"""
+        # 重置统计字典
+        self.account_period_stats_by_lottery = defaultdict(dict)
+        self.account_record_stats_by_lottery = defaultdict(dict)
+        
+        # 按彩种和账户分组，计算每个账户在每个彩种的投注期数和记录数
+        for lottery in df_valid['彩种'].unique():
+            df_lottery = df_valid[df_valid['彩种'] == lottery]
+            
+            # 计算每个账户的投注期数（唯一期号数）
+            period_counts = df_lottery.groupby('会员账号')['期号'].nunique().to_dict()
+            self.account_period_stats_by_lottery[lottery] = period_counts
+            
+            # 计算每个账户的记录数
+            record_counts = df_lottery.groupby('会员账号').size().to_dict()
+            self.account_record_stats_by_lottery[lottery] = record_counts
     
     def detect_all_wash_trades(self):
         """检测所有类型的对刷交易"""
@@ -359,8 +407,8 @@ class WashTradeDetector:
                 dir1, dir2 = opposite_type.split('-')
                 
                 # 计算两个方向的总金额
-                dir1_total = group_data[group_data['投注方向'] == dir1]['投注金額'].sum()
-                dir2_total = group_data[group_data['投注方向'] == dir2]['投注金額'].sum()
+                dir1_total = group_data[group_data['投注方向'] == dir1]['投注金额'].sum()
+                dir2_total = group_data[group_data['投注方向'] == dir2]['投注金额'].sum()
                 
                 if dir1_total == 0 or dir2_total == 0:
                     continue
@@ -377,7 +425,7 @@ class WashTradeDetector:
                         '彩种': lottery,
                         '账户组': list(account_group),
                         '方向组': group_data['投注方向'].tolist(),
-                        '金额组': group_data['投注金額'].tolist(),
+                        '金额组': group_data['投注金额'].tolist(),
                         '总金额': dir1_total + dir2_total,
                         '相似度': similarity,
                         '账户数量': n_accounts,
@@ -760,6 +808,7 @@ def main():
             
         except Exception as e:
             st.error(f"❌ 程序执行失败: {str(e)}")
+            st.error(f"详细错误信息:\n{traceback.format_exc()}")
     
     # 使用说明
     with st.expander("📖 使用说明"):
@@ -780,6 +829,11 @@ def main():
         - 必须包含：会员账号、期号、内容、金额
         - 可选包含：彩种（如无则自动添加默认值）
         - 支持自动列名映射
+        
+        **🔧 故障排除：**
+        - 如果数据解析失败，请检查金额列格式
+        - 确保文件编码为UTF-8
+        - 检查必要列是否存在
         """)
 
 if __name__ == "__main__":
