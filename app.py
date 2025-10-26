@@ -571,7 +571,7 @@ class WashTradeDetector:
                     st.write(f"- 处理速度: {records_per_second:.1f} 条记录/秒")
     
     def display_detailed_results(self, patterns):
-        """显示详细检测结果 - 修正版"""
+        """显示详细检测结果 - 采用图二的框架样式"""
         st.write("\n" + "="*60)
         st.write("🎯 多账户对刷检测结果")
         st.write("="*60)
@@ -585,35 +585,36 @@ class WashTradeDetector:
             patterns_by_lottery[pattern['彩种']].append(pattern)
         
         for lottery, lottery_patterns in patterns_by_lottery.items():
-            st.write(f"\n**🎲 彩种: {lottery}** (发现{len(lottery_patterns)}组)")
+            st.write(f"\n### 🎲 彩种：{lottery}（发现{len(lottery_patterns)}组）")
             
-            patterns_by_count = defaultdict(list)
-            for pattern in lottery_patterns:
-                patterns_by_count[pattern['账户数量']].append(pattern)
-            
-            for account_count in sorted(patterns_by_count.keys(), reverse=True):
-                group_patterns = patterns_by_count[account_count]
-                
-                for i, pattern in enumerate(group_patterns, 1):
-                    with st.container():
-                        col1, col2 = st.columns([3, 1])
-                        
-                        with col1:
-                            # 修正：显示每个账户的详细统计信息
-                            activity_icon = "🟢" if pattern['账户活跃度'] == 'low' else "🟡" if pattern['账户活跃度'] == 'medium' else "🔴"
-                            st.markdown(f"**🔍 对刷组 {i}:** {' ↔ '.join(pattern['账户组'])}")
-                            st.markdown(f"{activity_icon} **活跃度:** {pattern['账户活跃度']} | **彩种:** {pattern['彩种']} | **主要类型:** {pattern['主要对立类型']}")
-                            # 关键修正：显示每个账户的总投注期数和记录数
-                            st.markdown(f"📊 **账户在该彩种投注期数/记录数:** {', '.join(pattern['账户统计信息'])}")
-                            st.markdown(f"🎯 **对刷期数:** {pattern['对刷期数']}期 (要求≥{pattern['要求最小对刷期数']}期)")
-                            st.markdown(f"💰 **总金额:** {pattern['总投注金额']:.2f}元 | **平均匹配:** {pattern['平均相似度']:.2%}")
-                            
-                        with col2:
-                            st.markdown(f"**👥 {account_count}个账户**")
+            for i, pattern in enumerate(lottery_patterns, 1):
+                # 使用类似图二的框架样式
+                with st.container():
+                    st.markdown("---")
                     
+                    # 对刷组标题
+                    st.markdown(f"#### 对刷组 {i}: {' ↔ '.join(pattern['账户组'])}")
+                    
+                    # 活跃度信息
+                    activity_icon = "🟢" if pattern['账户活跃度'] == 'low' else "🟡" if pattern['账户活跃度'] == 'medium' else "🔴"
+                    st.markdown(f"**活跃度:** {activity_icon} {pattern['账户活跃度']} | **彩种:** {pattern['彩种']} | **主要类型:** {pattern['主要对立类型']}")
+                    
+                    # 账户统计信息
+                    st.markdown(f"**账户在该彩种投注期数/记录数:** {', '.join(pattern['账户统计信息'])}")
+                    
+                    # 对刷期数
+                    st.markdown(f"**对刷期数:** {pattern['对刷期数']}期 (要求≥{pattern['要求最小对刷期数']}期)")
+                    
+                    # 金额信息
+                    st.markdown(f"**总金额:** {pattern['总投注金额']:.2f}元 | **平均匹配:** {pattern['平均相似度']:.2%}")
+                    
+                    # 详细记录
                     with st.expander("📋 查看详细记录", expanded=False):
                         for j, record in enumerate(pattern['详细记录'], 1):
-                            account_directions = [f"{acc}({dir}:{amt})" for acc, dir, amt in zip(record['账户组'], record['方向组'], record['金额组'])]
+                            account_directions = []
+                            for account, direction, amount in zip(record['账户组'], record['方向组'], record['金额组']):
+                                account_directions.append(f"{account}({direction}:{amount})")
+                            
                             st.markdown(f"**{j}.** 期号:{record['期号']} | 模式:{record['模式']} | 方向:{' ↔ '.join(account_directions)} | 匹配度:{record['相似度']:.2%}")
         
         self.display_summary_statistics(patterns)
