@@ -1,12 +1,3 @@
-[file name]: image.png
-[file content begin]
-数据统计
-
-开始检测对刷交易
-
-
-[file content end]
-
 import pandas as pd
 import numpy as np
 import streamlit as st
@@ -824,7 +815,7 @@ def main():
                             st.write(f"唯一期号数: {df_valid['期号'].nunique():,}")
                             st.write(f"唯一账户数: {df_valid['会员账号'].nunique():,}")
                         
-                        # 修改：自动开始检测，不再需要手动点击按钮
+                        # 自动开始检测
                         st.info("🚀 自动开始检测对刷交易...")
                         with st.spinner("🔍 正在检测对刷交易..."):
                             patterns = detector.detect_all_wash_trades()
