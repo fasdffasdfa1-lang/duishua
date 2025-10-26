@@ -44,8 +44,8 @@ class Config:
         
         # 修正：根据账户总投注期数设置不同的对刷期数阈值
         self.period_thresholds = {
-            'low_activity': 50,        # 低活跃度账户阈值（总投注期数≤50）
-            'medium_activity_low': 51,  # 中活跃度下限（总投注期数51-200）
+            'low_activity': 10,        # 低活跃度账户阈值（总投注期数≤10）
+            'medium_activity_low': 11,  # 中活跃度下限（总投注期数11-200）
             'medium_activity_high': 200, # 中活跃度上限
             'min_periods_low': 3,       # 低活跃度账户最小对刷期数
             'min_periods_medium': 5,    # 中活跃度账户最小对刷期数
@@ -523,11 +523,11 @@ class WashTradeDetector:
         # 计算账户组中在指定彩种的最小总投注期数（用于活跃度判断）
         min_total_periods = min(total_periods_stats.get(account, 0) for account in account_group)
         
-        # 修正：按照总投注期数分为三个活跃度等级
+        # 按照您要求的活跃度阈值设置
         if min_total_periods <= self.config.period_thresholds['low_activity']:
-            return 'low'        # 总投注期数≤50
+            return 'low'        # 总投注期数≤10
         elif min_total_periods <= self.config.period_thresholds['medium_activity_high']:
-            return 'medium'     # 总投注期数51-200
+            return 'medium'     # 总投注期数11-200
         else:
             return 'high'       # 总投注期数≥201
     
@@ -745,14 +745,14 @@ def main():
     
     # 活跃度阈值配置 - 修正版
     st.sidebar.subheader("📊 活跃度阈值配置（基于总投注期数）")
-    st.sidebar.markdown("**低活跃度:** 总投注期数≤50期")
-    st.sidebar.markdown("**中活跃度:** 总投注期数51-200期")  
+    st.sidebar.markdown("**低活跃度:** 总投注期数≤10期")
+    st.sidebar.markdown("**中活跃度:** 总投注期数11-200期")  
     st.sidebar.markdown("**高活跃度:** 总投注期数≥201期")
     
     min_periods_low = st.sidebar.number_input("低活跃度最小对刷期数", value=3, min_value=1, 
-                                            help="总投注期数≤50的账户，要求≥3期连续对刷")
+                                            help="总投注期数≤10的账户，要求≥3期连续对刷")
     min_periods_medium = st.sidebar.number_input("中活跃度最小对刷期数", value=5, min_value=1,
-                                               help="总投注期数51-200的账户，要求≥5期连续对刷")
+                                               help="总投注期数11-200的账户，要求≥5期连续对刷")
     min_periods_high = st.sidebar.number_input("高活跃度最小对刷期数", value=8, min_value=1,
                                              help="总投注期数≥201的账户，要求≥8期连续对刷")
     
@@ -772,8 +772,8 @@ def main():
             config.amount_similarity_threshold = similarity_threshold
             config.max_accounts_in_group = max_accounts
             config.period_thresholds = {
-                'low_activity': 50,  # 修正：提高低活跃度阈值
-                'medium_activity_low': 51,  
+                'low_activity': 10,  # 按照您要求的阈值
+                'medium_activity_low': 11,  
                 'medium_activity_high': 200, 
                 'min_periods_low': min_periods_low,
                 'min_periods_medium': min_periods_medium,
@@ -835,8 +835,8 @@ def main():
         - 根据**总投注期数**判定账户活跃度，设置不同的**对刷期数**阈值
 
         **📊 活跃度判定（基于总投注期数）：**
-        - **低活跃度账户**：总投注期数 ≤ 50期 → 要求 ≥ 3期连续对刷
-        - **中活跃度账户**：总投注期数 51-200期 → 要求 ≥ 5期连续对刷  
+        - **低活跃度账户**：总投注期数 ≤ 10期 → 要求 ≥ 3期连续对刷
+        - **中活跃度账户**：总投注期数 11-200期 → 要求 ≥ 5期连续对刷  
         - **高活跃度账户**：总投注期数 ≥ 201期 → 要求 ≥ 8期连续对刷
 
         **🎯 对刷检测规则：**
