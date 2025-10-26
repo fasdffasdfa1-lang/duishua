@@ -1,3 +1,12 @@
+[file name]: image.png
+[file content begin]
+数据统计
+
+开始检测对刷交易
+
+
+[file content end]
+
 import pandas as pd
 import numpy as np
 import streamlit as st
@@ -815,26 +824,27 @@ def main():
                             st.write(f"唯一期号数: {df_valid['期号'].nunique():,}")
                             st.write(f"唯一账户数: {df_valid['会员账号'].nunique():,}")
                         
-                        if st.button("🚀 开始检测对刷交易", type="primary"):
-                            with st.spinner("🔍 正在检测对刷交易..."):
-                                patterns = detector.detect_all_wash_trades()
+                        # 修改：自动开始检测，不再需要手动点击按钮
+                        st.info("🚀 自动开始检测对刷交易...")
+                        with st.spinner("🔍 正在检测对刷交易..."):
+                            patterns = detector.detect_all_wash_trades()
+                        
+                        if patterns:
+                            st.success(f"✅ 检测完成！发现 {len(patterns)} 个对刷组")
                             
-                            if patterns:
-                                st.success(f"✅ 检测完成！发现 {len(patterns)} 个对刷组")
-                                
-                                detector.display_detailed_results(patterns)
-                                
-                                excel_output, export_filename = detector.export_to_excel(patterns, filename)
-                                
-                                if excel_output is not None:
-                                    st.download_button(
-                                        label="📥 下载检测报告",
-                                        data=excel_output,
-                                        file_name=export_filename,
-                                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                                    )
-                            else:
-                                st.warning("⚠️ 未发现符合阈值条件的对刷行为")
+                            detector.display_detailed_results(patterns)
+                            
+                            excel_output, export_filename = detector.export_to_excel(patterns, filename)
+                            
+                            if excel_output is not None:
+                                st.download_button(
+                                    label="📥 下载检测报告",
+                                    data=excel_output,
+                                    file_name=export_filename,
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                )
+                        else:
+                            st.warning("⚠️ 未发现符合阈值条件的对刷行为")
                     else:
                         st.error("❌ 数据解析失败，请检查文件格式和内容")
             
@@ -874,8 +884,11 @@ def main():
         **🔍 龙虎投注识别：**
         - 支持识别：龙、long、龍、dragon
         - 支持识别：虎、hu、tiger
+
+        **⚡ 自动检测：**
+        - 数据上传并解析完成后，系统会自动开始对刷检测
+        - 无需手动点击开始检测按钮
         """)
 
 if __name__ == "__main__":
     main()
-
