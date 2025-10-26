@@ -13,11 +13,11 @@ import traceback
 # 配置日志和警告
 warnings.filterwarnings('ignore')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger('K3WashTrade')
+logger = logging.getLogger('MultiAccountWashTrade')
 
 # Streamlit 页面配置
 st.set_page_config(
-    page_title="快三多账户对刷检测系统",
+    page_title="智能多账户对刷检测系统",
     page_icon="🎯",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -52,14 +52,18 @@ class Config:
             'min_periods_high': 8       # 高活跃度账户最小对刷期数
         }
         
+        # 扩展：增加龙虎方向模式
         self.direction_patterns = {
             '小': ['两面-小', '和值-小', '小', 'small', 'xia'],
             '大': ['两面-大', '和值-大', '大', 'big', 'da'], 
             '单': ['两面-单', '和值-单', '单', 'odd', 'dan'],
-            '双': ['两面-双', '和值-双', '双', 'even', 'shuang']
+            '双': ['两面-双', '和值-双', '双', 'even', 'shuang'],
+            '龙': ['龙', 'long', '龍', 'dragon'],
+            '虎': ['虎', 'hu', 'tiger']
         }
         
-        self.opposite_groups = [{'大', '小'}, {'单', '双'}]
+        # 扩展：增加龙虎对立组
+        self.opposite_groups = [{'大', '小'}, {'单', '双'}, {'龙', '虎'}]
 
 class WashTradeDetector:
     def __init__(self, config=None):
@@ -190,6 +194,10 @@ class WashTradeDetector:
                 if len(df_valid) > 0:
                     lottery_stats = df_valid['彩种'].value_counts()
                     st.write(f"彩种分布: {dict(lottery_stats)}")
+                    
+                    # 显示投注方向分布
+                    direction_stats = df_valid['投注方向'].value_counts()
+                    st.write(f"投注方向分布: {dict(direction_stats)}")
             
             self.data_processed = True
             self.df_valid = df_valid
@@ -637,6 +645,12 @@ class WashTradeDetector:
         for pattern in patterns:
             activity_stats[pattern['账户活跃度']] += 1
         
+        # 对立类型分布
+        opposite_type_stats = defaultdict(int)
+        for pattern in patterns:
+            for opposite_type, count in pattern['对立类型分布'].items():
+                opposite_type_stats[opposite_type] += count
+        
         st.write(f"**🎯 检测结果汇总:**")
         st.write(f"- 对刷组数: {total_groups} 组")
         st.write(f"- 涉及账户: {total_accounts} 个")
@@ -654,6 +668,10 @@ class WashTradeDetector:
         st.write(f"**📈 按活跃度分布:**")
         for activity, count in activity_stats.items():
             st.write(f"- {activity}活跃度: {count} 组")
+            
+        st.write(f"**🎯 按对立类型分布:**")
+        for opposite_type, count in opposite_type_stats.items():
+            st.write(f"- {opposite_type}: {count} 期对刷")
     
     def export_to_excel(self, patterns, filename):
         """导出检测结果到Excel文件"""
@@ -694,7 +712,7 @@ class WashTradeDetector:
         df_export = pd.DataFrame(export_data)
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        export_filename = f"对刷检测报告_修正版_{timestamp}.xlsx"
+        export_filename = f"对刷检测报告_智能版_{timestamp}.xlsx"
         
         try:
             output = io.BytesIO()
@@ -733,7 +751,7 @@ class WashTradeDetector:
 
 def main():
     """主函数"""
-    st.title("🎯 快三多账户对刷检测系统（逻辑修正版）")
+    st.title("🎯 智能多账户对刷检测系统")
     st.markdown("---")
     
     # 侧边栏配置
@@ -824,10 +842,10 @@ def main():
             st.error(f"❌ 程序执行失败: {str(e)}")
             st.error(f"详细错误信息:\n{traceback.format_exc()}")
     
-    # 使用说明 - 修正版
-    with st.expander("📖 使用说明（逻辑修正版）"):
+    # 使用说明 - 智能版
+    with st.expander("📖 使用说明（智能多账户对刷检测系统）"):
         st.markdown("""
-        ### 系统功能说明（逻辑修正版）
+        ### 系统功能说明（智能多账户对刷检测系统）
 
         **🎯 检测逻辑修正：**
         - **总投注期数**：账户在特定彩种中的所有期号投注次数（基于原始数据计算）
@@ -841,7 +859,10 @@ def main():
 
         **🎯 对刷检测规则：**
         - 检测2-5个账户之间的对刷行为
-        - 支持大-小、单-双等对立投注方向
+        - **支持的对立投注类型：**
+          - 大 vs 小
+          - 单 vs 双  
+          - 龙 vs 虎
         - 金额匹配度 ≥ 90%
         - 排除同一账户多方向下注
 
@@ -849,6 +870,10 @@ def main():
         - 必须包含：会员账号、期号、内容、金额
         - 可选包含：彩种（如无则自动添加默认值）
         - 支持自动列名映射
+
+        **🔍 龙虎投注识别：**
+        - 支持识别：龙、long、龍、dragon
+        - 支持识别：虎、hu、tiger
         """)
 
 if __name__ == "__main__":
