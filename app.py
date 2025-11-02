@@ -798,28 +798,6 @@ class WashTradeDetector:
                 st.error("❌ 过滤后没有有效记录")
                 return pd.DataFrame()
             
-            # 显示数据概览
-            with st.expander("📊 数据概览", expanded=False):
-                st.write(f"总记录数: {len(df_clean)}")
-                st.write(f"有效记录数: {len(df_valid)}")
-                st.write(f"唯一期号数: {df_valid['期号'].nunique()}")
-                st.write(f"唯一账户数: {df_valid['会员账号'].nunique()}")
-                
-                if len(df_valid) > 0:
-                    # 彩种分布
-                    if '彩种类型' in df_valid.columns:
-                        lottery_stats = df_valid['彩种类型'].value_counts()
-                        st.write(f"彩种类型分布: {dict(lottery_stats)}")
-                    
-                    # 玩法分布
-                    if '玩法分类' in df_valid.columns:
-                        play_stats = df_valid['玩法分类'].value_counts().head(10)
-                        st.write(f"主要玩法分布: {dict(play_stats)}")
-                    
-                    # 投注方向分布
-                    direction_stats = df_valid['投注方向'].value_counts()
-                    st.write(f"投注方向分布: {dict(direction_stats)}")
-            
             self.data_processed = True
             self.df_valid = df_valid
             return df_valid
@@ -900,12 +878,6 @@ class WashTradeDetector:
                 for pattern in patterns:
                     if pattern.lower() in content_str:
                         return direction
-            
-            # 增强识别：基于玩法分类的智能推断
-            play_category = ""
-            if '玩法分类' in self.df_valid.columns if self.df_valid is not None else False:
-                # 这里可以添加基于玩法分类的智能推断逻辑
-                pass
             
             return ""
         except Exception as e:
@@ -1395,39 +1367,69 @@ def main():
     st.title("🎯 智能多账户对刷检测系统")
     st.markdown("---")
     
-    # 侧边栏配置
-    st.sidebar.header("⚙️ 检测参数配置")
+    # ==================== 左侧边栏 - 文件上传和配置 ====================
+    with st.sidebar:
+        st.header("📁 数据上传")
+        
+        uploaded_file = st.file_uploader(
+            "请上传数据文件", 
+            type=['xlsx', 'xls', 'csv'],
+            help="请确保文件包含必要的列：会员账号、期号、内容、金额"
+        )
+        
+        # 文件上传后的信息显示
+        if uploaded_file is not None:
+            st.success(f"✅ 已上传: {uploaded_file.name}")
+            
+            # 显示文件基本信息
+            file_info_col1, file_info_col2 = st.columns(2)
+            with file_info_col1:
+                st.metric("文件类型", uploaded_file.type)
+            with file_info_col2:
+                st.metric("文件大小", f"{len(uploaded_file.getvalue()) / 1024:.1f} KB")
+        
+        st.markdown("---")
+        st.header("⚙️ 检测参数配置")
+        
+        min_amount = st.number_input("最小投注金额", value=10, min_value=1, help="低于此金额的记录将被过滤")
+        similarity_threshold = st.slider("金额匹配度阈值", 0.8, 1.0, 0.9, 0.01, help="对立方向金额匹配度阈值")
+        max_accounts = st.slider("最大检测账户数", 2, 8, 5, help="检测的最大账户组合数量")
+        
+        # 活跃度阈值配置 - 修正版
+        st.subheader("📊 活跃度阈值配置")
+        st.markdown("**低活跃度:** 总投注期数≤10期")
+        st.markdown("**中活跃度:** 总投注期数11-200期")  
+        st.markdown("**高活跃度:** 总投注期数≥201期")
+        
+        min_periods_low = st.number_input("低活跃度最小对刷期数", value=3, min_value=1, 
+                                        help="总投注期数≤10的账户，要求≥3期连续对刷")
+        min_periods_medium = st.number_input("中活跃度最小对刷期数", value=5, min_value=1,
+                                           help="总投注期数11-200的账户，要求≥5期连续对刷")
+        min_periods_high = st.number_input("高活跃度最小对刷期数", value=8, min_value=1,
+                                         help="总投注期数≥201的账户，要求≥8期连续对刷")
+        
+        # 调试选项
+        st.markdown("---")
+        st.subheader("🔧 调试选项")
+        debug_mode = st.checkbox("启用调试模式", value=False)
+        account_debug = st.checkbox("启用账号调试", value=False)
+        
+        # 操作按钮区域
+        st.markdown("---")
+        st.subheader("🚀 操作控制")
+        
+        # 检测状态指示器
+        if 'analysis_started' not in st.session_state:
+            st.session_state.analysis_started = False
+        
+        analyze_button = st.button("开始检测分析", type="primary", use_container_width=True)
+        
+        if analyze_button and uploaded_file is not None:
+            st.session_state.analysis_started = True
+        elif analyze_button and uploaded_file is None:
+            st.warning("请先上传数据文件")
     
-    min_amount = st.sidebar.number_input("最小投注金额", value=10, min_value=1, help="低于此金额的记录将被过滤")
-    similarity_threshold = st.sidebar.slider("金额匹配度阈值", 0.8, 1.0, 0.9, 0.01, help="对立方向金额匹配度阈值")
-    max_accounts = st.sidebar.slider("最大检测账户数", 2, 8, 5, help="检测的最大账户组合数量")
-    
-    # 活跃度阈值配置 - 修正版
-    st.sidebar.subheader("📊 活跃度阈值配置（基于总投注期数）")
-    st.sidebar.markdown("**低活跃度:** 总投注期数≤10期")
-    st.sidebar.markdown("**中活跃度:** 总投注期数11-200期")  
-    st.sidebar.markdown("**高活跃度:** 总投注期数≥201期")
-    
-    min_periods_low = st.sidebar.number_input("低活跃度最小对刷期数", value=3, min_value=1, 
-                                            help="总投注期数≤10的账户，要求≥3期连续对刷")
-    min_periods_medium = st.sidebar.number_input("中活跃度最小对刷期数", value=5, min_value=1,
-                                               help="总投注期数11-200的账户，要求≥5期连续对刷")
-    min_periods_high = st.sidebar.number_input("高活跃度最小对刷期数", value=8, min_value=1,
-                                             help="总投注期数≥201的账户，要求≥8期连续对刷")
-    
-    # 调试选项
-    st.sidebar.subheader("🔧 调试选项")
-    debug_mode = st.sidebar.checkbox("启用调试模式", value=False)
-    account_debug = st.sidebar.checkbox("启用账号调试", value=False)
-    
-    # 文件上传
-    st.header("📁 数据上传")
-    uploaded_file = st.file_uploader(
-        "请上传数据文件 (支持 .xlsx, .xls, .csv)", 
-        type=['xlsx', 'xls', 'csv'],
-        help="请确保文件包含必要的列：会员账号、期号、内容、金额"
-    )
-    
+    # ==================== 主区域 - 结果显示 ====================
     if uploaded_file is not None:
         try:
             # 更新配置参数
@@ -1446,58 +1448,118 @@ def main():
             
             detector = WashTradeDetector(config)
             
-            st.success(f"✅ 已上传文件: {uploaded_file.name}")
-            
+            # 数据处理和显示
             with st.spinner("🔄 正在解析数据..."):
                 df_enhanced, filename = detector.upload_and_process(uploaded_file)
                 
                 if df_enhanced is not None and len(df_enhanced) > 0:
                     st.success("✅ 数据解析完成")
                     
+                    # 数据概览卡片
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("有效记录数", f"{len(df_enhanced):,}")
+                    with col2:
+                        st.metric("唯一期号数", f"{df_enhanced['期号'].nunique():,}")
+                    with col3:
+                        st.metric("唯一账户数", f"{df_enhanced['会员账号'].nunique():,}")
+                    with col4:
+                        if '彩种类型' in df_enhanced.columns:
+                            st.metric("彩种类型数", f"{df_enhanced['彩种类型'].nunique()}")
+                    
+                    # 数据详情展开面板
+                    with st.expander("📊 数据详情", expanded=True):
+                        tab1, tab2, tab3 = st.tabs(["数据概览", "彩种分布", "玩法分布"])
+                        
+                        with tab1:
+                            st.dataframe(df_enhanced.head(100), use_container_width=True)
+                            
+                        with tab2:
+                            if '彩种类型' in df_enhanced.columns:
+                                lottery_type_stats = df_enhanced['彩种类型'].value_counts()
+                                st.bar_chart(lottery_type_stats)
+                                st.dataframe(lottery_type_stats.reset_index().rename(
+                                    columns={'index': '彩种类型', '彩种类型': '数量'}
+                                ))
+                        
+                        with tab3:
+                            if '玩法分类' in df_enhanced.columns:
+                                play_stats = df_enhanced['玩法分类'].value_counts().head(15)
+                                st.bar_chart(play_stats)
+                                st.dataframe(play_stats.reset_index().rename(
+                                    columns={'index': '玩法分类', '玩法分类': '数量'}
+                                ))
+                    
                     # 如果启用了账号调试，显示调试信息
                     if account_debug:
-                        detector.data_processor.debug_account_issues(df_enhanced)
+                        with st.expander("🔍 账号调试信息", expanded=False):
+                            detector.data_processor.debug_account_issues(df_enhanced)
                     
-                    with st.expander("📊 数据统计", expanded=False):
-                        st.write(f"有效记录数: {len(df_enhanced):,}")
-                        st.write(f"唯一期号数: {df_enhanced['期号'].nunique():,}")
-                        st.write(f"唯一账户数: {df_enhanced['会员账号'].nunique():,}")
+                    # 自动或手动开始检测
+                    if st.session_state.get('analysis_started', False) or st.button("开始对刷检测", type="primary"):
+                        st.info("🚀 开始检测对刷交易...")
+                        with st.spinner("🔍 正在检测对刷交易..."):
+                            patterns = detector.detect_all_wash_trades()
                         
-                        # 显示彩种类型分布
-                        if '彩种类型' in df_enhanced.columns:
-                            lottery_type_stats = df_enhanced['彩种类型'].value_counts()
-                            st.write(f"彩种类型分布: {dict(lottery_type_stats)}")
-                    
-                    # 自动开始检测
-                    st.info("🚀 自动开始检测对刷交易...")
-                    with st.spinner("🔍 正在检测对刷交易..."):
-                        patterns = detector.detect_all_wash_trades()
-                    
-                    if patterns:
-                        st.success(f"✅ 检测完成！发现 {len(patterns)} 个对刷组")
-                        
-                        detector.display_detailed_results(patterns)
-                        
-                        excel_output, export_filename = detector.export_to_excel(patterns, filename)
-                        
-                        if excel_output is not None:
-                            st.download_button(
-                                label="📥 下载检测报告",
-                                data=excel_output,
-                                file_name=export_filename,
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                            )
-                    else:
-                        st.warning("⚠️ 未发现符合阈值条件的对刷行为")
+                        if patterns:
+                            st.success(f"✅ 检测完成！发现 {len(patterns)} 个对刷组")
+                            
+                            detector.display_detailed_results(patterns)
+                            
+                            excel_output, export_filename = detector.export_to_excel(patterns, filename)
+                            
+                            if excel_output is not None:
+                                st.download_button(
+                                    label="📥 下载检测报告",
+                                    data=excel_output,
+                                    file_name=export_filename,
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                    use_container_width=True
+                                )
+                        else:
+                            st.warning("⚠️ 未发现符合阈值条件的对刷行为")
                 else:
                     st.error("❌ 数据解析失败，请检查文件格式和内容")
             
         except Exception as e:
             st.error(f"❌ 程序执行失败: {str(e)}")
             st.error(f"详细错误信息:\n{traceback.format_exc()}")
+    else:
+        # 未上传文件时的欢迎界面
+        st.info("👈 请在左侧边栏上传数据文件开始分析")
+        
+        # 功能特色介绍
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.subheader("🔍 智能检测")
+            st.markdown("""
+            - 多账户对刷模式识别
+            - 智能金额匹配分析
+            - 活跃度自适应阈值
+            - 实时进度监控
+            """)
+        
+        with col2:
+            st.subheader("📊 专业分析")
+            st.markdown("""
+            - 完整彩种支持
+            - 玩法分类标准化
+            - 数据质量验证
+            - 详细统计报告
+            """)
+        
+        with col3:
+            st.subheader("🚀 高效处理")
+            st.markdown("""
+            - 大数据量优化
+            - 并行检测算法
+            - 一键导出结果
+            - 实时性能监控
+            """)
     
     # 使用说明 - 智能版
-    with st.expander("📖 使用说明（智能多账户对刷检测系统）"):
+    with st.expander("📖 系统使用说明", expanded=False):
         st.markdown("""
         ### 系统功能说明（智能多账户对刷检测系统）
 
@@ -1536,9 +1598,12 @@ def main():
         - 支持识别：龙、long、龍、dragon
         - 支持识别：虎、hu、tiger
 
-        **⚡ 自动检测：**
-        - 数据上传并解析完成后，系统会自动开始对刷检测
-        - 无需手动点击开始检测按钮
+        **⚡ 操作流程：**
+        1. 在左侧边栏上传数据文件
+        2. 调整检测参数配置
+        3. 点击"开始检测分析"按钮
+        4. 查看检测结果和统计信息
+        5. 下载完整的检测报告
 
         **📊 结果展示：**
         - 按彩种分组显示对刷结果
