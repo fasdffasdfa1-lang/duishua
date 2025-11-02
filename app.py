@@ -1367,7 +1367,7 @@ def main():
     st.title("🎯 智能多账户对刷检测系统")
     st.markdown("---")
     
-    # ==================== 左侧边栏 - 文件上传和配置 ====================
+    # ==================== 左侧边栏 - 文件上传 ====================
     with st.sidebar:
         st.header("📁 数据上传")
         
@@ -1376,69 +1376,42 @@ def main():
             type=['xlsx', 'xls', 'csv'],
             help="请确保文件包含必要的列：会员账号、期号、内容、金额"
         )
-        
-        # 文件上传后的信息显示
-        if uploaded_file is not None:
-            st.success(f"✅ 已上传: {uploaded_file.name}")
-            
-            # 显示文件基本信息
-            file_info_col1, file_info_col2 = st.columns(2)
-            with file_info_col1:
-                st.metric("文件类型", uploaded_file.type)
-            with file_info_col2:
-                st.metric("文件大小", f"{len(uploaded_file.getvalue()) / 1024:.1f} KB")
-        
-        st.markdown("---")
-        st.header("⚙️ 检测参数配置")
-        
-        min_amount = st.number_input("最小投注金额", value=10, min_value=1, help="低于此金额的记录将被过滤")
-        similarity_threshold = st.slider("金额匹配度阈值", 0.8, 1.0, 0.9, 0.01, help="对立方向金额匹配度阈值")
-        max_accounts = st.slider("最大检测账户数", 2, 8, 5, help="检测的最大账户组合数量")
-        
-        # 活跃度阈值配置 - 修正版
-        st.subheader("📊 活跃度阈值配置")
-        st.markdown("**低活跃度:** 总投注期数≤10期")
-        st.markdown("**中活跃度:** 总投注期数11-200期")  
-        st.markdown("**高活跃度:** 总投注期数≥201期")
-        
-        min_periods_low = st.number_input("低活跃度最小对刷期数", value=3, min_value=1, 
-                                        help="总投注期数≤10的账户，要求≥3期连续对刷")
-        min_periods_medium = st.number_input("中活跃度最小对刷期数", value=5, min_value=1,
-                                           help="总投注期数11-200的账户，要求≥5期连续对刷")
-        min_periods_high = st.number_input("高活跃度最小对刷期数", value=8, min_value=1,
-                                         help="总投注期数≥201的账户，要求≥8期连续对刷")
-        
-        # 调试选项
-        st.markdown("---")
-        st.subheader("🔧 调试选项")
-        debug_mode = st.checkbox("启用调试模式", value=False)
-        account_debug = st.checkbox("启用账号调试", value=False)
-        
-        # 操作按钮区域
-        st.markdown("---")
-        st.subheader("🚀 操作控制")
-        
-        # 检测状态指示器
-        if 'analysis_started' not in st.session_state:
-            st.session_state.analysis_started = False
-        
-        analyze_button = st.button("开始检测分析", type="primary", use_container_width=True)
-        
-        if analyze_button and uploaded_file is not None:
-            st.session_state.analysis_started = True
-        elif analyze_button and uploaded_file is None:
-            st.warning("请先上传数据文件")
     
-    # ==================== 主区域 - 结果显示 ====================
+    # ==================== 主区域 - 配置和结果显示 ====================
     if uploaded_file is not None:
         try:
+            # 配置参数
+            st.sidebar.header("⚙️ 检测参数配置")
+            
+            min_amount = st.sidebar.number_input("最小投注金额", value=10, min_value=1, help="低于此金额的记录将被过滤")
+            similarity_threshold = st.sidebar.slider("金额匹配度阈值", 0.8, 1.0, 0.9, 0.01, help="对立方向金额匹配度阈值")
+            max_accounts = st.sidebar.slider("最大检测账户数", 2, 8, 5, help="检测的最大账户组合数量")
+            
+            # 活跃度阈值配置
+            st.sidebar.subheader("📊 活跃度阈值配置")
+            st.sidebar.markdown("**低活跃度:** 总投注期数≤10期")
+            st.sidebar.markdown("**中活跃度:** 总投注期数11-200期")  
+            st.sidebar.markdown("**高活跃度:** 总投注期数≥201期")
+            
+            min_periods_low = st.sidebar.number_input("低活跃度最小对刷期数", value=3, min_value=1, 
+                                                    help="总投注期数≤10的账户，要求≥3期连续对刷")
+            min_periods_medium = st.sidebar.number_input("中活跃度最小对刷期数", value=5, min_value=1,
+                                                       help="总投注期数11-200的账户，要求≥5期连续对刷")
+            min_periods_high = st.sidebar.number_input("高活跃度最小对刷期数", value=8, min_value=1,
+                                                     help="总投注期数≥201的账户，要求≥8期连续对刷")
+            
+            # 调试选项
+            st.sidebar.subheader("🔧 调试选项")
+            debug_mode = st.sidebar.checkbox("启用调试模式", value=False)
+            account_debug = st.sidebar.checkbox("启用账号调试", value=False)
+            
             # 更新配置参数
             config = Config()
             config.min_amount = min_amount
             config.amount_similarity_threshold = similarity_threshold
             config.max_accounts_in_group = max_accounts
             config.period_thresholds = {
-                'low_activity': 10,  # 按照您要求的阈值
+                'low_activity': 10,
                 'medium_activity_low': 11,  
                 'medium_activity_high': 200, 
                 'min_periods_low': min_periods_low,
@@ -1448,14 +1421,16 @@ def main():
             
             detector = WashTradeDetector(config)
             
-            # 数据处理和显示
+            st.success(f"✅ 已上传文件: {uploaded_file.name}")
+            
+            # 自动开始处理和分析
             with st.spinner("🔄 正在解析数据..."):
                 df_enhanced, filename = detector.upload_and_process(uploaded_file)
                 
                 if df_enhanced is not None and len(df_enhanced) > 0:
                     st.success("✅ 数据解析完成")
                     
-                    # 数据概览卡片
+                    # 数据概览
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
                         st.metric("有效记录数", f"{len(df_enhanced):,}")
@@ -1467,8 +1442,8 @@ def main():
                         if '彩种类型' in df_enhanced.columns:
                             st.metric("彩种类型数", f"{df_enhanced['彩种类型'].nunique()}")
                     
-                    # 数据详情展开面板
-                    with st.expander("📊 数据详情", expanded=True):
+                    # 数据详情 - 默认折叠
+                    with st.expander("📊 数据详情", expanded=False):
                         tab1, tab2, tab3 = st.tabs(["数据概览", "彩种分布", "玩法分布"])
                         
                         with tab1:
@@ -1495,29 +1470,28 @@ def main():
                         with st.expander("🔍 账号调试信息", expanded=False):
                             detector.data_processor.debug_account_issues(df_enhanced)
                     
-                    # 自动或手动开始检测
-                    if st.session_state.get('analysis_started', False) or st.button("开始对刷检测", type="primary"):
-                        st.info("🚀 开始检测对刷交易...")
-                        with st.spinner("🔍 正在检测对刷交易..."):
-                            patterns = detector.detect_all_wash_trades()
+                    # 自动开始检测
+                    st.info("🚀 自动开始检测对刷交易...")
+                    with st.spinner("🔍 正在检测对刷交易..."):
+                        patterns = detector.detect_all_wash_trades()
+                    
+                    if patterns:
+                        st.success(f"✅ 检测完成！发现 {len(patterns)} 个对刷组")
                         
-                        if patterns:
-                            st.success(f"✅ 检测完成！发现 {len(patterns)} 个对刷组")
-                            
-                            detector.display_detailed_results(patterns)
-                            
-                            excel_output, export_filename = detector.export_to_excel(patterns, filename)
-                            
-                            if excel_output is not None:
-                                st.download_button(
-                                    label="📥 下载检测报告",
-                                    data=excel_output,
-                                    file_name=export_filename,
-                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                    use_container_width=True
-                                )
-                        else:
-                            st.warning("⚠️ 未发现符合阈值条件的对刷行为")
+                        detector.display_detailed_results(patterns)
+                        
+                        excel_output, export_filename = detector.export_to_excel(patterns, filename)
+                        
+                        if excel_output is not None:
+                            st.download_button(
+                                label="📥 下载检测报告",
+                                data=excel_output,
+                                file_name=export_filename,
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True
+                            )
+                    else:
+                        st.warning("⚠️ 未发现符合阈值条件的对刷行为")
                 else:
                     st.error("❌ 数据解析失败，请检查文件格式和内容")
             
@@ -1558,17 +1532,17 @@ def main():
             - 实时性能监控
             """)
     
-    # 使用说明 - 智能版
+    # 使用说明
     with st.expander("📖 系统使用说明", expanded=False):
         st.markdown("""
-        ### 系统功能说明（智能多账户对刷检测系统）
+        ### 系统功能说明
 
-        **🎯 检测逻辑修正：**
-        - **总投注期数**：账户在特定彩种中的所有期号投注次数（基于原始数据计算）
+        **🎯 检测逻辑：**
+        - **总投注期数**：账户在特定彩种中的所有期号投注次数
         - **对刷期数**：账户组实际发生对刷行为的期数
         - 根据**总投注期数**判定账户活跃度，设置不同的**对刷期数**阈值
 
-        **📊 活跃度判定（基于总投注期数）：**
+        **📊 活跃度判定：**
         - **低活跃度账户**：总投注期数 ≤ 10期 → 要求 ≥ 3期连续对刷
         - **中活跃度账户**：总投注期数 11-200期 → 要求 ≥ 5期连续对刷  
         - **高活跃度账户**：总投注期数 ≥ 201期 → 要求 ≥ 8期连续对刷
@@ -1582,34 +1556,9 @@ def main():
         - 金额匹配度 ≥ 90%
         - 排除同一账户多方向下注
 
-        **🔧 增强的数据处理：**
-        - **智能列识别**：自动识别各种列名变体
-        - **彩种识别**：支持PK10、快三、六合彩、时时彩、三色彩等主流彩种
-        - **玩法分类**：统一标准化各种玩法名称
-        - **数据验证**：完整的数据质量检查和问题报告
-        - **账户调试**：详细的会员账号问题诊断
-
-        **📁 数据格式要求：**
-        - 必须包含：会员账号、期号、内容、金额
-        - 可选包含：彩种、玩法
-        - 支持自动列名映射
-
-        **🔍 龙虎投注识别：**
-        - 支持识别：龙、long、龍、dragon
-        - 支持识别：虎、hu、tiger
-
-        **⚡ 操作流程：**
-        1. 在左侧边栏上传数据文件
-        2. 调整检测参数配置
-        3. 点击"开始检测分析"按钮
-        4. 查看检测结果和统计信息
-        5. 下载完整的检测报告
-
-        **📊 结果展示：**
-        - 按彩种分组显示对刷结果
-        - 详细的账户统计信息
-        - 完整的对刷记录详情
-        - 一键导出Excel报告
+        **⚡ 自动检测：**
+        - 数据上传后自动开始处理和分析
+        - 无需手动点击开始检测按钮
         """)
 
 if __name__ == "__main__":
