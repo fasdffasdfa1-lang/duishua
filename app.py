@@ -87,7 +87,7 @@ class Config:
     """配置参数类 - 增强版"""
     def __init__(self):
         self.min_amount = 10
-        self.amount_similarity_threshold = 0.9
+        self.amount_similarity_threshold = 0.8
         self.min_continuous_periods = 3
         self.max_accounts_in_group = 5
         self.supported_file_types = ['.xlsx', '.xls', '.csv']
@@ -1131,86 +1131,160 @@ class WashTradeDetector:
         return self.find_continuous_patterns_optimized(wash_records)
     
     def _get_valid_direction_combinations(self, n_accounts):
-        """获取有效的方向组合"""
+        """获取有效的方向组合 - 修复版本"""
         valid_combinations = []
         
-        for opposites in self.config.opposite_groups:
-            dir1, dir2 = list(opposites)
-            
-            for i in range(1, n_accounts):
-                j = n_accounts - i
+        # 对于2个账户：标准的对立组
+        if n_accounts == 2:
+            for opposites in self.config.opposite_groups:
+                dir1, dir2 = list(opposites)
                 valid_combinations.append({
-                    'directions': [dir1] * i + [dir2] * j,
-                    'dir1_count': i,
-                    'dir2_count': j,
+                    'directions': [dir1, dir2],
+                    'dir1_count': 1,
+                    'dir2_count': 1,
                     'opposite_type': f"{dir1}-{dir2}"
                 })
+        
+        # 对于3个及以上账户：允许多种分布
+        else:
+            for opposites in self.config.opposite_groups:
+                dir1, dir2 = list(opposites)
+                
+                # 对于n个账户，允许从1到n-1的各种分布
+                for i in range(1, n_accounts):
+                    j = n_accounts - i
+                    valid_combinations.append({
+                        'directions': [dir1] * i + [dir2] * j,
+                        'dir1_count': i,
+                        'dir2_count': j,
+                        'opposite_type': f"{dir1}-{dir2}"
+                    })
         
         return valid_combinations
     
     def _detect_combinations_for_period(self, period_data, period_accounts, n_accounts, valid_combinations):
-        """为单个期号检测组合"""
+        """为单个期号检测组合 - 修复版本"""
         patterns = []
         
+        # 构建账户信息字典
         account_info = {}
         for _, row in period_data.iterrows():
             account = row['会员账号']
-            account_info[account] = {
-                'direction': row['投注方向'],
-                'amount': row['投注金额']
-            }
+            direction = row['投注方向']
+            amount = row['投注金额']
+            
+            if account not in account_info:
+                account_info[account] = []
+            account_info[account].append({
+                'direction': direction,
+                'amount': amount
+            })
         
+        # 检查所有可能的账户组合
         for account_group in combinations(period_accounts, n_accounts):
+            # 检查这个账户组是否有有效的方向组合
+            group_directions = []
+            group_amounts = []
+            
+            # 收集这个账户组的所有方向和金额
+            for account in account_group:
+                if account in account_info:
+                    # 只取每个账户的第一个投注记录（假设一个账户在一个期号只有一个方向）
+                    if account_info[account]:
+                        first_bet = account_info[account][0]
+                        group_directions.append(first_bet['direction'])
+                        group_amounts.append(first_bet['amount'])
+            
+            # 如果收集到的方向数量不等于账户数量，跳过
+            if len(group_directions) != n_accounts:
+                continue
+            
+            # 检查是否匹配任何有效的方向组合
             for combo in valid_combinations:
                 target_directions = combo['directions']
                 
-                actual_directions = [account_info[acc]['direction'] for acc in account_group]
-                if sorted(actual_directions) != sorted(target_directions):
-                    continue
+                # 检查实际方向是否与目标方向匹配（考虑顺序）
+                actual_directions_sorted = sorted(group_directions)
+                target_directions_sorted = sorted(target_directions)
                 
-                dir1_total = 0
-                dir2_total = 0
-                
-                for account, target_dir in zip(account_group, target_directions):
-                    actual_dir = account_info[account]['direction']
-                    amount = account_info[account]['amount']
+                if actual_directions_sorted == target_directions_sorted:
+                    # 计算两个方向的总金额
+                    dir1_total = 0
+                    dir2_total = 0
+                    dir1 = combo['opposite_type'].split('-')[0]
                     
-                    if actual_dir == combo['opposite_type'].split('-')[0]:
-                        dir1_total += amount
-                    else:
-                        dir2_total += amount
-                
-                if dir1_total == 0 or dir2_total == 0:
-                    continue
-                
-                similarity = min(dir1_total, dir2_total) / max(dir1_total, dir2_total)
-                
-                if similarity >= self.config.amount_similarity_threshold:
-                    amount_group = [account_info[acc]['amount'] for acc in account_group]
+                    for direction, amount in zip(group_directions, group_amounts):
+                        if direction == dir1:
+                            dir1_total += amount
+                        else:
+                            dir2_total += amount
                     
-                    # 获取彩种信息
-                    lottery_col = '彩种类型' if '彩种类型' in period_data.columns else '彩种'
-                    lottery = period_data[lottery_col].iloc[0]
-                    
-                    record = {
-                        '期号': period_data['期号'].iloc[0],
-                        '彩种': lottery,
-                        '账户组': list(account_group),
-                        '方向组': actual_directions,
-                        '金额组': amount_group,
-                        '总金额': dir1_total + dir2_total,
-                        '相似度': similarity,
-                        '账户数量': n_accounts,
-                        '模式': f"{combo['opposite_type'].split('-')[0]}({combo['dir1_count']}个) vs {combo['opposite_type'].split('-')[1]}({combo['dir2_count']}个)",
-                        '对立类型': combo['opposite_type']
-                    }
-                    
-                    patterns.append(record)
+                    # 检查金额相似度
+                    if dir1_total > 0 and dir2_total > 0:
+                        similarity = min(dir1_total, dir2_total) / max(dir1_total, dir2_total)
+                        
+                        if similarity >= self.config.amount_similarity_threshold:
+                            # 获取彩种信息
+                            lottery_col = '彩种类型' if '彩种类型' in period_data.columns else '彩种'
+                            lottery = period_data[lottery_col].iloc[0]
+                            
+                            record = {
+                                '期号': period_data['期号'].iloc[0],
+                                '彩种': lottery,
+                                '账户组': list(account_group),
+                                '方向组': group_directions,
+                                '金额组': group_amounts,
+                                '总金额': dir1_total + dir2_total,
+                                '相似度': similarity,
+                                '账户数量': n_accounts,
+                                '模式': f"{combo['opposite_type'].split('-')[0]}({combo['dir1_count']}个) vs {combo['opposite_type'].split('-')[1]}({combo['dir2_count']}个)",
+                                '对立类型': combo['opposite_type']
+                            }
+                            
+                            patterns.append(record)
         
         return patterns
     
+    def detect_n_account_patterns_optimized(self, df_filtered, n_accounts):
+        """优化版的N个账户对刷模式检测 - 修复版本"""
+        wash_records = []
+        
+        # 使用彩种类型进行分组
+        lottery_col = '彩种类型' if '彩种类型' in df_filtered.columns else '彩种'
+        period_groups = df_filtered.groupby(['期号', lottery_col])
+        
+        valid_direction_combinations = self._get_valid_direction_combinations(n_accounts)
+        
+        # 添加调试信息
+        total_periods_checked = 0
+        periods_with_patterns = 0
+        
+        for (period, lottery), period_data in period_groups:
+            total_periods_checked += 1
+            period_accounts = period_data['会员账号'].unique()
+            
+            if len(period_accounts) < n_accounts:
+                continue
+            
+            batch_patterns = self._detect_combinations_for_period(
+                period_data, period_accounts, n_accounts, valid_direction_combinations
+            )
+            
+            if batch_patterns:
+                periods_with_patterns += 1
+                wash_records.extend(batch_patterns)
+        
+        # 显示调试信息
+        st.info(f"🔍 {n_accounts}个账户检测: 检查{total_periods_checked}个期号，发现{periods_with_patterns}个期号有对刷模式")
+        
+        continuous_patterns = self.find_continuous_patterns_optimized(wash_records)
+        
+        st.info(f"📈 {n_accounts}个账户连续对刷: 发现{len(continuous_patterns)}组连续对刷")
+        
+        return continuous_patterns
+    
     def find_continuous_patterns_optimized(self, wash_records):
-        """优化版的连续对刷模式检测"""
+        """优化版的连续对刷模式检测 - 修复版本"""
         if not wash_records:
             return []
         
@@ -1226,6 +1300,11 @@ class WashTradeDetector:
             
             # 修正：根据账户组的总投注期数确定最小对刷期数要求
             required_min_periods = self.get_required_min_periods(account_group, lottery)
+            
+            # 调试信息
+            account_count = len(account_group)
+            if account_count > 2:  # 只对3个及以上账户显示调试信息
+                st.write(f"  调试: 账户组{account_group}在{lottery}有{len(sorted_records)}期对刷，要求{required_min_periods}期")
             
             if len(sorted_records) >= required_min_periods:
                 total_investment = sum(r['总金额'] for r in sorted_records)
@@ -1260,7 +1339,7 @@ class WashTradeDetector:
                     '账户数量': len(account_group),
                     '主要对立类型': main_opposite_type,
                     '对立类型分布': dict(opposite_type_counts),
-                    '对刷期数': len(sorted_records),  # 实际对刷期数
+                    '对刷期数': len(sorted_records),
                     '总投注金额': total_investment,
                     '平均相似度': avg_similarity,
                     '模式分布': dict(pattern_count),
