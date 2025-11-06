@@ -1,27 +1,3 @@
-[file name]: image.png
-[file content begin]
-对刷组 5: bbb101 ⇔ fei8587
-
-活跃度: ○ medium | 彩种: 未知彩种 | 主要类型: 大小
-
-账户在该彩种投注期数/记录数: bbb101(13期/13记录), fei8587(11期/11记录)
-
-对刷期数: 10期 (要求≥5期)
-
-总金额: 9006.00元 | 平均匹配: 99.68%
-
-
-[file content end]
-
-[file name]: image.png
-[file content begin]
-对刷组 6: bbb101 ⇔ fei8587 ⇔ qyu633
-
-活跃度: ○ medium | 彩种: 未知彩种 | 主要类型: 大小
-
-
-[file content end]
-
 import pandas as pd
 import numpy as np
 import streamlit as st
