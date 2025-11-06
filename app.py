@@ -143,9 +143,10 @@ class Config:
         # 扩展：增加龙虎对立组和3D的质合对立组
         self.opposite_groups = [{'大', '小'}, {'单', '双'}, {'龙', '虎'}, {'质', '合'}]
 
-# ==================== 数据处理器 ====================
+# ==================== 修复基础数据处理器 ====================
 class DataProcessor:
-    def __init__(self):
+    def __init__(self, config=None):  # 添加config参数
+        self.config = config or Config()  # 确保有config属性
         self.required_columns = ['会员账号', '彩种', '期号', '玩法', '内容', '金额']
         self.column_mapping = {
             '会员账号': ['会员账号', '会员账户', '账号', '账户', '用户账号', '玩家账号', '用户ID', '玩家ID'],
@@ -939,10 +940,11 @@ class PlayCategoryNormalizer:
         
         return category_str
 
-# ==================== 增强的数据处理器 ====================
+# ==================== 修复增强的数据处理器 ====================
 class EnhancedDataProcessor(DataProcessor):
-    def __init__(self):
+    def __init__(self, config=None):
         super().__init__()
+        self.config = config or Config()  # 添加这行，确保有config属性
         self.lottery_identifier = EnhancedLotteryIdentifier()
         self.play_normalizer = PlayCategoryNormalizer()
     
@@ -980,7 +982,7 @@ class EnhancedDataProcessor(DataProcessor):
             # 过滤有效记录
             df_valid = df_clean[
                 (df_clean['投注方向'] != '') & 
-                (df_clean['投注金额'] >= self.config.min_amount)
+                (df_clean['投注金额'] >= self.config.min_amount)  # 这里需要config
             ].copy()
             
             if len(df_valid) == 0:
@@ -1000,25 +1002,6 @@ class EnhancedDataProcessor(DataProcessor):
             st.error(f"数据处理增强失败: {str(e)}")
             return pd.DataFrame()
     
-    def calculate_account_total_periods_by_lottery(self, df):
-        """修正：按彩种计算每个账户的总投注期数统计（使用原始数据）"""
-        self.account_total_periods_by_lottery = defaultdict(dict)
-        self.account_record_stats_by_lottery = defaultdict(dict)
-        
-        # 使用彩种类型列（如果存在），否则使用原始彩种列
-        lottery_col = '彩种类型' if '彩种类型' in df.columns else '彩种'
-        
-        for lottery in df[lottery_col].unique():
-            df_lottery = df[df[lottery_col] == lottery]
-            
-            # 计算每个账户的总投注期数（唯一期号数）
-            period_counts = df_lottery.groupby('会员账号')['期号'].nunique().to_dict()
-            self.account_total_periods_by_lottery[lottery] = period_counts
-            
-            # 计算每个账户的记录数
-            record_counts = df_lottery.groupby('会员账号').size().to_dict()
-            self.account_record_stats_by_lottery[lottery] = record_counts
-    
     def extract_bet_amount_safe(self, amount_text):
         """安全提取投注金额 - 改进版本"""
         try:
@@ -1032,7 +1015,7 @@ class EnhancedDataProcessor(DataProcessor):
                 cleaned_text = text.replace(',', '').replace('，', '').replace(' ', '')
                 if re.match(r'^-?\d+(\.\d+)?$', cleaned_text):
                     amount = float(cleaned_text)
-                    if amount >= self.config.min_amount:
+                    if amount >= self.config.min_amount:  # 这里需要config
                         return amount
             except:
                 pass
@@ -1056,7 +1039,7 @@ class EnhancedDataProcessor(DataProcessor):
                     amount_str = match.group(1).replace(',', '').replace('，', '').replace(' ', '')
                     try:
                         amount = float(amount_str)
-                        if amount >= self.config.min_amount:
+                        if amount >= self.config.min_amount:  # 这里需要config
                             return amount
                     except:
                         continue
@@ -1066,7 +1049,7 @@ class EnhancedDataProcessor(DataProcessor):
             if numbers:
                 try:
                     amount = float(numbers[0])
-                    if amount >= self.config.min_amount:
+                    if amount >= self.config.min_amount:  # 这里需要config
                         return amount
                 except:
                     pass
@@ -1147,11 +1130,12 @@ LOTTERY_CONFIGS['NEW_LOTTERY'] = {{
 """
         return suggestion
 
-# ==================== 增强的对刷检测器 ====================
+# ==================== 修复增强的对刷检测器 ====================
 class EnhancedWashTradeDetector:
     def __init__(self, config=None):
         self.config = config or Config()
-        self.data_processor = EnhancedDataProcessor()
+        # 修复：在初始化data_processor时传入config
+        self.data_processor = EnhancedDataProcessor(self.config)  # 传入config
         self.lottery_identifier = EnhancedLotteryIdentifier()
         self.play_normalizer = PlayCategoryNormalizer()
         
