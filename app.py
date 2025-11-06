@@ -1464,11 +1464,6 @@ class WashTradeDetector:
             # 修正：根据账户组的总投注期数确定最小对刷期数要求
             required_min_periods = self.get_required_min_periods(account_group, lottery)
             
-            # 调试信息
-            account_count = len(account_group)
-            if account_count > 2:  # 只对3个及以上账户显示调试信息
-                st.write(f"  调试: 账户组{account_group}在{lottery}有{len(sorted_records)}期对刷，要求{required_min_periods}期")
-            
             if len(sorted_records) >= required_min_periods:
                 total_investment = sum(r['总金额'] for r in sorted_records)
                 similarities = [r['相似度'] for r in sorted_records]
