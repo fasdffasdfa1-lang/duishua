@@ -25,7 +25,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ==================== 完整的彩种配置 ====================
+# ==================== 从第一套代码移植的配置 ====================
 LOTTERY_CONFIGS = {
     'PK10': {
         'lotteries': [
@@ -80,22 +80,6 @@ LOTTERY_CONFIGS = {
         ],
         'min_number': 0,
         'max_number': 9
-    },
-    # 新增3D系列彩种配置
-    '3D': {
-        'lotteries': [
-            '排列三', '排列3', '幸运排列3', '一分排列3', '二分排列3', '三分排列3', 
-            '五分排列3', '十分排列3', '大发排列3', '好运排列3', '福彩3D', '极速3D', 
-            '极速排列3', '幸运3D', '一分3D', '二分3D', '三分3D', '五分3D', 
-            '十分3D', '大发3D', '好运3D', '3D', '排列'
-        ],
-        'min_number': 0,
-        'max_number': 9,
-        'position_names': ['百位', '十位', '个位'],
-        'sum_ranges': {
-            'small': (0, 13),
-            'big': (14, 27)
-        }
     }
 }
 
@@ -108,7 +92,7 @@ class Config:
         self.max_accounts_in_group = 5
         self.supported_file_types = ['.xlsx', '.xls', '.csv']
         
-        # 增强的列名映射配置
+        # 增强的列名映射配置 - 从第一套代码移植
         self.column_mappings = {
             '会员账号': ['会员账号', '会员账户', '账号', '账户', '用户账号', '玩家账号', '用户ID', '玩家ID'],
             '彩种': ['彩种', '彩神', '彩票种类', '游戏类型', '彩票类型', '游戏彩种', '彩票名称'],
@@ -128,25 +112,22 @@ class Config:
             'min_periods_high': 8       # 高活跃度账户最小对刷期数
         }
         
-        # 扩展：增加龙虎方向模式和3D系列的质合方向
+        # 扩展：增加龙虎方向模式
         self.direction_patterns = {
             '小': ['两面-小', '和值-小', '小', 'small', 'xia'],
             '大': ['两面-大', '和值-大', '大', 'big', 'da'], 
             '单': ['两面-单', '和值-单', '单', 'odd', 'dan'],
             '双': ['两面-双', '和值-双', '双', 'even', 'shuang'],
             '龙': ['龙', 'long', '龍', 'dragon'],
-            '虎': ['虎', 'hu', 'tiger'],
-            '质': ['质', '质数', 'prime', 'zhi'],
-            '合': ['合', '合数', 'composite', 'he']
+            '虎': ['虎', 'hu', 'tiger']
         }
         
-        # 扩展：增加龙虎对立组和3D的质合对立组
-        self.opposite_groups = [{'大', '小'}, {'单', '双'}, {'龙', '虎'}, {'质', '合'}]
+        # 扩展：增加龙虎对立组
+        self.opposite_groups = [{'大', '小'}, {'单', '双'}, {'龙', '虎'}]
 
-# ==================== 修复基础数据处理器 ====================
+# ==================== 从第一套代码移植的数据处理器 ====================
 class DataProcessor:
-    def __init__(self, config=None):  # 添加config参数
-        self.config = config or Config()  # 确保有config属性
+    def __init__(self):
         self.required_columns = ['会员账号', '彩种', '期号', '玩法', '内容', '金额']
         self.column_mapping = {
             '会员账号': ['会员账号', '会员账户', '账号', '账户', '用户账号', '玩家账号', '用户ID', '玩家ID'],
@@ -156,12 +137,9 @@ class DataProcessor:
             '内容': ['内容', '投注内容', '下注内容', '注单内容', '投注号码', '号码内容', '投注信息'],
             '金额': ['金额', '下注总额', '投注金额', '总额', '下注金额', '投注额', '金额数值']
         }
-        # 添加统计属性
-        self.account_total_periods_by_lottery = defaultdict(dict)
-        self.account_record_stats_by_lottery = defaultdict(dict)
     
     def smart_column_identification(self, df_columns):
-        """智能列识别"""
+        """智能列识别 - 从第一套代码移植"""
         identified_columns = {}
         actual_columns = [str(col).strip() for col in df_columns]
         
@@ -213,7 +191,7 @@ class DataProcessor:
         return 0, 0
     
     def validate_data_quality(self, df):
-        """数据质量验证"""
+        """数据质量验证 - 从第一套代码移植"""
         logger.info("正在进行数据质量验证...")
         issues = []
         
@@ -270,7 +248,7 @@ class DataProcessor:
         return issues
     
     def clean_data(self, uploaded_file):
-        """数据清洗主函数"""
+        """数据清洗主函数 - 从第一套代码移植并改进"""
         try:
             # 第一次读取用于定位
             df_temp = pd.read_excel(uploaded_file, header=None, nrows=50)
@@ -360,7 +338,7 @@ class DataProcessor:
             return None
 
     def debug_account_issues(self, df):
-        """调试会员账号问题"""
+        """调试会员账号问题 - 从第一套代码移植"""
         st.subheader("🔍 会员账号调试信息")
         
         if '会员账号' not in df.columns:
@@ -426,18 +404,15 @@ class DataProcessor:
                 if len(special_accounts) > 10:
                     st.write(f"  ... 还有 {len(special_accounts) - 10} 个")
 
-# ==================== 增强的彩种识别器 ====================
-class EnhancedLotteryIdentifier:
+# ==================== 从第一套代码移植的彩种识别器 ====================
+class LotteryIdentifier:
     def __init__(self):
         self.lottery_configs = LOTTERY_CONFIGS
-        self.unknown_lottery_patterns = {}
-        self.identified_unknown_lotteries = {}
-        
+    
     def identify_lottery_type(self, lottery_name):
-        """增强的彩种识别 - 包含未知彩种的智能识别和记录"""
+        """识别彩种类型 - 从第一套代码移植"""
         lottery_str = str(lottery_name).strip()
         
-        # 1. 首先尝试标准识别
         for lottery_type, config in self.lottery_configs.items():
             for lottery in config['lotteries']:
                 if lottery in lottery_str:
@@ -445,7 +420,7 @@ class EnhancedLotteryIdentifier:
         
         lottery_lower = lottery_str.lower()
         
-        # 2. 关键词识别
+        # 更精确的彩种识别
         if any(word in lottery_lower for word in ['pk', '飞艇', '赛车', '幸运10', 'pk10', 'pk拾', '赛車']):
             return 'PK10'
         elif any(word in lottery_lower for word in ['快三', '快3', 'k3', 'k三']):
@@ -456,131 +431,16 @@ class EnhancedLotteryIdentifier:
             return 'SSC'
         elif any(word in lottery_lower for word in ['三色', '三色彩', '三色球']):
             return 'THREE_COLOR'
-        elif any(word in lottery_lower for word in ['3d', '排列三', '排列3', '福彩3d', '极速3d', '排列']):
-            return '3D'
         
-        # 3. 智能识别未知彩种
-        return self.smart_identify_unknown_lottery(lottery_str)
-    
-    def smart_identify_unknown_lottery(self, lottery_name):
-        """智能识别未知彩种并记录模式"""
-        lottery_str = str(lottery_name).strip()
-        
-        # 记录未知彩种
-        if lottery_str not in self.identified_unknown_lotteries:
-            self.identified_unknown_lotteries[lottery_str] = {
-                'count': 0,
-                'first_seen': datetime.now(),
-                'patterns': set(),
-                'inferred_type': None
-            }
-        
-        self.identified_unknown_lotteries[lottery_str]['count'] += 1
-        
-        # 基于玩法模式推断彩种类型
-        inferred_type = self.infer_lottery_type_by_patterns(lottery_str)
-        if inferred_type:
-            self.identified_unknown_lotteries[lottery_str]['inferred_type'] = inferred_type
-            return inferred_type
-        
-        # 如果无法推断，标记为未知但记录特征
         return '未知彩种'
-    
-    def infer_lottery_type_by_patterns(self, lottery_name):
-        """基于玩法模式推断彩种类型"""
-        lottery_lower = lottery_name.lower()
-        
-        # 基于开奖号码特征推断
-        number_patterns = {
-            'PK10': [r'1[0-9]选1', r'冠亚', r'前[一二三]', r'第[1-9]名', r'定位胆.*[1-9]'],
-            'K3': [r'和值', r'三军', r'独胆', r'二不同', r'三不同'],
-            'SSC': [r'第[1-5]球', r'定位胆', r'万位', r'千位', r'百位', r'十位', r'个位'],
-            'LHC': [r'特码', r'正码', r'平特', r'特肖', r'连肖', r'尾数', r'色波'],
-            'THREE_COLOR': [r'三色', r'红蓝绿', r'三色彩'],
-            '3D': [r'百位', r'十位', r'个位', r'佰位', r'和值', r'和尾', r'跨度', r'组三', r'组六']
-        }
-        
-        for lottery_type, patterns in number_patterns.items():
-            for pattern in patterns:
-                if re.search(pattern, lottery_lower):
-                    return lottery_type
-        
-        # 基于开奖时间模式推断
-        time_patterns = {
-            'PK10': [r'[135]分', r'极速', r'高频'],
-            'SSC': [r'[135]分', r'分分彩', r'时时彩'],
-            'K3': [r'[135]分', r'快三'],
-            'LHC': [r'[15]分', r'六合彩'],
-            '3D': [r'[135]分', r'排列', r'3d']
-        }
-        
-        for lottery_type, patterns in time_patterns.items():
-            for pattern in patterns:
-                if re.search(pattern, lottery_lower):
-                    return lottery_type
-        
-        return None
-    
-    def record_play_pattern(self, lottery_name, play_category, content):
-        """记录未知彩种的玩法模式"""
-        if lottery_name not in self.unknown_lottery_patterns:
-            self.unknown_lottery_patterns[lottery_name] = {
-                'play_categories': set(),
-                'content_patterns': set(),
-                'sample_contents': []
-            }
-        
-        patterns = self.unknown_lottery_patterns[lottery_name]
-        patterns['play_categories'].add(play_category)
-        
-        # 分析内容模式
-        content_str = str(content)
-        if len(patterns['sample_contents']) < 10:  # 只保留10个样本
-            patterns['sample_contents'].append(content_str)
-        
-        # 提取数字模式
-        number_patterns = re.findall(r'\d+', content_str)
-        if number_patterns:
-            patterns['content_patterns'].update(number_patterns)
-    
-    def get_unknown_lottery_stats(self):
-        """获取未知彩种统计信息"""
-        stats = {
-            'total_unknown': len(self.identified_unknown_lotteries),
-            'unknown_details': {},
-            'recommendations': []
-        }
-        
-        for lottery_name, data in self.identified_unknown_lotteries.items():
-            stats['unknown_details'][lottery_name] = {
-                'count': data['count'],
-                'inferred_type': data['inferred_type'],
-                'first_seen': data['first_seen'].strftime("%Y-%m-%d %H:%M:%S")
-            }
-            
-            # 如果这个未知彩种出现频率高，生成配置建议
-            if data['count'] >= 10 and lottery_name in self.unknown_lottery_patterns:
-                patterns = self.unknown_lottery_patterns[lottery_name]
-                inferred_type = data['inferred_type'] or '未知类型'
-                
-                recommendation = {
-                    'lottery_name': lottery_name,
-                    'count': data['count'],
-                    'inferred_type': inferred_type,
-                    'play_categories': list(patterns['play_categories']),
-                    'sample_patterns': list(patterns['content_patterns'])[:5]
-                }
-                stats['recommendations'].append(recommendation)
-        
-        return stats
 
-# ==================== 完整的玩法分类器 ====================
+# ==================== 从第一套代码移植的玩法分类器 ====================
 class PlayCategoryNormalizer:
     def __init__(self):
         self.category_mapping = self._create_category_mapping()
     
     def _create_category_mapping(self):
-        """创建玩法分类映射的完整映射 - 包含3D系列"""
+        """创建玩法分类映射的完整映射"""
         mapping = {
             # 快三玩法
             '和值': '和值',
@@ -757,67 +617,12 @@ class PlayCategoryNormalizer:
             '正码': '正码',
             '两面': '两面',
             '色波': '色波',
-            '特码': '特码',
-            
-            # ==================== 3D系列玩法映射 ====================
-            # 基本位置玩法
-            '百位': '百位',
-            '十位': '十位',
-            '个位': '个位',
-            '佰位': '百位',
-            '仟位': '千位',
-            
-            # 两面玩法
-            '两面_百位': '两面_百位',
-            '两面_十位': '两面_十位', 
-            '两面_个位': '两面_个位',
-            '两面_佰位': '两面_百位',
-            
-            # 组合和值玩法
-            '百十': '百十',
-            '百个': '百个',
-            '十个': '十个',
-            '百十个': '百十个',
-            '佰十': '百十',
-            '佰个': '百个',
-            '佰十个': '百十个',
-            
-            # 和值玩法
-            '和值': '和值',
-            '和数': '和值',
-            '和值大小': '和值_大小',
-            '和值单双': '和值_单双',
-            '和值尾数大小': '和值_尾数大小',
-            '和值尾数单双': '和值_尾数单双',
-            '和值尾数质合': '和值_尾数质合',
-            
-            # 和尾玩法
-            '和尾': '和尾',
-            '和尾大小': '和尾_大小',
-            '和尾单双': '和尾_单双',
-            '和尾质合': '和尾_质合',
-            
-            # 跨度玩法
-            '跨度': '跨度',
-            '跨度大小': '跨度_大小',
-            '跨度单双': '跨度_单双',
-            
-            # 组选玩法
-            '组三': '组三',
-            '组六': '组六',
-            '组选': '组选',
-            '混合组选': '混合组选',
-            
-            # 定位胆玩法
-            '定位胆_百位': '定位胆_百位',
-            '定位胆_十位': '定位胆_十位',
-            '定位胆_个位': '定位胆_个位',
-            '定位胆_佰位': '定位胆_百位'
+            '特码': '特码'
         }
         return mapping
     
     def normalize_category(self, category):
-        """统一玩法分类名称 - 包含3D系列"""
+        """统一玩法分类名称"""
         category_str = str(category).strip()
         
         # 直接映射
@@ -831,36 +636,8 @@ class PlayCategoryNormalizer:
         
         category_lower = category_str.lower()
         
-        # 3D系列智能匹配
-        if any(word in category_lower for word in ['百位', '佰位', '第一位']):
-            return '百位'
-        elif any(word in category_lower for word in ['十位', '第二位']):
-            return '十位'
-        elif any(word in category_lower for word in ['个位', '第三位']):
-            return '个位'
-        elif any(word in category_lower for word in ['百十', '佰十', '前二']):
-            return '百十'
-        elif any(word in category_lower for word in ['百个', '佰个', '百个和']):
-            return '百个'
-        elif any(word in category_lower for word in ['十个', '后二']):
-            return '十个'
-        elif any(word in category_lower for word in ['百十个', '佰十个', '前三', '和值']):
-            return '百十个'
-        elif any(word in category_lower for word in ['和尾', '尾数']):
-            return '和尾'
-        elif any(word in category_lower for word in ['跨度']):
-            return '跨度'
-        elif any(word in category_lower for word in ['组三']):
-            return '组三'
-        elif any(word in category_lower for word in ['组六']):
-            return '组六'
-        elif any(word in category_lower for word in ['组选']):
-            return '组选'
-        elif any(word in category_lower for word in ['定位胆']):
-            return '定位胆'
-        
         # PK10/赛车智能匹配
-        elif any(word in category_lower for word in ['定位胆_第1~5名', '定位胆1~5', '定位胆1-5']):
+        if any(word in category_lower for word in ['定位胆_第1~5名', '定位胆1~5', '定位胆1-5']):
             return '定位胆_第1~5名'
         elif any(word in category_lower for word in ['定位胆_第6~10名', '定位胆6~10', '定位胆6-10']):
             return '定位胆_第6~10名'
@@ -902,6 +679,8 @@ class PlayCategoryNormalizer:
             return '定位_十位'
         elif any(word in category_lower for word in ['个位', '第五位', '第五球']):
             return '定位_个位'
+        elif any(word in category_lower for word in ['定位胆']):
+            return '定位胆'
         
         # 六合彩智能匹配
         elif any(word in category_lower for word in ['特码']):
@@ -943,90 +722,71 @@ class PlayCategoryNormalizer:
         
         return category_str
 
-# ==================== 修复增强的数据处理器 ====================
-class EnhancedDataProcessor(DataProcessor):
+# ==================== 增强的对刷检测器 ====================
+class WashTradeDetector:
     def __init__(self, config=None):
-        super().__init__(config)
-        self.lottery_identifier = EnhancedLotteryIdentifier()
+        self.config = config or Config()
+        self.data_processor = DataProcessor()
+        self.lottery_identifier = LotteryIdentifier()
         self.play_normalizer = PlayCategoryNormalizer()
-    
-    def calculate_account_total_periods_by_lottery(self, df):
-        """修正：按彩种计算每个账户的总投注期数统计（使用原始数据）"""
+        
+        self.data_processed = False
+        self.df_valid = None
+        self.export_data = []
+        
+        # 修正：按彩种存储账户总投注期数统计
         self.account_total_periods_by_lottery = defaultdict(dict)
         self.account_record_stats_by_lottery = defaultdict(dict)
-        
-        # 使用彩种类型列（如果存在），否则使用原始彩种列
-        lottery_col = '彩种类型' if '彩种类型' in df.columns else '彩种'
-        
-        for lottery in df[lottery_col].unique():
-            df_lottery = df[df[lottery_col] == lottery]
+        self.column_mapping_used = {}
+        self.performance_stats = {}
+    
+    def upload_and_process(self, uploaded_file):
+        """上传并处理文件 - 使用增强的数据处理器"""
+        try:
+            if uploaded_file is None:
+                st.error("❌ 没有上传文件")
+                return None, None
             
-            # 计算每个账户的总投注期数（唯一期号数）
-            period_counts = df_lottery.groupby('会员账号')['期号'].nunique().to_dict()
-            self.account_total_periods_by_lottery[lottery] = period_counts
+            filename = uploaded_file.name
+            logger.info(f"✅ 已上传文件: {filename}")
             
-            # 计算每个账户的记录数
-            record_counts = df_lottery.groupby('会员账号').size().to_dict()
-            self.account_record_stats_by_lottery[lottery] = record_counts
+            if not any(filename.endswith(ext) for ext in self.config.supported_file_types):
+                st.error(f"❌ 不支持的文件类型: {filename}")
+                return None, None
+            
+            # 使用增强的数据处理器
+            with st.spinner("🔄 正在清洗数据..."):
+                df_clean = self.data_processor.clean_data(uploaded_file)
+            
+            if df_clean is not None and len(df_clean) > 0:
+                # 增强的数据处理
+                df_enhanced = self.enhance_data_processing(df_clean)
+                return df_enhanced, filename
+            else:
+                return None, None
+            
+        except Exception as e:
+            logger.error(f"文件处理失败: {str(e)}")
+            st.error(f"文件处理失败: {str(e)}")
+            return None, None
     
     def enhance_data_processing(self, df_clean):
-        """增强的数据处理流程 - 包含未知彩种识别"""
+        """增强的数据处理流程"""
         try:
-            st.info(f"🔍 数据处理开始，原始记录数: {len(df_clean)}")
-            
-            # 1. 彩种识别（包含未知彩种处理）
+            # 1. 彩种识别
             if '彩种' in df_clean.columns:
-                st.info("🎯 正在进行彩种识别...")
-                df_clean['彩种类型'] = df_clean['彩种'].apply(
-                    self.lottery_identifier.identify_lottery_type
-                )
-                
-                # 显示彩种识别结果
-                lottery_stats = df_clean['彩种类型'].value_counts()
-                st.write(f"彩种类型分布: {dict(lottery_stats)}")
-                
-                # 记录未知彩种的玩法模式
-                unknown_mask = df_clean['彩种类型'] == '未知彩种'
-                if unknown_mask.any():
-                    unknown_df = df_clean[unknown_mask]
-                    st.warning(f"发现 {len(unknown_df)} 条未知彩种记录")
-                    for _, row in unknown_df.iterrows():
-                        play_category = row.get('玩法分类', '')
-                        content = row.get('内容', '')
-                        self.lottery_identifier.record_play_pattern(
-                            row['彩种'], play_category, content
-                        )
+                df_clean['彩种类型'] = df_clean['彩种'].apply(self.lottery_identifier.identify_lottery_type)
             
             # 2. 玩法分类统一
             if '玩法' in df_clean.columns:
-                st.info("🎲 正在进行玩法分类...")
                 df_clean['玩法分类'] = df_clean['玩法'].apply(self.play_normalizer.normalize_category)
-                
-                # 显示玩法分类结果
-                play_stats = df_clean['玩法分类'].value_counts().head(10)
-                st.write(f"主要玩法分类: {dict(play_stats)}")
             
             # 3. 计算账户统计信息
-            st.info("📊 正在计算账户统计信息...")
             self.calculate_account_total_periods_by_lottery(df_clean)
             
             # 4. 提取投注金额和方向
-            st.info("💰 正在提取投注金额和方向...")
             df_clean['投注金额'] = df_clean['金额'].apply(lambda x: self.extract_bet_amount_safe(x))
             df_clean['投注方向'] = df_clean['内容'].apply(lambda x: self.enhanced_extract_direction(x))
-            
-            # 显示金额和方向提取结果
-            amount_stats = df_clean['投注金额'].describe()
-            st.write(f"投注金额统计: 最小值={amount_stats['min']:.2f}, 最大值={amount_stats['max']:.2f}, 平均值={amount_stats['mean']:.2f}")
-            
-            direction_stats = df_clean['投注方向'].value_counts()
-            st.write(f"投注方向分布: {dict(direction_stats)}")
-            
-            # 显示无效记录的详细信息
-            zero_amount_count = (df_clean['投注金额'] == 0).sum()
-            empty_direction_count = (df_clean['投注方向'] == '').sum()
-            st.write(f"金额为0的记录: {zero_amount_count} 条")
-            st.write(f"方向为空的记录: {empty_direction_count} 条")
             
             # 过滤有效记录
             df_valid = df_clean[
@@ -1034,60 +794,30 @@ class EnhancedDataProcessor(DataProcessor):
                 (df_clean['投注金额'] >= self.config.min_amount)
             ].copy()
             
-            st.info(f"✅ 过滤后有效记录数: {len(df_valid)} (从 {len(df_clean)} 条记录中过滤)")
-            
             if len(df_valid) == 0:
-                st.error("❌ 过滤后没有有效记录，可能原因：")
-                st.error("- 投注金额都小于最小金额阈值")
-                st.error("- 无法识别投注方向")
-                st.error("- 数据格式不符合预期")
-                
-                # 显示样本数据用于调试
-                with st.expander("🔍 查看前10条原始数据样本", expanded=True):
-                    st.dataframe(df_clean.head(10))
-                
-                # 显示金额和方向的详细分析
-                with st.expander("🔍 金额提取分析", expanded=False):
-                    sample_amounts = df_clean['金额'].head(10).tolist()
-                    for i, amount in enumerate(sample_amounts):
-                        extracted = self.extract_bet_amount_safe(amount)
-                        st.write(f"{i+1}. 原始: '{amount}' -> 提取: {extracted}")
-                
-                with st.expander("🔍 方向提取分析", expanded=False):
-                    sample_contents = df_clean['内容'].head(10).tolist()
-                    for i, content in enumerate(sample_contents):
-                        direction = self.enhanced_extract_direction(content)
-                        st.write(f"{i+1}. 内容: '{content}' -> 方向: '{direction}'")
-                
+                st.error("❌ 过滤后没有有效记录")
                 return pd.DataFrame()
             
             self.data_processed = True
             self.df_valid = df_valid
-            
-            # 显示未知彩种统计
-            self.display_unknown_lottery_stats()
-            
             return df_valid
             
         except Exception as e:
             logger.error(f"数据处理增强失败: {str(e)}")
             st.error(f"数据处理增强失败: {str(e)}")
-            st.error(f"详细错误: {traceback.format_exc()}")
             return pd.DataFrame()
     
     def extract_bet_amount_safe(self, amount_text):
         """安全提取投注金额 - 改进版本"""
         try:
-            if pd.isna(amount_text) or amount_text == '':
+            if pd.isna(amount_text):
                 return 0
             
             text = str(amount_text).strip()
             
             # 首先尝试直接转换
             try:
-                # 移除所有逗号、空格等干扰字符
-                cleaned_text = re.sub(r'[,\s，]', '', text)
-                # 尝试匹配数字（包括小数）
+                cleaned_text = text.replace(',', '').replace('，', '').replace(' ', '')
                 if re.match(r'^-?\d+(\.\d+)?$', cleaned_text):
                     amount = float(cleaned_text)
                     if amount >= self.config.min_amount:
@@ -1121,13 +851,13 @@ class EnhancedDataProcessor(DataProcessor):
             
             # 最后尝试提取所有数字
             numbers = re.findall(r'\d+\.?\d*', text)
-            for num in numbers:
+            if numbers:
                 try:
-                    amount = float(num)
+                    amount = float(numbers[0])
                     if amount >= self.config.min_amount:
                         return amount
                 except:
-                    continue
+                    pass
             
             return 0
             
@@ -1138,7 +868,7 @@ class EnhancedDataProcessor(DataProcessor):
     def enhanced_extract_direction(self, content):
         """增强的投注方向提取 - 结合玩法分类"""
         try:
-            if pd.isna(content) or content == '':
+            if pd.isna(content):
                 return ""
             
             content_str = str(content).strip().lower()
@@ -1146,138 +876,32 @@ class EnhancedDataProcessor(DataProcessor):
             # 基础方向提取
             for direction, patterns in self.config.direction_patterns.items():
                 for pattern in patterns:
-                    pattern_lower = pattern.lower()
-                    if pattern_lower in content_str:
+                    if pattern.lower() in content_str:
                         return direction
-            
-            # 尝试更宽松的匹配
-            if '大' in content_str:
-                return '大'
-            elif '小' in content_str:
-                return '小'
-            elif '单' in content_str:
-                return '单'
-            elif '双' in content_str:
-                return '双'
-            elif '龙' in content_str:
-                return '龙'
-            elif '虎' in content_str:
-                return '虎'
-            elif '质' in content_str:
-                return '质'
-            elif '合' in content_str:
-                return '合'
             
             return ""
         except Exception as e:
             logger.warning(f"方向提取失败: {content}, 错误: {e}")
             return ""
     
-    def display_unknown_lottery_stats(self):
-        """显示未知彩种统计信息"""
-        stats = self.lottery_identifier.get_unknown_lottery_stats()
-        
-        if stats['total_unknown'] > 0:
-            with st.expander("🔍 未知彩种识别报告", expanded=True):
-                st.warning(f"发现 {stats['total_unknown']} 个未知彩种")
-                
-                # 显示未知彩种详情
-                for lottery_name, data in stats['unknown_details'].items():
-                    st.write(f"**彩种名称:** {lottery_name}")
-                    st.write(f"  - 出现次数: {data['count']}")
-                    st.write(f"  - 推断类型: {data['inferred_type'] or '未识别'}")
-                    st.write(f"  - 首次出现: {data['first_seen']}")
-                
-                # 显示配置建议
-                if stats['recommendations']:
-                    st.subheader("🎯 配置建议")
-                    st.info("以下彩种出现频率较高，建议添加到配置中:")
-                    
-                    for rec in stats['recommendations']:
-                        with st.expander(f"建议添加: {rec['lottery_name']} (出现{rec['count']}次)"):
-                            st.write(f"**推断类型:** {rec['inferred_type']}")
-                            st.write(f"**玩法分类:** {', '.join(rec['play_categories'])}")
-                            st.write(f"**内容模式:** {rec['sample_patterns']}")
-                            
-                            # 生成配置代码建议
-                            config_suggestion = self.generate_config_suggestion(rec)
-                            st.code(config_suggestion, language='python')
-    
-    def generate_config_suggestion(self, recommendation):
-        """生成配置代码建议"""
-        lottery_name = recommendation['lottery_name']
-        inferred_type = recommendation['inferred_type']
-        
-        if inferred_type != '未知类型':
-            config_key = inferred_type.upper()
-            suggestion = f"""
-# 建议添加到 {config_key} 配置中:
-LOTTERY_CONFIGS['{config_key}']['lotteries'].append('{lottery_name}')
-"""
-        else:
-            suggestion = f"""
-# 建议添加新的彩种配置:
-LOTTERY_CONFIGS['NEW_LOTTERY'] = {{
-    'lotteries': ['{lottery_name}'],
-    # 需要补充其他配置参数...
-}}
-"""
-        return suggestion
-
-# ==================== 修复增强的对刷检测器 ====================
-class EnhancedWashTradeDetector:
-    def __init__(self, config=None):
-        self.config = config or Config()
-        self.data_processor = EnhancedDataProcessor(self.config)
-        self.lottery_identifier = EnhancedLotteryIdentifier()
-        self.play_normalizer = PlayCategoryNormalizer()
-        
-        self.data_processed = False
-        self.df_valid = None
-        self.export_data = []
-        
-        # 修正：按彩种存储账户总投注期数统计
+    def calculate_account_total_periods_by_lottery(self, df):
+        """修正：按彩种计算每个账户的总投注期数统计（使用原始数据）"""
         self.account_total_periods_by_lottery = defaultdict(dict)
         self.account_record_stats_by_lottery = defaultdict(dict)
-        self.column_mapping_used = {}
-        self.performance_stats = {}
-    
-    def upload_and_process(self, uploaded_file):
-        """上传并处理文件 - 使用增强的数据处理器"""
-        try:
-            if uploaded_file is None:
-                st.error("❌ 没有上传文件")
-                return None, None
+        
+        # 使用彩种类型列（如果存在），否则使用原始彩种列
+        lottery_col = '彩种类型' if '彩种类型' in df.columns else '彩种'
+        
+        for lottery in df[lottery_col].unique():
+            df_lottery = df[df[lottery_col] == lottery]
             
-            filename = uploaded_file.name
-            logger.info(f"✅ 已上传文件: {filename}")
+            # 计算每个账户的总投注期数（唯一期号数）
+            period_counts = df_lottery.groupby('会员账号')['期号'].nunique().to_dict()
+            self.account_total_periods_by_lottery[lottery] = period_counts
             
-            if not any(filename.endswith(ext) for ext in self.config.supported_file_types):
-                st.error(f"❌ 不支持的文件类型: {filename}")
-                return None, None
-            
-            # 使用增强的数据处理器
-            with st.spinner("🔄 正在清洗数据..."):
-                df_clean = self.data_processor.clean_data(uploaded_file)
-            
-            if df_clean is not None and len(df_clean) > 0:
-                # 增强的数据处理（包含未知彩种识别）
-                df_enhanced = self.data_processor.enhance_data_processing(df_clean)
-                
-                # 传递统计信息给检测器
-                if hasattr(self.data_processor, 'account_total_periods_by_lottery'):
-                    self.account_total_periods_by_lottery = self.data_processor.account_total_periods_by_lottery
-                if hasattr(self.data_processor, 'account_record_stats_by_lottery'):
-                    self.account_record_stats_by_lottery = self.data_processor.account_record_stats_by_lottery
-                
-                return df_enhanced, filename
-            else:
-                return None, None
-            
-        except Exception as e:
-            logger.error(f"文件处理失败: {str(e)}")
-            st.error(f"文件处理失败: {str(e)}")
-            return None, None
+            # 计算每个账户的记录数
+            record_counts = df_lottery.groupby('会员账号').size().to_dict()
+            self.account_record_stats_by_lottery[lottery] = record_counts
     
     def detect_all_wash_trades(self):
         """检测所有类型的对刷交易"""
@@ -1740,7 +1364,7 @@ class EnhancedWashTradeDetector:
 # ==================== 主函数 ====================
 def main():
     """主函数"""
-    st.title("🎯 智能多账户对刷检测系统 - 增强版")
+    st.title("🎯 智能多账户对刷检测系统")
     st.markdown("---")
     
     # ==================== 左侧边栏 - 文件上传 ====================
@@ -1780,7 +1404,6 @@ def main():
             st.sidebar.subheader("🔧 调试选项")
             debug_mode = st.sidebar.checkbox("启用调试模式", value=False)
             account_debug = st.sidebar.checkbox("启用账号调试", value=False)
-            lottery_debug = st.sidebar.checkbox("启用彩种识别调试", value=False)
             
             # 更新配置参数
             config = Config()
@@ -1796,8 +1419,7 @@ def main():
                 'min_periods_high': min_periods_high
             }
             
-            # 使用增强的检测器
-            detector = EnhancedWashTradeDetector(config)
+            detector = WashTradeDetector(config)
             
             st.success(f"✅ 已上传文件: {uploaded_file.name}")
             
@@ -1818,22 +1440,7 @@ def main():
                         st.metric("唯一账户数", f"{df_enhanced['会员账号'].nunique():,}")
                     with col4:
                         if '彩种类型' in df_enhanced.columns:
-                            known_count = (df_enhanced['彩种类型'] != '未知彩种').sum()
-                            unknown_count = (df_enhanced['彩种类型'] == '未知彩种').sum()
-                            st.metric("彩种识别", f"{known_count}已知/{unknown_count}未知")
-                    
-                    # 彩种识别详情
-                    if lottery_debug and '彩种类型' in df_enhanced.columns:
-                        with st.expander("🎯 彩种识别详情", expanded=False):
-                            lottery_stats = df_enhanced['彩种类型'].value_counts()
-                            st.write("**彩种类型分布:**")
-                            st.dataframe(lottery_stats)
-                            
-                            # 显示原始彩种名称与识别结果的对应关系
-                            if '彩种' in df_enhanced.columns:
-                                cross_tab = pd.crosstab(df_enhanced['彩种'], df_enhanced['彩种类型'])
-                                st.write("**原始彩种名称与识别结果对应关系:**")
-                                st.dataframe(cross_tab)
+                            st.metric("彩种类型数", f"{df_enhanced['彩种类型'].nunique()}")
                     
                     # 数据详情 - 默认折叠
                     with st.expander("📊 数据详情", expanded=False):
@@ -1902,15 +1509,15 @@ def main():
             st.subheader("🔍 智能检测")
             st.markdown("""
             - 多账户对刷模式识别
-            - **智能彩种识别**
             - 智能金额匹配分析
             - 活跃度自适应阈值
+            - 实时进度监控
             """)
         
         with col2:
             st.subheader("📊 专业分析")
             st.markdown("""
-            - **未知彩种自动学习**
+            - 完整彩种支持
             - 玩法分类标准化
             - 数据质量验证
             - 详细统计报告
@@ -1922,27 +1529,20 @@ def main():
             - 大数据量优化
             - 并行检测算法
             - 一键导出结果
-            - **配置建议生成**
+            - 实时性能监控
             """)
     
     # 使用说明
-    with st.expander("📖 系统使用说明 - 增强版", expanded=False):
+    with st.expander("📖 系统使用说明", expanded=False):
         st.markdown("""
-        ### 系统功能说明 - 增强版
+        ### 系统功能说明
 
-        **🎯 智能彩种识别:**
-        - **自动识别**: 支持PK10、K3、六合彩、时时彩、3D系列等主流彩种
-        - **3D系列支持**: 排列三、福彩3D、极速3D等完整支持
-        - **未知彩种学习**: 自动识别未知彩种并记录特征模式
-        - **智能推断**: 基于玩法模式和时间特征推断彩种类型
-        - **配置建议**: 为高频未知彩种生成配置代码建议
-
-        **📊 检测逻辑：**
+        **🎯 检测逻辑：**
         - **总投注期数**：账户在特定彩种中的所有期号投注次数
         - **对刷期数**：账户组实际发生对刷行为的期数
         - 根据**总投注期数**判定账户活跃度，设置不同的**对刷期数**阈值
 
-        **📈 活跃度判定：**
+        **📊 活跃度判定：**
         - **低活跃度账户**：总投注期数 ≤ 10期 → 要求 ≥ 3期连续对刷
         - **中活跃度账户**：总投注期数 11-200期 → 要求 ≥ 5期连续对刷  
         - **高活跃度账户**：总投注期数 ≥ 201期 → 要求 ≥ 8期连续对刷
@@ -1953,19 +1553,12 @@ def main():
           - 大 vs 小
           - 单 vs 双  
           - 龙 vs 虎
-          - 质 vs 合 (3D系列)
         - 金额匹配度 ≥ 90%
         - 排除同一账户多方向下注
 
-        **🎲 3D系列支持：**
-        - **彩种识别**: 排列三、福彩3D、极速3D等完整识别
-        - **玩法支持**: 百位、十位、个位、和值、和尾、跨度等
-        - **方向识别**: 大小、单双、质合完整支持
-
-        **🔧 调试功能:**
-        - 账号调试：分析账号格式和可能的问题
-        - 彩种识别调试：查看彩种识别详情和对应关系
-        - 未知彩种报告：自动生成配置建议
+        **⚡ 自动检测：**
+        - 数据上传后自动开始处理和分析
+        - 无需手动点击开始检测按钮
         """)
 
 if __name__ == "__main__":
