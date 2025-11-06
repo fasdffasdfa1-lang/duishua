@@ -1103,12 +1103,11 @@ class WashTradeDetector:
         return all_patterns
     
     def detect_n_account_patterns_optimized(self, df_filtered, n_accounts):
-        """优化版的N个账户对刷模式检测"""
+        """优化版的N个账户对刷模式检测 - 使用原始彩种名称"""
         wash_records = []
         
-        # 使用彩种类型进行分组
-        lottery_col = '彩种类型' if '彩种类型' in df_filtered.columns else '彩种'
-        period_groups = df_filtered.groupby(['期号', lottery_col])
+        # 使用原始彩种名称进行分组，而不是彩种类型
+        period_groups = df_filtered.groupby(['期号', '原始彩种'])
         
         valid_direction_combinations = self._get_valid_direction_combinations(n_accounts)
         
@@ -1226,13 +1225,14 @@ class WashTradeDetector:
                         similarity = min(dir1_total, dir2_total) / max(dir1_total, dir2_total)
                         
                         if similarity >= self.config.amount_similarity_threshold:
-                            # 获取彩种信息
-                            lottery_col = '彩种类型' if '彩种类型' in period_data.columns else '彩种'
-                            lottery = period_data[lottery_col].iloc[0]
+                            # 获取彩种信息 - 使用原始彩种名称
+                            lottery = period_data['原始彩种'].iloc[0] if '原始彩种' in period_data.columns else period_data['彩种'].iloc[0]
+                            lottery_type = period_data['彩种类型'].iloc[0] if '彩种类型' in period_data.columns else '未知'
                             
                             record = {
                                 '期号': period_data['期号'].iloc[0],
-                                '彩种': lottery,
+                                '彩种': lottery,  # 使用原始彩种名称
+                                '彩种类型': lottery_type,  # 添加彩种类型
                                 '账户组': list(account_group),
                                 '方向组': group_directions,
                                 '金额组': group_amounts,
