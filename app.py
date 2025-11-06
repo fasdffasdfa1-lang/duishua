@@ -156,6 +156,9 @@ class DataProcessor:
             '内容': ['内容', '投注内容', '下注内容', '注单内容', '投注号码', '号码内容', '投注信息'],
             '金额': ['金额', '下注总额', '投注金额', '总额', '下注金额', '投注额', '金额数值']
         }
+        # 添加统计属性
+        self.account_total_periods_by_lottery = defaultdict(dict)
+        self.account_record_stats_by_lottery = defaultdict(dict)
     
     def smart_column_identification(self, df_columns):
         """智能列识别"""
@@ -943,10 +946,31 @@ class PlayCategoryNormalizer:
 # ==================== 修复增强的数据处理器 ====================
 class EnhancedDataProcessor(DataProcessor):
     def __init__(self, config=None):
-        super().__init__()
-        self.config = config or Config()  # 添加这行，确保有config属性
+        super().__init__(config)  # 修改这里，传入config给父类
         self.lottery_identifier = EnhancedLotteryIdentifier()
         self.play_normalizer = PlayCategoryNormalizer()
+        # 添加缺失的属性
+        self.account_total_periods_by_lottery = defaultdict(dict)
+        self.account_record_stats_by_lottery = defaultdict(dict)
+    
+    def calculate_account_total_periods_by_lottery(self, df):
+        """修正：按彩种计算每个账户的总投注期数统计（使用原始数据）"""
+        self.account_total_periods_by_lottery = defaultdict(dict)
+        self.account_record_stats_by_lottery = defaultdict(dict)
+        
+        # 使用彩种类型列（如果存在），否则使用原始彩种列
+        lottery_col = '彩种类型' if '彩种类型' in df.columns else '彩种'
+        
+        for lottery in df[lottery_col].unique():
+            df_lottery = df[df[lottery_col] == lottery]
+            
+            # 计算每个账户的总投注期数（唯一期号数）
+            period_counts = df_lottery.groupby('会员账号')['期号'].nunique().to_dict()
+            self.account_total_periods_by_lottery[lottery] = period_counts
+            
+            # 计算每个账户的记录数
+            record_counts = df_lottery.groupby('会员账号').size().to_dict()
+            self.account_record_stats_by_lottery[lottery] = record_counts
     
     def enhance_data_processing(self, df_clean):
         """增强的数据处理流程 - 包含未知彩种识别"""
@@ -982,7 +1006,7 @@ class EnhancedDataProcessor(DataProcessor):
             # 过滤有效记录
             df_valid = df_clean[
                 (df_clean['投注方向'] != '') & 
-                (df_clean['投注金额'] >= self.config.min_amount)  # 这里需要config
+                (df_clean['投注金额'] >= self.config.min_amount)
             ].copy()
             
             if len(df_valid) == 0:
