@@ -415,6 +415,11 @@ class LotteryIdentifier:
             'LHC': ['六合', 'lhc', '六合彩', '⑥合', '6合', '特码', '平特', '连肖'],
             'SSC': ['时时彩', 'ssc', '分分彩', '時時彩', '重庆时时彩', '腾讯分分彩'],
             'THREE_COLOR': ['三色', '三色彩', '三色球'],
+            # 3D系列彩种
+            '3D': ['3d', '福彩3d', '体彩3d', '排列三', '排列3', '幸运排列3', '一分排列3', 
+                  '二分排列3', '三分排列3', '五分排列3', '十分排列3', '大发排列3', '好运排列3',
+                  '极速3d', '极速排列3', '幸运3d', '一分3d', '二分3d', '三分3d', '五分3d', 
+                  '十分3d', '大发3d', '好运3d', '3D', '排列三', '排列3'],
             # 可以继续添加更多彩种类型
             '11选5': ['11选5', '十一选五', '广东11选5', '山东11选5'],
             '3D': ['3d', '福彩3d', '体彩3d', '排列三'],
@@ -448,7 +453,13 @@ class LotteryIdentifier:
             '重庆时时彩': 'SSC', '上海时时彩': 'SSC', '广东时时彩': 'SSC',
             # 三色彩别名
             '一分三色彩': 'THREE_COLOR', '30秒三色彩': 'THREE_COLOR',
-            '五分三色彩': 'THREE_COLOR', '三分三色彩': 'THREE_COLOR'
+            '五分三色彩': 'THREE_COLOR', '三分三色彩': 'THREE_COLOR',
+            # 3D系列别名
+            '排列三': '3D', '排列3': '3D', '幸运排列3': '3D', '一分排列3': '3D',
+            '二分排列3': '3D', '三分排列3': '3D', '五分排列3': '3D', '十分排列3': '3D',
+            '大发排列3': '3D', '好运排列3': '3D', '福彩3D': '3D', '极速3D': '3D',
+            '极速排列3': '3D', '幸运3D': '3D', '一分3D': '3D', '二分3D': '3D',
+            '三分3D': '3D', '五分3D': '3D', '十分3D': '3D', '大发3D': '3D', '好运3D': '3D'
         }
 
     def identify_lottery_type(self, lottery_name):
@@ -484,15 +495,25 @@ class LotteryIdentifier:
             return 'SSC'
         elif self._is_three_color_like(lottery_lower):
             return 'THREE_COLOR'
-        elif self._is_11x5_like(lottery_lower):
-            return '11选5'
         elif self._is_3d_like(lottery_lower):
             return '3D'
+        elif self._is_11x5_like(lottery_lower):
+            return '11选5'
         elif self._is_kl8_like(lottery_lower):
             return 'KL8'
         
         # 5. 如果还是无法识别，记录并返回原名称，而不是"未知彩种"
         return lottery_str  # 返回原名称而不是"未知彩种"
+
+    def _is_3d_like(self, lottery_lower):
+        """判断是否为3D类彩种"""
+        patterns = [
+            r'.*3d.*', r'.*福彩.*', r'.*体彩.*', r'.*排列三.*', r'.*排列3.*',
+            r'.*极速.*3.*', r'.*幸运.*3.*', r'.*一分.*3.*', r'.*二分.*3.*',
+            r'.*三分.*3.*', r'.*五分.*3.*', r'.*十分.*3.*', r'.*大发.*3.*',
+            r'.*好运.*3.*'
+        ]
+        return any(re.search(pattern, lottery_lower) for pattern in patterns)
 
     def _is_pk10_like(self, lottery_lower):
         """判断是否为PK10类彩种"""
@@ -748,6 +769,66 @@ class PlayCategoryNormalizer:
             '两面': '两面',
             '色波': '色波',
             '特码': '特码'
+
+            # ========== 3D系列玩法 ==========
+            # 定位胆玩法
+            '百位': '百位',
+            '十位': '十位', 
+            '个位': '个位',
+            '佰位': '百位',
+            '万位': '百位',  # 有些系统可能用万位表示百位
+            '千位': '十位',
+            '百位_大小': '百位_大小',
+            '十位_大小': '十位_大小',
+            '个位_大小': '个位_大小',
+            '百位_单双': '百位_单双',
+            '十位_单双': '十位_单双',
+            '个位_单双': '个位_单双',
+            '百位_质合': '百位_质合',
+            '十位_质合': '十位_质合',
+            '个位_质合': '个位_质合',
+            
+            # 二字定位玩法
+            '百十': '百十',
+            '百个': '百个',
+            '十个': '十个',
+            '百十_和数单双': '百十_和数单双',
+            '百个_和数单双': '百个_和数单双', 
+            '十个_和数单双': '十个_和数单双',
+            '百十_和数尾大小': '百十_和数尾大小',
+            '百个_和数尾大小': '百个_和数尾大小',
+            '十个_和数尾大小': '十个_和数尾大小',
+            '百十_和数尾质合': '百十_和数尾质合',
+            '百个_和数尾质合': '百个_和数尾质合',
+            '十个_和数尾质合': '十个_和数尾质合',
+            
+            # 三字定位玩法
+            '百十个': '百十个',
+            '百十个_和数大小': '百十个_和数大小',
+            '百十个_和数单双': '百十个_和数单双',
+            '百十个_和数尾大小': '百十个_和数尾大小',
+            '百十个_和数尾质合': '百十个_和数尾质合',
+            '总和': '百十个_和数大小',  # 总和通常指三个位置的和
+            '和值': '百十个_和数大小',
+            
+            # 两面玩法
+            '两面': '两面',
+            '大小': '大小',
+            '单双': '单双',
+            '质合': '质合',
+            '和数大小': '百十个_和数大小',
+            '和数单双': '百十个_和数单双',
+            '和数尾大小': '百十个_和数尾大小',
+            '和数尾质合': '百十个_和数尾质合',
+            
+            # 其他常见3D玩法
+            '定位胆': '定位胆',
+            '一字定位': '定位胆',
+            '二字定位': '二字定位',
+            '三字定位': '三字定位',
+            '跨度': '跨度',
+            '组三': '组三',
+            '组六': '组六'
         }
         return mapping
     
@@ -765,6 +846,102 @@ class PlayCategoryNormalizer:
                 return value
         
         category_lower = category_str.lower()
+        
+        # 3D系列智能匹配
+        # 定位胆玩法
+        if any(word in category_lower for word in ['百位', '佰位', '万位']):
+            if any(word in category_lower for word in ['大小']):
+                return '百位_大小'
+            elif any(word in category_lower for word in ['单双']):
+                return '百位_单双'
+            elif any(word in category_lower for word in ['质合']):
+                return '百位_质合'
+            else:
+                return '百位'
+        elif any(word in category_lower for word in ['十位', '千位']):
+            if any(word in category_lower for word in ['大小']):
+                return '十位_大小'
+            elif any(word in category_lower for word in ['单双']):
+                return '十位_单双'
+            elif any(word in category_lower for word in ['质合']):
+                return '十位_质合'
+            else:
+                return '十位'
+        elif any(word in category_lower for word in ['个位']):
+            if any(word in category_lower for word in ['大小']):
+                return '个位_大小'
+            elif any(word in category_lower for word in ['单双']):
+                return '个位_单双'
+            elif any(word in category_lower for word in ['质合']):
+                return '个位_质合'
+            else:
+                return '个位'
+        
+        # 二字定位玩法
+        elif any(word in category_lower for word in ['百十']):
+            if any(word in category_lower for word in ['和数单双']):
+                return '百十_和数单双'
+            elif any(word in category_lower for word in ['和数尾大小']):
+                return '百十_和数尾大小'
+            elif any(word in category_lower for word in ['和数尾质合']):
+                return '百十_和数尾质合'
+            else:
+                return '百十'
+        elif any(word in category_lower for word in ['百个']):
+            if any(word in category_lower for word in ['和数单双']):
+                return '百个_和数单双'
+            elif any(word in category_lower for word in ['和数尾大小']):
+                return '百个_和数尾大小'
+            elif any(word in category_lower for word in ['和数尾质合']):
+                return '百个_和数尾质合'
+            else:
+                return '百个'
+        elif any(word in category_lower for word in ['十个']):
+            if any(word in category_lower for word in ['和数单双']):
+                return '十个_和数单双'
+            elif any(word in category_lower for word in ['和数尾大小']):
+                return '十个_和数尾大小'
+            elif any(word in category_lower for word in ['和数尾质合']):
+                return '十个_和数尾质合'
+            else:
+                return '十个'
+        
+        # 三字定位玩法
+        elif any(word in category_lower for word in ['百十个', '总和', '和值']):
+            if any(word in category_lower for word in ['和数大小']):
+                return '百十个_和数大小'
+            elif any(word in category_lower for word in ['和数单双']):
+                return '百十个_和数单双'
+            elif any(word in category_lower for word in ['和数尾大小']):
+                return '百十个_和数尾大小'
+            elif any(word in category_lower for word in ['和数尾质合']):
+                return '百十个_和数尾质合'
+            else:
+                return '百十个'
+        
+        # 两面玩法
+        elif any(word in category_lower for word in ['两面']):
+            return '两面'
+        elif any(word in category_lower for word in ['大小']):
+            return '大小'
+        elif any(word in category_lower for word in ['单双']):
+            return '单双'
+        elif any(word in category_lower for word in ['质合']):
+            return '质合'
+        
+        # 其他3D玩法
+        elif any(word in category_lower for word in ['定位胆', '一字定位']):
+            return '定位胆'
+        elif any(word in category_lower for word in ['二字定位']):
+            return '二字定位'
+        elif any(word in category_lower for word in ['三字定位']):
+            return '三字定位'
+        elif any(word in category_lower for word in ['跨度']):
+            return '跨度'
+        elif any(word in category_lower for word in ['组三']):
+            return '组三'
+        elif any(word in category_lower for word in ['组六']):
+            return '组六'
         
         # PK10/赛车智能匹配
         if any(word in category_lower for word in ['定位胆_第1~5名', '定位胆1~5', '定位胆1-5']):
