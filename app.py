@@ -946,12 +946,9 @@ class PlayCategoryNormalizer:
 # ==================== 修复增强的数据处理器 ====================
 class EnhancedDataProcessor(DataProcessor):
     def __init__(self, config=None):
-        super().__init__(config)  # 修改这里，传入config给父类
+        super().__init__(config)
         self.lottery_identifier = EnhancedLotteryIdentifier()
         self.play_normalizer = PlayCategoryNormalizer()
-        # 添加缺失的属性
-        self.account_total_periods_by_lottery = defaultdict(dict)
-        self.account_record_stats_by_lottery = defaultdict(dict)
     
     def calculate_account_total_periods_by_lottery(self, df):
         """修正：按彩种计算每个账户的总投注期数统计（使用原始数据）"""
@@ -975,16 +972,24 @@ class EnhancedDataProcessor(DataProcessor):
     def enhance_data_processing(self, df_clean):
         """增强的数据处理流程 - 包含未知彩种识别"""
         try:
+            st.info(f"🔍 数据处理开始，原始记录数: {len(df_clean)}")
+            
             # 1. 彩种识别（包含未知彩种处理）
             if '彩种' in df_clean.columns:
+                st.info("🎯 正在进行彩种识别...")
                 df_clean['彩种类型'] = df_clean['彩种'].apply(
                     self.lottery_identifier.identify_lottery_type
                 )
+                
+                # 显示彩种识别结果
+                lottery_stats = df_clean['彩种类型'].value_counts()
+                st.write(f"彩种类型分布: {dict(lottery_stats)}")
                 
                 # 记录未知彩种的玩法模式
                 unknown_mask = df_clean['彩种类型'] == '未知彩种'
                 if unknown_mask.any():
                     unknown_df = df_clean[unknown_mask]
+                    st.warning(f"发现 {len(unknown_df)} 条未知彩种记录")
                     for _, row in unknown_df.iterrows():
                         play_category = row.get('玩法分类', '')
                         content = row.get('内容', '')
@@ -994,14 +999,34 @@ class EnhancedDataProcessor(DataProcessor):
             
             # 2. 玩法分类统一
             if '玩法' in df_clean.columns:
+                st.info("🎲 正在进行玩法分类...")
                 df_clean['玩法分类'] = df_clean['玩法'].apply(self.play_normalizer.normalize_category)
+                
+                # 显示玩法分类结果
+                play_stats = df_clean['玩法分类'].value_counts().head(10)
+                st.write(f"主要玩法分类: {dict(play_stats)}")
             
             # 3. 计算账户统计信息
+            st.info("📊 正在计算账户统计信息...")
             self.calculate_account_total_periods_by_lottery(df_clean)
             
             # 4. 提取投注金额和方向
+            st.info("💰 正在提取投注金额和方向...")
             df_clean['投注金额'] = df_clean['金额'].apply(lambda x: self.extract_bet_amount_safe(x))
             df_clean['投注方向'] = df_clean['内容'].apply(lambda x: self.enhanced_extract_direction(x))
+            
+            # 显示金额和方向提取结果
+            amount_stats = df_clean['投注金额'].describe()
+            st.write(f"投注金额统计: 最小值={amount_stats['min']:.2f}, 最大值={amount_stats['max']:.2f}, 平均值={amount_stats['mean']:.2f}")
+            
+            direction_stats = df_clean['投注方向'].value_counts()
+            st.write(f"投注方向分布: {dict(direction_stats)}")
+            
+            # 显示无效记录的详细信息
+            zero_amount_count = (df_clean['投注金额'] == 0).sum()
+            empty_direction_count = (df_clean['投注方向'] == '').sum()
+            st.write(f"金额为0的记录: {zero_amount_count} 条")
+            st.write(f"方向为空的记录: {empty_direction_count} 条")
             
             # 过滤有效记录
             df_valid = df_clean[
@@ -1009,8 +1034,31 @@ class EnhancedDataProcessor(DataProcessor):
                 (df_clean['投注金额'] >= self.config.min_amount)
             ].copy()
             
+            st.info(f"✅ 过滤后有效记录数: {len(df_valid)} (从 {len(df_clean)} 条记录中过滤)")
+            
             if len(df_valid) == 0:
-                st.error("❌ 过滤后没有有效记录")
+                st.error("❌ 过滤后没有有效记录，可能原因：")
+                st.error("- 投注金额都小于最小金额阈值")
+                st.error("- 无法识别投注方向")
+                st.error("- 数据格式不符合预期")
+                
+                # 显示样本数据用于调试
+                with st.expander("🔍 查看前10条原始数据样本", expanded=True):
+                    st.dataframe(df_clean.head(10))
+                
+                # 显示金额和方向的详细分析
+                with st.expander("🔍 金额提取分析", expanded=False):
+                    sample_amounts = df_clean['金额'].head(10).tolist()
+                    for i, amount in enumerate(sample_amounts):
+                        extracted = self.extract_bet_amount_safe(amount)
+                        st.write(f"{i+1}. 原始: '{amount}' -> 提取: {extracted}")
+                
+                with st.expander("🔍 方向提取分析", expanded=False):
+                    sample_contents = df_clean['内容'].head(10).tolist()
+                    for i, content in enumerate(sample_contents):
+                        direction = self.enhanced_extract_direction(content)
+                        st.write(f"{i+1}. 内容: '{content}' -> 方向: '{direction}'")
+                
                 return pd.DataFrame()
             
             self.data_processed = True
@@ -1024,22 +1072,25 @@ class EnhancedDataProcessor(DataProcessor):
         except Exception as e:
             logger.error(f"数据处理增强失败: {str(e)}")
             st.error(f"数据处理增强失败: {str(e)}")
+            st.error(f"详细错误: {traceback.format_exc()}")
             return pd.DataFrame()
     
     def extract_bet_amount_safe(self, amount_text):
         """安全提取投注金额 - 改进版本"""
         try:
-            if pd.isna(amount_text):
+            if pd.isna(amount_text) or amount_text == '':
                 return 0
             
             text = str(amount_text).strip()
             
             # 首先尝试直接转换
             try:
-                cleaned_text = text.replace(',', '').replace('，', '').replace(' ', '')
+                # 移除所有逗号、空格等干扰字符
+                cleaned_text = re.sub(r'[,\s，]', '', text)
+                # 尝试匹配数字（包括小数）
                 if re.match(r'^-?\d+(\.\d+)?$', cleaned_text):
                     amount = float(cleaned_text)
-                    if amount >= self.config.min_amount:  # 这里需要config
+                    if amount >= self.config.min_amount:
                         return amount
             except:
                 pass
@@ -1063,20 +1114,20 @@ class EnhancedDataProcessor(DataProcessor):
                     amount_str = match.group(1).replace(',', '').replace('，', '').replace(' ', '')
                     try:
                         amount = float(amount_str)
-                        if amount >= self.config.min_amount:  # 这里需要config
+                        if amount >= self.config.min_amount:
                             return amount
                     except:
                         continue
             
             # 最后尝试提取所有数字
             numbers = re.findall(r'\d+\.?\d*', text)
-            if numbers:
+            for num in numbers:
                 try:
-                    amount = float(numbers[0])
-                    if amount >= self.config.min_amount:  # 这里需要config
+                    amount = float(num)
+                    if amount >= self.config.min_amount:
                         return amount
                 except:
-                    pass
+                    continue
             
             return 0
             
@@ -1087,7 +1138,7 @@ class EnhancedDataProcessor(DataProcessor):
     def enhanced_extract_direction(self, content):
         """增强的投注方向提取 - 结合玩法分类"""
         try:
-            if pd.isna(content):
+            if pd.isna(content) or content == '':
                 return ""
             
             content_str = str(content).strip().lower()
@@ -1095,8 +1146,27 @@ class EnhancedDataProcessor(DataProcessor):
             # 基础方向提取
             for direction, patterns in self.config.direction_patterns.items():
                 for pattern in patterns:
-                    if pattern.lower() in content_str:
+                    pattern_lower = pattern.lower()
+                    if pattern_lower in content_str:
                         return direction
+            
+            # 尝试更宽松的匹配
+            if '大' in content_str:
+                return '大'
+            elif '小' in content_str:
+                return '小'
+            elif '单' in content_str:
+                return '单'
+            elif '双' in content_str:
+                return '双'
+            elif '龙' in content_str:
+                return '龙'
+            elif '虎' in content_str:
+                return '虎'
+            elif '质' in content_str:
+                return '质'
+            elif '合' in content_str:
+                return '合'
             
             return ""
         except Exception as e:
@@ -1158,8 +1228,7 @@ LOTTERY_CONFIGS['NEW_LOTTERY'] = {{
 class EnhancedWashTradeDetector:
     def __init__(self, config=None):
         self.config = config or Config()
-        # 修复：在初始化data_processor时传入config
-        self.data_processor = EnhancedDataProcessor(self.config)  # 传入config
+        self.data_processor = EnhancedDataProcessor(self.config)
         self.lottery_identifier = EnhancedLotteryIdentifier()
         self.play_normalizer = PlayCategoryNormalizer()
         
@@ -1194,6 +1263,13 @@ class EnhancedWashTradeDetector:
             if df_clean is not None and len(df_clean) > 0:
                 # 增强的数据处理（包含未知彩种识别）
                 df_enhanced = self.data_processor.enhance_data_processing(df_clean)
+                
+                # 传递统计信息给检测器
+                if hasattr(self.data_processor, 'account_total_periods_by_lottery'):
+                    self.account_total_periods_by_lottery = self.data_processor.account_total_periods_by_lottery
+                if hasattr(self.data_processor, 'account_record_stats_by_lottery'):
+                    self.account_record_stats_by_lottery = self.data_processor.account_record_stats_by_lottery
+                
                 return df_enhanced, filename
             else:
                 return None, None
