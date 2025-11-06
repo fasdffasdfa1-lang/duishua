@@ -901,7 +901,7 @@ class WashTradeDetector:
             return None, None
     
     def enhance_data_processing(self, df_clean):
-        """增强的数据处理流程"""
+        """增强的数据处理流程 - 修复彩种名称显示问题"""
         try:
             # 0. 先分析彩种分布
             lottery_analysis = self.lottery_identifier.analyze_lottery_distribution(df_clean)
@@ -913,11 +913,13 @@ class WashTradeDetector:
                     st.write("**新发现的彩种:**")
                     for lottery, count in lottery_analysis['unknown'].items():
                         st.write(f"- {lottery}: {count} 条记录")
-                        # 自动学习新彩种（这里可以改为让用户选择分类）
-                        # 暂时先使用原名称作为分类
-                    
-            # 1. 彩种识别
+            
+            # 1. 彩种识别 - 保留原始彩种名称，同时添加彩种类型
             if '彩种' in df_clean.columns:
+                # 保存原始彩种名称
+                df_clean['原始彩种'] = df_clean['彩种']
+                
+                # 添加彩种类型分类
                 df_clean['彩种类型'] = df_clean['彩种'].apply(self.lottery_identifier.identify_lottery_type)
                 
                 # 显示彩种识别统计
@@ -1245,51 +1247,14 @@ class WashTradeDetector:
         
         return patterns
     
-    def detect_n_account_patterns_optimized(self, df_filtered, n_accounts):
-        """优化版的N个账户对刷模式检测 - 修复版本"""
-        wash_records = []
-        
-        # 使用彩种类型进行分组
-        lottery_col = '彩种类型' if '彩种类型' in df_filtered.columns else '彩种'
-        period_groups = df_filtered.groupby(['期号', lottery_col])
-        
-        valid_direction_combinations = self._get_valid_direction_combinations(n_accounts)
-        
-        # 添加调试信息
-        total_periods_checked = 0
-        periods_with_patterns = 0
-        
-        for (period, lottery), period_data in period_groups:
-            total_periods_checked += 1
-            period_accounts = period_data['会员账号'].unique()
-            
-            if len(period_accounts) < n_accounts:
-                continue
-            
-            batch_patterns = self._detect_combinations_for_period(
-                period_data, period_accounts, n_accounts, valid_direction_combinations
-            )
-            
-            if batch_patterns:
-                periods_with_patterns += 1
-                wash_records.extend(batch_patterns)
-        
-        # 显示调试信息
-        st.info(f"🔍 {n_accounts}个账户检测: 检查{total_periods_checked}个期号，发现{periods_with_patterns}个期号有对刷模式")
-        
-        continuous_patterns = self.find_continuous_patterns_optimized(wash_records)
-        
-        st.info(f"📈 {n_accounts}个账户连续对刷: 发现{len(continuous_patterns)}组连续对刷")
-        
-        return continuous_patterns
-    
     def find_continuous_patterns_optimized(self, wash_records):
-        """优化版的连续对刷模式检测 - 修复版本"""
+        """优化版的连续对刷模式检测 - 使用原始彩种名称"""
         if not wash_records:
             return []
         
         account_group_patterns = defaultdict(list)
         for record in wash_records:
+            # 使用原始彩种名称进行分组
             account_group_key = (tuple(sorted(record['账户组'])), record['彩种'])
             account_group_patterns[account_group_key].append(record)
         
@@ -1335,7 +1300,8 @@ class WashTradeDetector:
                 
                 continuous_patterns.append({
                     '账户组': list(account_group),
-                    '彩种': lottery,
+                    '彩种': lottery,  # 完整的原始彩种名称
+                    '彩种类型': records[0]['彩种类型'] if records else '未知',
                     '账户数量': len(account_group),
                     '主要对立类型': main_opposite_type,
                     '对立类型分布': dict(opposite_type_counts),
@@ -1351,68 +1317,8 @@ class WashTradeDetector:
         
         return continuous_patterns
     
-    def exclude_multi_direction_accounts(self, df_valid):
-        """排除同一账户多方向下注"""
-        multi_direction_mask = (
-            df_valid.groupby(['期号', '会员账号'])['投注方向']
-            .transform('nunique') > 1
-        )
-        
-        df_filtered = df_valid[~multi_direction_mask].copy()
-        
-        return df_filtered
-    
-    def get_account_group_activity_level(self, account_group, lottery):
-        """修正：根据账户组在特定彩种的总投注期数获取活跃度水平"""
-        if lottery not in self.account_total_periods_by_lottery:
-            return 'unknown'
-        
-        total_periods_stats = self.account_total_periods_by_lottery[lottery]
-        
-        # 计算账户组中在指定彩种的最小总投注期数（用于活跃度判断）
-        min_total_periods = min(total_periods_stats.get(account, 0) for account in account_group)
-        
-        # 按照您要求的活跃度阈值设置
-        if min_total_periods <= self.config.period_thresholds['low_activity']:
-            return 'low'        # 总投注期数≤10
-        elif min_total_periods <= self.config.period_thresholds['medium_activity_high']:
-            return 'medium'     # 总投注期数11-200
-        else:
-            return 'high'       # 总投注期数≥201
-    
-    def get_required_min_periods(self, account_group, lottery):
-        """修正：根据账户组的总投注期数活跃度获取所需的最小对刷期数"""
-        activity_level = self.get_account_group_activity_level(account_group, lottery)
-        
-        if activity_level == 'low':
-            return self.config.period_thresholds['min_periods_low']    # 3期
-        elif activity_level == 'medium':
-            return self.config.period_thresholds['min_periods_medium'] # 5期
-        else:
-            return self.config.period_thresholds['min_periods_high']   # 8期
-    
-    def display_performance_stats(self):
-        """显示性能统计"""
-        if not self.performance_stats:
-            return
-        
-        with st.expander("📈 性能统计", expanded=False):
-            st.write(f"**数据处理统计:**")
-            st.write(f"- 总记录数: {self.performance_stats['total_records']:,}")
-            st.write(f"- 总期号数: {self.performance_stats['total_periods']:,}")
-            st.write(f"- 总账户数: {self.performance_stats['total_accounts']:,}")
-            
-            if 'detection_time' in self.performance_stats:
-                st.write(f"**检测性能:**")
-                st.write(f"- 检测时间: {self.performance_stats['detection_time']:.2f} 秒")
-                st.write(f"- 发现模式: {self.performance_stats['total_patterns']} 个")
-                
-                if self.performance_stats['detection_time'] > 0:
-                    records_per_second = self.performance_stats['total_records'] / self.performance_stats['detection_time']
-                    st.write(f"- 处理速度: {records_per_second:.1f} 条记录/秒")
-    
     def display_detailed_results(self, patterns):
-        """显示详细检测结果 - 以彩种为独立包装，默认展开"""
+        """显示详细检测结果 - 使用完整的原始彩种名称"""
         st.write("\n" + "="*60)
         st.write("🎯 多账户对刷检测结果")
         st.write("="*60)
@@ -1421,11 +1327,11 @@ class WashTradeDetector:
             st.error("❌ 未发现符合阈值条件的连续对刷模式")
             return
         
-        # 按彩种分组，使用彩种类型而不是原始彩种名称
+        # 按完整的原始彩种名称分组
         patterns_by_lottery = defaultdict(list)
         for pattern in patterns:
-            # 使用彩种类型进行分组，如果没有彩种类型则使用原始彩种
-            lottery_key = pattern.get('彩种类型', pattern['彩种'])
+            # 使用完整的原始彩种名称进行分组
+            lottery_key = pattern['彩种']
             patterns_by_lottery[lottery_key].append(pattern)
         
         for lottery, lottery_patterns in patterns_by_lottery.items():
