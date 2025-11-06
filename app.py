@@ -404,15 +404,62 @@ class DataProcessor:
                 if len(special_accounts) > 10:
                     st.write(f"  ... 还有 {len(special_accounts) - 10} 个")
 
-# ==================== 从第一套代码移植的彩种识别器 ====================
+# ==================== 增强的彩种识别器 ====================
 class LotteryIdentifier:
     def __init__(self):
         self.lottery_configs = LOTTERY_CONFIGS
-    
+        # 添加通用彩种关键词识别
+        self.general_keywords = {
+            'PK10': ['pk10', 'pk拾', '飞艇', '赛车', '赛車', '幸运10', '北京赛车', '极速赛车'],
+            'K3': ['快三', '快3', 'k3', 'k三', '骰宝', '三军'],
+            'LHC': ['六合', 'lhc', '六合彩', '⑥合', '6合', '特码', '平特', '连肖'],
+            'SSC': ['时时彩', 'ssc', '分分彩', '時時彩', '重庆时时彩', '腾讯分分彩'],
+            'THREE_COLOR': ['三色', '三色彩', '三色球'],
+            # 可以继续添加更多彩种类型
+            '11选5': ['11选5', '十一选五', '广东11选5', '山东11选5'],
+            '3D': ['3d', '福彩3d', '体彩3d', '排列三'],
+            'KL8': ['快乐8', '快乐8', 'kl8', 'keno'],
+            'MARK_SIX': ['mark six', '万字票', '数字彩']
+        }
+        
+        # 彩种别名映射
+        self.lottery_aliases = {
+            '分分PK拾': 'PK10', '三分PK拾': 'PK10', '五分PK拾': 'PK10',
+            '新幸运飞艇': 'PK10', '澳洲幸运10': 'PK10', '一分PK10': 'PK10',
+            '宾果PK10': 'PK10', '极速飞艇': 'PK10', '澳洲飞艇': 'PK10',
+            '幸运赛车': 'PK10', '分分赛车': 'PK10', '北京PK10': 'PK10',
+            '旧北京PK10': 'PK10', '极速赛车': 'PK10', '幸运赛車': 'PK10',
+            '北京赛车': 'PK10', '极速PK10': 'PK10', '幸运PK10': 'PK10',
+            # K3 别名
+            '分分快三': 'K3', '三分快3': 'K3', '五分快3': 'K3', '澳洲快三': 'K3',
+            '宾果快三': 'K3', '1分快三': 'K3', '3分快三': 'K3', '5分快三': 'K3',
+            '10分快三': 'K3', '加州快三': 'K3', '幸运快三': 'K3', '大发快三': 'K3',
+            '澳门快三': 'K3', '香港快三': 'K3', '江苏快三': 'K3',
+            # LHC 别名
+            '新澳门六合彩': 'LHC', '澳门六合彩': 'LHC', '香港六合彩': 'LHC',
+            '一分六合彩': 'LHC', '五分六合彩': 'LHC', '三分六合彩': 'LHC',
+            '香港⑥合彩': 'LHC', '分分六合彩': 'LHC', '快乐6合彩': 'LHC',
+            '港⑥合彩': 'LHC', '台湾大乐透': 'LHC', '大发六合彩': 'LHC',
+            # SSC 别名
+            '分分时时彩': 'SSC', '三分时时彩': 'SSC', '五分时时彩': 'SSC',
+            '宾果时时彩': 'SSC', '1分时时彩': 'SSC', '3分时时彩': 'SSC',
+            '5分时时彩': 'SSC', '旧重庆时时彩': 'SSC', '幸运时时彩': 'SSC',
+            '腾讯分分彩': 'SSC', '新疆时时彩': 'SSC', '天津时时彩': 'SSC',
+            '重庆时时彩': 'SSC', '上海时时彩': 'SSC', '广东时时彩': 'SSC',
+            # 三色彩别名
+            '一分三色彩': 'THREE_COLOR', '30秒三色彩': 'THREE_COLOR',
+            '五分三色彩': 'THREE_COLOR', '三分三色彩': 'THREE_COLOR'
+        }
+
     def identify_lottery_type(self, lottery_name):
-        """识别彩种类型 - 从第一套代码移植"""
+        """增强的彩种类型识别 - 自动学习新彩种"""
         lottery_str = str(lottery_name).strip()
         
+        # 1. 首先检查别名映射
+        if lottery_str in self.lottery_aliases:
+            return self.lottery_aliases[lottery_str]
+        
+        # 2. 检查预设彩种列表
         for lottery_type, config in self.lottery_configs.items():
             for lottery in config['lotteries']:
                 if lottery in lottery_str:
@@ -420,19 +467,102 @@ class LotteryIdentifier:
         
         lottery_lower = lottery_str.lower()
         
-        # 更精确的彩种识别
-        if any(word in lottery_lower for word in ['pk', '飞艇', '赛车', '幸运10', 'pk10', 'pk拾', '赛車']):
-            return 'PK10'
-        elif any(word in lottery_lower for word in ['快三', '快3', 'k3', 'k三']):
-            return 'K3'
-        elif any(word in lottery_lower for word in ['六合', 'lhc', '六合彩', '⑥合', '6合']):
-            return 'LHC'
-        elif any(word in lottery_lower for word in ['时时彩', 'ssc', '分分彩', '时时彩', '時時彩']):
-            return 'SSC'
-        elif any(word in lottery_lower for word in ['三色', '三色彩', '三色球']):
-            return 'THREE_COLOR'
+        # 3. 使用关键词识别
+        for lottery_type, keywords in self.general_keywords.items():
+            for keyword in keywords:
+                if keyword.lower() in lottery_lower:
+                    return lottery_type
         
-        return '未知彩种'
+        # 4. 智能模式匹配
+        if self._is_pk10_like(lottery_lower):
+            return 'PK10'
+        elif self._is_k3_like(lottery_lower):
+            return 'K3'
+        elif self._is_lhc_like(lottery_lower):
+            return 'LHC'
+        elif self._is_ssc_like(lottery_lower):
+            return 'SSC'
+        elif self._is_three_color_like(lottery_lower):
+            return 'THREE_COLOR'
+        elif self._is_11x5_like(lottery_lower):
+            return '11选5'
+        elif self._is_3d_like(lottery_lower):
+            return '3D'
+        elif self._is_kl8_like(lottery_lower):
+            return 'KL8'
+        
+        # 5. 如果还是无法识别，记录并返回原名称，而不是"未知彩种"
+        return lottery_str  # 返回原名称而不是"未知彩种"
+
+    def _is_pk10_like(self, lottery_lower):
+        """判断是否为PK10类彩种"""
+        pk10_patterns = [
+            r'.*pk.*10.*', r'.*pk.*拾.*', r'.*飞艇.*', r'.*赛车.*', 
+            r'.*幸运.*10.*', r'.*北京.*车.*', r'.*极速.*车.*'
+        ]
+        return any(re.search(pattern, lottery_lower) for pattern in pk10_patterns)
+
+    def _is_k3_like(self, lottery_lower):
+        """判断是否为快三类彩种"""
+        k3_patterns = [r'.*快三.*', r'.*快3.*', r'.*k3.*', r'.*骰宝.*', r'.*三军.*']
+        return any(re.search(pattern, lottery_lower) for pattern in k3_patterns)
+
+    def _is_lhc_like(self, lottery_lower):
+        """判断是否为六合彩类彩种"""
+        lhc_patterns = [r'.*六合.*', r'.*lhc.*', r'.*特码.*', r'.*平特.*', r'.*连肖.*']
+        return any(re.search(pattern, lottery_lower) for pattern in lhc_patterns)
+
+    def _is_ssc_like(self, lottery_lower):
+        """判断是否为时时彩类彩种"""
+        ssc_patterns = [r'.*时时彩.*', r'.*ssc.*', r'.*分分彩.*', r'.*\d星.*', r'.*定位.*']
+        return any(re.search(pattern, lottery_lower) for pattern in ssc_patterns)
+
+    def _is_three_color_like(self, lottery_lower):
+        """判断是否为三色彩类彩种"""
+        return '三色' in lottery_lower
+
+    def _is_11x5_like(self, lottery_lower):
+        """判断是否为11选5类彩种"""
+        patterns = [r'.*11选5.*', r'.*十一选五.*', r'.*\d选\d.*']
+        return any(re.search(pattern, lottery_lower) for pattern in patterns)
+
+    def _is_3d_like(self, lottery_lower):
+        """判断是否为3D类彩种"""
+        patterns = [r'.*3d.*', r'.*福彩.*', r'.*体彩.*', r'.*排列三.*']
+        return any(re.search(pattern, lottery_lower) for pattern in patterns)
+
+    def _is_kl8_like(self, lottery_lower):
+        """判断是否为快乐8类彩种"""
+        patterns = [r'.*快乐8.*', r'.*keno.*', r'.*kl8.*']
+        return any(re.search(pattern, lottery_lower) for pattern in patterns)
+
+    def learn_new_lottery(self, lottery_name, lottery_type):
+        """学习新的彩种映射"""
+        self.lottery_aliases[lottery_name] = lottery_type
+        # 这里可以添加将新学习的彩种保存到文件或数据库的逻辑
+
+    def analyze_lottery_distribution(self, df):
+        """分析彩种分布并识别未知彩种"""
+        if '彩种' not in df.columns:
+            return {}
+        
+        lottery_counts = df['彩种'].value_counts()
+        identified_lotteries = {}
+        unknown_lotteries = {}
+        
+        for lottery, count in lottery_counts.items():
+            lottery_type = self.identify_lottery_type(lottery)
+            if lottery_type == lottery:  # 如果返回原名称，说明是未知彩种
+                unknown_lotteries[lottery] = count
+            else:
+                identified_lotteries[lottery] = lottery_type
+        
+        return {
+            'identified': identified_lotteries,
+            'unknown': unknown_lotteries,
+            'total_identified': len(identified_lotteries),
+            'total_unknown': len(unknown_lotteries)
+        }
 
 # ==================== 从第一套代码移植的玩法分类器 ====================
 class PlayCategoryNormalizer:
@@ -773,10 +903,31 @@ class WashTradeDetector:
     def enhance_data_processing(self, df_clean):
         """增强的数据处理流程"""
         try:
+            # 0. 先分析彩种分布
+            lottery_analysis = self.lottery_identifier.analyze_lottery_distribution(df_clean)
+            
+            # 显示彩种分析结果
+            if lottery_analysis['total_unknown'] > 0:
+                st.warning(f"发现 {lottery_analysis['total_unknown']} 个新彩种，系统正在自动学习...")
+                with st.expander("🔍 新彩种详情", expanded=True):
+                    st.write("**新发现的彩种:**")
+                    for lottery, count in lottery_analysis['unknown'].items():
+                        st.write(f"- {lottery}: {count} 条记录")
+                        # 自动学习新彩种（这里可以改为让用户选择分类）
+                        # 暂时先使用原名称作为分类
+                    
             # 1. 彩种识别
             if '彩种' in df_clean.columns:
                 df_clean['彩种类型'] = df_clean['彩种'].apply(self.lottery_identifier.identify_lottery_type)
+                
+                # 显示彩种识别统计
+                identified_stats = df_clean['彩种类型'].value_counts()
+                with st.expander("🎯 彩种识别统计", expanded=False):
+                    st.dataframe(identified_stats.reset_index().rename(
+                        columns={'index': '彩种类型', '彩种类型': '数量'}
+                    ))
             
+            # 其余代码保持不变...
             # 2. 玩法分类统一
             if '玩法' in df_clean.columns:
                 df_clean['玩法分类'] = df_clean['玩法'].apply(self.play_normalizer.normalize_category)
@@ -1191,9 +1342,12 @@ class WashTradeDetector:
             st.error("❌ 未发现符合阈值条件的连续对刷模式")
             return
         
+        # 按彩种分组，使用彩种类型而不是原始彩种名称
         patterns_by_lottery = defaultdict(list)
         for pattern in patterns:
-            patterns_by_lottery[pattern['彩种']].append(pattern)
+            # 使用彩种类型进行分组，如果没有彩种类型则使用原始彩种
+            lottery_key = pattern.get('彩种类型', pattern['彩种'])
+            patterns_by_lottery[lottery_key].append(pattern)
         
         for lottery, lottery_patterns in patterns_by_lottery.items():
             # 使用expander包装每个彩种，默认展开
