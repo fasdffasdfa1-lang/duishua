@@ -929,12 +929,11 @@ class WashTradeDetector:
                         columns={'index': '彩种类型', '彩种类型': '数量'}
                     ))
             
-            # 其余代码保持不变...
             # 2. 玩法分类统一
             if '玩法' in df_clean.columns:
                 df_clean['玩法分类'] = df_clean['玩法'].apply(self.play_normalizer.normalize_category)
             
-            # 3. 计算账户统计信息
+            # 3. 计算账户统计信息 - 使用原始彩种名称
             self.calculate_account_total_periods_by_lottery(df_clean)
             
             # 4. 提取投注金额和方向
@@ -953,12 +952,30 @@ class WashTradeDetector:
             
             self.data_processed = True
             self.df_valid = df_valid
+            
+            # 显示账户统计信息
+            self.display_account_statistics(df_valid)
+            
             return df_valid
             
         except Exception as e:
             logger.error(f"数据处理增强失败: {str(e)}")
             st.error(f"数据处理增强失败: {str(e)}")
             return pd.DataFrame()
+    
+    def display_account_statistics(self, df_valid):
+        """显示账户统计信息"""
+        with st.expander("📊 账户统计信息", expanded=False):
+            # 显示每个彩种的账户统计
+            for lottery in df_valid['原始彩种'].unique():
+                df_lottery = df_valid[df_valid['原始彩种'] == lottery]
+                account_stats = df_lottery.groupby('会员账号').agg({
+                    '期号': 'nunique',
+                    '投注金额': 'count'
+                }).rename(columns={'期号': '投注期数', '投注金额': '记录数'})
+                
+                st.write(f"**{lottery}** 账户统计:")
+                st.dataframe(account_stats.head(20))  # 只显示前20个账户
     
     def extract_bet_amount_safe(self, amount_text):
         """安全提取投注金额 - 改进版本"""
@@ -1038,12 +1055,12 @@ class WashTradeDetector:
             return ""
     
     def calculate_account_total_periods_by_lottery(self, df):
-        """修正：按彩种计算每个账户的总投注期数统计（使用原始数据）"""
+        """修正：按彩种计算每个账户的总投注期数统计（使用原始彩种名称）"""
         self.account_total_periods_by_lottery = defaultdict(dict)
         self.account_record_stats_by_lottery = defaultdict(dict)
         
-        # 使用彩种类型列（如果存在），否则使用原始彩种列
-        lottery_col = '彩种类型' if '彩种类型' in df.columns else '彩种'
+        # 使用原始彩种名称进行分组，而不是彩种类型
+        lottery_col = '原始彩种' if '原始彩种' in df.columns else '彩种'
         
         for lottery in df[lottery_col].unique():
             df_lottery = df[df[lottery_col] == lottery]
