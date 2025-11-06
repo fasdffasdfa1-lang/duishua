@@ -112,18 +112,21 @@ class Config:
             'min_periods_high': 8       # 高活跃度账户最小对刷期数
         }
         
-        # 扩展：增加龙虎方向模式
+        # 扩展：增加龙虎方向模式，并添加质合方向
         self.direction_patterns = {
             '小': ['两面-小', '和值-小', '小', 'small', 'xia'],
             '大': ['两面-大', '和值-大', '大', 'big', 'da'], 
             '单': ['两面-单', '和值-单', '单', 'odd', 'dan'],
             '双': ['两面-双', '和值-双', '双', 'even', 'shuang'],
             '龙': ['龙', 'long', '龍', 'dragon'],
-            '虎': ['虎', 'hu', 'tiger']
+            '虎': ['虎', 'hu', 'tiger'],
+            # 添加质合方向
+            '质': ['质', '质数', 'prime', 'zhi', '質', '質數'],
+            '合': ['合', '合数', 'composite', 'he', '合數']
         }
         
-        # 扩展：增加龙虎对立组
-        self.opposite_groups = [{'大', '小'}, {'单', '双'}, {'龙', '虎'}]
+        # 扩展：增加龙虎对立组，并添加质合对立组
+        self.opposite_groups = [{'大', '小'}, {'单', '双'}, {'龙', '虎'}, {'质', '合'}]
 
 # ==================== 从第一套代码移植的数据处理器 ====================
 class DataProcessor:
@@ -422,7 +425,6 @@ class LotteryIdentifier:
                   '十分3d', '大发3d', '好运3d', '3D', '排列三', '排列3'],
             # 可以继续添加更多彩种类型
             '11选5': ['11选5', '十一选五', '广东11选5', '山东11选5'],
-            '3D': ['3d', '福彩3d', '体彩3d', '排列三'],
             'KL8': ['快乐8', '快乐8', 'kl8', 'keno'],
             'MARK_SIX': ['mark six', '万字票', '数字彩']
         }
@@ -545,11 +547,6 @@ class LotteryIdentifier:
     def _is_11x5_like(self, lottery_lower):
         """判断是否为11选5类彩种"""
         patterns = [r'.*11选5.*', r'.*十一选五.*', r'.*\d选\d.*']
-        return any(re.search(pattern, lottery_lower) for pattern in patterns)
-
-    def _is_3d_like(self, lottery_lower):
-        """判断是否为3D类彩种"""
-        patterns = [r'.*3d.*', r'.*福彩.*', r'.*体彩.*', r'.*排列三.*']
         return any(re.search(pattern, lottery_lower) for pattern in patterns)
 
     def _is_kl8_like(self, lottery_lower):
@@ -1224,6 +1221,13 @@ class WashTradeDetector:
             for direction, patterns in self.config.direction_patterns.items():
                 for pattern in patterns:
                     if pattern.lower() in content_str:
+                        return direction
+            
+            # 特别处理和值相关的方向
+            # 如：和值大、和值小、和值单、和值双、和值质、和值合
+            if '和值' in content_str or '和数' in content_str or '总和' in content_str:
+                for direction in ['大', '小', '单', '双', '质', '合']:
+                    if direction in content_str:
                         return direction
             
             return ""
