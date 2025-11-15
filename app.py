@@ -25,7 +25,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ==================== 配置类 - 添加账户期数差异阈值 ====================
+# ==================== 配置类 - 增强版，新增3D系列和位置精度 ====================
 class Config:
     """配置参数类 - 增强版"""
     def __init__(self):
@@ -45,7 +45,7 @@ class Config:
             '金额': ['金额', '下注总额', '投注金额', '总额', '下注金额', '投注额', '金额数值']
         }
         
-        # 修改：根据您的要求调整对刷期数阈值
+        # 增强：根据您的要求调整对刷期数阈值
         self.period_thresholds = {
             'low_activity': 10,           # 低活跃度上限（总投注期数1-10）
             'medium_activity_low': 11,    # 中活跃度下限（总投注期数11-50）
@@ -69,7 +69,7 @@ class Config:
         # 新增：账户期数差异阈值
         self.account_period_diff_threshold = 150  # 账户总投注期数最大差异阈值
         
-        # 扩展：增加龙虎方向模式，并添加质合方向
+        # 扩展：增加龙虎方向模式，并添加质合方向，增强位置精度
         self.direction_patterns = {
             '小': ['两面-小', '和值-小', '小', 'small', 'xia'],
             '大': ['两面-大', '和值-大', '大', 'big', 'da'], 
@@ -83,8 +83,79 @@ class Config:
         
         # 扩展：增加龙虎对立组，并添加质合对立组
         self.opposite_groups = [{'大', '小'}, {'单', '双'}, {'龙', '虎'}, {'质', '合'}]
+        
+        # 新增：位置关键词映射 - 增强版，同时支持内容和玩法
+        self.position_keywords = {
+            'PK10': {
+                '冠军': ['冠军', '第1名', '第一名', '前一', '冠 军', '冠　军', '1st', '第一名'],
+                '亚军': ['亚军', '第2名', '第二名', '亚 军', '亚　军', '2nd', '第二名'],
+                '季军': ['季军', '第3名', '第三名', '季 军', '季　军', '3rd', '第三名'],
+                '第四名': ['第四名', '第4名', '4th', '第四名'],
+                '第五名': ['第五名', '第5名', '5th', '第五名'],
+                '第六名': ['第六名', '第6名', '6th', '第六名'],
+                '第七名': ['第七名', '第7名', '7th', '第七名'],
+                '第八名': ['第八名', '第8名', '8th', '第八名'],
+                '第九名': ['第九名', '第9名', '9th', '第九名'],
+                '第十名': ['第十名', '第10名', '10th', '第十名']
+            },
+            '3D': {
+                '百位': ['百位', '百', '百位胆', '百位定位胆', 'baiwei', 'bai'],
+                '十位': ['十位', '十', '十位胆', '十位定位胆', 'shiwei', 'shi'],
+                '个位': ['个位', '个', '个位胆', '个位定位胆', 'gewei', 'ge']
+            },
+            'SSC': {
+                '第1球': ['第1球', '万位', '第一位', '第一球', 'ball1', 'ball 1'],
+                '第2球': ['第2球', '千位', '第二位', '第二球', 'ball2', 'ball 2'],
+                '第3球': ['第3球', '百位', '第三位', '第三球', 'ball3', 'ball 3'],
+                '第4球': ['第4球', '十位', '第四位', '第四球', 'ball4', 'ball 4'],
+                '第5球': ['第5球', '个位', '第五位', '第五球', 'ball5', 'ball 5']
+            },
+            'K3': {
+                '和值': ['和值', '和', '总和', '点数', 'hezhi', 'he'],
+                '三军': ['三军', '独胆', '单码', 'sanjun', 'jun']
+            },
+            'LHC': {
+                '特码': ['特码', '特', '特码A', '特码a', '特碼', 'tema', 'te'],
+                '正码': ['正码', '正', '正碼', 'zhengma', 'zheng']
+            }
+        }
+        
+        # 新增：玩法到位置的映射关系
+        self.play_to_position_mapping = {
+            # PK10系列
+            '冠军': '冠军', '冠军定位胆': '冠军', '前一': '冠军', '第一名': '冠军',
+            '亚军': '亚军', '亚军定位胆': '亚军', '前二': '亚军', '第二名': '亚军',
+            '季军': '第三名', '季军定位胆': '第三名', '前三': '第三名', '第三名': '第三名',
+            '第四名': '第四名', '第四名定位胆': '第四名',
+            '第五名': '第五名', '第五名定位胆': '第五名',
+            '第六名': '第六名', '第六名定位胆': '第六名',
+            '第七名': '第七名', '第七名定位胆': '第七名',
+            '第八名': '第八名', '第八名定位胆': '第八名',
+            '第九名': '第九名', '第九名定位胆': '第九名',
+            '第十名': '第十名', '第十名定位胆': '第十名',
+            
+            # 3D系列
+            '百位': '百位', '百位定位胆': '百位', '百位两面': '百位',
+            '十位': '十位', '十位定位胆': '十位', '十位两面': '十位',
+            '个位': '个位', '个位定位胆': '个位', '个位两面': '个位',
+            
+            # 时时彩系列
+            '第1球': '第1球', '第1球定位胆': '第1球', '万位': '第1球', '万位定位胆': '第1球',
+            '第2球': '第2球', '第2球定位胆': '第2球', '千位': '第2球', '千位定位胆': '第2球',
+            '第3球': '第3球', '第3球定位胆': '第3球', '百位': '第3球', '百位定位胆': '第3球',
+            '第4球': '第4球', '第4球定位胆': '第4球', '十位': '第4球', '十位定位胆': '第4球',
+            '第5球': '第5球', '第5球定位胆': '第5球', '个位': '第5球', '个位定位胆': '第5球',
+            
+            # 快三系列
+            '和值': '和值', '和值大小单双': '和值', '总和': '和值',
+            '三军': '三军', '独胆': '三军',
+            
+            # 六合彩系列
+            '特码': '特码', '特码A': '特码', '特码a': '特码',
+            '正码': '正码', '正码特': '正码'
+        }
 
-# ==================== 数据处理器类 ====================
+# ==================== 数据处理器类 - 增强版 ====================
 class DataProcessor:
     def __init__(self):
         self.required_columns = ['会员账号', '彩种', '期号', '玩法', '内容', '金额']
@@ -272,7 +343,7 @@ class DataProcessor:
             logger.error(f"数据清洗失败: {str(e)}")
             return None
 
-# ==================== 彩种识别器 ====================
+# ==================== 彩种识别器 - 增强版，新增3D系列和未知彩种处理 ====================
 LOTTERY_CONFIGS = {
     'PK10': {
         'lotteries': [
@@ -319,6 +390,18 @@ LOTTERY_CONFIGS = {
         ],
         'min_number': 0,
         'max_number': 9
+    },
+    # 新增：3D系列彩种配置
+    '3D': {
+        'lotteries': [
+            '排列三', '排列3', '幸运排列3', '一分排列3', '二分排列3', '三分排列3', 
+            '五分排列3', '十分排列3', '大发排列3', '好运排列3', '福彩3D', '极速3D',
+            '极速排列3', '幸运3D', '一分3D', '二分3D', '三分3D', '五分3D', 
+            '十分3D', '大发3D', '好运3D'
+        ],
+        'min_number': 0,
+        'max_number': 9,
+        'position_names': ['百位', '十位', '个位']
     }
 }
 
@@ -329,7 +412,9 @@ class LotteryIdentifier:
             'PK10': ['pk10', 'pk拾', '飞艇', '赛车', '赛車', '幸运10', '北京赛车', '极速赛车'],
             'K3': ['快三', '快3', 'k3', 'k三', '骰宝', '三军'],
             'LHC': ['六合', 'lhc', '六合彩', '⑥合', '6合', '特码', '平特', '连肖'],
-            'SSC': ['时时彩', 'ssc', '分分彩', '時時彩', '重庆时时彩', '腾讯分分彩']
+            'SSC': ['时时彩', 'ssc', '分分彩', '時時彩', '重庆时时彩', '腾讯分分彩'],
+            # 新增：3D系列关键词
+            '3D': ['排列三', '排列3', '福彩3d', '3d', '极速3d', '排列', 'p3', 'p三']
         }
         
         self.lottery_aliases = {
@@ -351,11 +436,17 @@ class LotteryIdentifier:
             '宾果时时彩': 'SSC', '1分时时彩': 'SSC', '3分时时彩': 'SSC',
             '5分时时彩': 'SSC', '旧重庆时时彩': 'SSC', '幸运时时彩': 'SSC',
             '腾讯分分彩': 'SSC', '新疆时时彩': 'SSC', '天津时时彩': 'SSC',
-            '重庆时时彩': 'SSC', '上海时时彩': 'SSC', '广东时时彩': 'SSC'
+            '重庆时时彩': 'SSC', '上海时时彩': 'SSC', '广东时时彩': 'SSC',
+            # 新增：3D系列别名
+            '排列三': '3D', '排列3': '3D', '幸运排列3': '3D', '一分排列3': '3D',
+            '二分排列3': '3D', '三分排列3': '3D', '五分排列3': '3D', '十分排列3': '3D',
+            '大发排列3': '3D', '好运排列3': '3D', '福彩3D': '3D', '极速3D': '3D',
+            '极速排列3': '3D', '幸运3D': '3D', '一分3D': '3D', '二分3D': '3D',
+            '三分3D': '3D', '五分3D': '3D', '十分3D': '3D', '大发3D': '3D', '好运3D': '3D'
         }
 
     def identify_lottery_type(self, lottery_name):
-        """彩种类型识别"""
+        """彩种类型识别 - 增强版，支持未知彩种"""
         lottery_str = str(lottery_name).strip()
         
         if lottery_str in self.lottery_aliases:
@@ -373,26 +464,45 @@ class LotteryIdentifier:
                 if keyword.lower() in lottery_lower:
                     return lottery_type
         
-        return lottery_str
+        # 新增：未知彩种处理
+        return '未知彩种'
 
-# ==================== 玩法分类器 ====================
+# ==================== 玩法分类器 - 增强版，借鉴第一个代码的详细映射 ====================
 class PlayCategoryNormalizer:
     def __init__(self):
         self.category_mapping = self._create_category_mapping()
     
     def _create_category_mapping(self):
-        """创建玩法分类映射"""
+        """创建玩法分类映射 - 借鉴第一个代码的详细映射"""
         mapping = {
-            '和值': '和值', '两面': '两面', '二不同号': '二不同号', '三不同号': '三不同号',
-            '独胆': '独胆', '点数': '和值', '三军': '独胆', '三軍': '独胆',
-            '特码': '特码', '正1特': '正1特', '正2特': '正2特', '正3特': '正3特',
-            '正4特': '正4特', '正5特': '正5特', '正6特': '正6特', '正码': '正码',
+            # 快三玩法
+            '和值': '和值', '和值_大小单双': '和值', '两面': '两面',
+            '二不同号': '二不同号', '三不同号': '三不同号', '独胆': '独胆',
+            '点数': '和值', '三军': '独胆', '三軍': '独胆',
+            
+            # 六合彩玩法
+            '特码': '特码', '正1特': '正1特', '正码特_正一特': '正1特',
+            '正2特': '正2特', '正码特_正二特': '正2特', '正3特': '正3特',
+            '正码特_正三特': '正3特', '正4特': '正4特', '正码特_正四特': '正4特',
+            '正5特': '正5特', '正码特_正五特': '正5特', '正6特': '正6特',
+            '正码特_正六特': '正6特', '正码': '正码', '正特': '正特',
             '尾数': '尾数', '特肖': '特肖', '平特': '平特', '一肖': '一肖',
             '连肖': '连肖', '连尾': '连尾', '龙虎': '龙虎', '五行': '五行',
-            '色波': '色波', '半波': '半波', '斗牛': '斗牛', '1-5球': '1-5球',
-            '第1球': '第1球', '第2球': '第2球', '第3球': '第3球', '第4球': '第4球',
-            '第5球': '第5球', '总和': '总和', '定位胆': '定位胆',
-            '前一': '冠军', '1-5名': '1-5名', '6-10名': '6-10名',
+            '色波': '色波', '半波': '半波',
+            
+            # 3D系列玩法
+            '两面': '两面', '大小单双': '两面', '百位': '百位', '十位': '十位', 
+            '个位': '个位', '百十': '百十', '百个': '百个', '十个': '十个',
+            '百十个': '百十个', '定位胆': '定位胆', '定位胆_百位': '定位胆_百位',
+            '定位胆_十位': '定位胆_十位', '定位胆_个位': '定位胆_个位',
+            
+            # 时时彩玩法
+            '斗牛': '斗牛', '1-5球': '1-5球', '第1球': '第1球', '第2球': '第2球',
+            '第3球': '第3球', '第4球': '第4球', '第5球': '第5球', '总和': '总和',
+            '正码': '正码', '定位胆': '定位胆',
+            
+            # PK拾/赛车玩法
+            '前一': '冠军', '定位胆': '定位胆', '1-5名': '1-5名', '6-10名': '6-10名',
             '冠军': '冠军', '亚军': '亚军', '季军': '第三名', '第3名': '第三名',
             '第4名': '第四名', '第5名': '第五名', '第6名': '第六名',
             '第7名': '第七名', '第8名': '第八名', '第9名': '第九名',
@@ -401,25 +511,203 @@ class PlayCategoryNormalizer:
         return mapping
     
     def normalize_category(self, category):
-        """统一玩法分类名称"""
+        """统一玩法分类名称 - 增强版"""
         category_str = str(category).strip()
         
+        # 直接映射
         if category_str in self.category_mapping:
             return self.category_mapping[category_str]
         
+        # 关键词匹配
         for key, value in self.category_mapping.items():
             if key in category_str:
                 return value
         
+        # 智能匹配
+        category_lower = category_str.lower()
+        
+        # PK10/赛车智能匹配
+        if any(word in category_lower for word in ['冠军', '第一名', '第1名', '1st']):
+            return '冠军'
+        elif any(word in category_lower for word in ['亚军', '第二名', '第2名', '2nd']):
+            return '亚军'
+        elif any(word in category_lower for word in ['第三名', '第3名', '季军', '3rd']):
+            return '第三名'
+        elif any(word in category_lower for word in ['第四名', '第4名', '4th']):
+            return '第四名'
+        elif any(word in category_lower for word in ['第五名', '第5名', '5th']):
+            return '第五名'
+        elif any(word in category_lower for word in ['第六名', '第6名', '6th']):
+            return '第六名'
+        elif any(word in category_lower for word in ['第七名', '第7名', '7th']):
+            return '第七名'
+        elif any(word in category_lower for word in ['第八名', '第8名', '8th']):
+            return '第八名'
+        elif any(word in category_lower for word in ['第九名', '第9名', '9th']):
+            return '第九名'
+        elif any(word in category_lower for word in ['第十名', '第10名', '10th']):
+            return '第十名'
+        
+        # 3D系列智能匹配
+        elif any(word in category_lower for word in ['百位']):
+            return '百位'
+        elif any(word in category_lower for word in ['十位']):
+            return '十位'
+        elif any(word in category_lower for word in ['个位']):
+            return '个位'
+        
+        # 时时彩智能匹配
+        elif any(word in category_lower for word in ['第1球', '万位']):
+            return '第1球'
+        elif any(word in category_lower for word in ['第2球', '千位']):
+            return '第2球'
+        elif any(word in category_lower for word in ['第3球', '百位']):
+            return '第3球'
+        elif any(word in category_lower for word in ['第4球', '十位']):
+            return '第4球'
+        elif any(word in category_lower for word in ['第5球', '个位']):
+            return '第5球'
+        
         return category_str
 
-# ==================== 增强的对刷检测器 - 添加账户期数差异检查 ====================
+# ==================== 内容解析器 - 借鉴第一个代码的详细解析逻辑 ====================
+class ContentParser:
+    """从第一个代码借鉴的投注内容解析器"""
+
+    @staticmethod
+    def parse_pk10_vertical_format(content):
+        """
+        解析PK10竖线分隔的定位胆格式
+        格式：号码1,号码2|号码3|号码4,号码5|号码6|号码7,号码8,号码9|号码10
+        """
+        try:
+            content_str = str(content).strip()
+            bets_by_position = defaultdict(list)
+            
+            if not content_str:
+                return bets_by_position
+            
+            positions = ['冠军', '亚军', '第三名', '第四名', '第五名', 
+                        '第六名', '第七名', '第八名', '第九名', '第十名']
+            
+            parts = content_str.split('|')
+            
+            for i, part in enumerate(parts):
+                if i < len(positions):
+                    position = positions[i]
+                    part_clean = part.strip()
+                    
+                    if not part_clean or part_clean == '_' or part_clean == '':
+                        continue
+                    
+                    numbers = []
+                    if ',' in part_clean:
+                        number_strs = part_clean.split(',')
+                        for num_str in number_strs:
+                            num_clean = num_str.strip()
+                            if num_clean.isdigit():
+                                numbers.append(int(num_clean))
+                    else:
+                        if part_clean.isdigit():
+                            numbers.append(int(part_clean))
+                    
+                    bets_by_position[position].extend(numbers)
+            
+            return bets_by_position
+        except Exception as e:
+            logger.warning(f"解析PK10竖线格式失败: {content}, 错误: {str(e)}")
+            return defaultdict(list)
+
+    @staticmethod
+    def parse_3d_vertical_format(content):
+        """
+        解析3D竖线分隔的定位胆格式
+        格式：号码1,号码2|号码3|号码4,号码5,号码6
+        """
+        try:
+            content_str = str(content).strip()
+            bets_by_position = defaultdict(list)
+            
+            if not content_str:
+                return bets_by_position
+            
+            positions = ['百位', '十位', '个位']
+            
+            parts = content_str.split('|')
+            
+            for i, part in enumerate(parts):
+                if i < len(positions):
+                    position = positions[i]
+                    part_clean = part.strip()
+                    
+                    if not part_clean or part_clean == '_' or part_clean == '':
+                        continue
+                    
+                    numbers = []
+                    if ',' in part_clean:
+                        number_strs = part_clean.split(',')
+                        for num_str in number_strs:
+                            num_clean = num_str.strip()
+                            if num_clean.isdigit():
+                                numbers.append(int(num_clean))
+                    else:
+                        if part_clean.isdigit():
+                            numbers.append(int(part_clean))
+                    
+                    bets_by_position[position].extend(numbers)
+            
+            return bets_by_position
+        except Exception as e:
+            logger.warning(f"解析3D竖线格式失败: {content}, 错误: {str(e)}")
+            return defaultdict(list)
+
+    @staticmethod
+    def parse_positional_bets(content, position_keywords=None):
+        """
+        解析位置投注内容
+        格式：位置1-投注项1,投注项2,位置2-投注项1,投注项2,...
+        """
+        content_str = str(content).strip()
+        bets_by_position = defaultdict(list)
+        
+        if not content_str:
+            return bets_by_position
+        
+        parts = [part.strip() for part in content_str.split(',')]
+        
+        current_position = None
+        
+        for part in parts:
+            is_position = False
+            if position_keywords:
+                for keyword in position_keywords:
+                    if keyword in part and '-' in part:
+                        is_position = True
+                        break
+            
+            if '-' in part and (is_position or position_keywords is None):
+                try:
+                    position_part, bet_value = part.split('-', 1)
+                    current_position = position_part.strip()
+                    bets_by_position[current_position].append(bet_value.strip())
+                except ValueError:
+                    if current_position:
+                        bets_by_position[current_position].append(part)
+            elif current_position:
+                bets_by_position[current_position].append(part)
+            else:
+                bets_by_position['未知位置'].append(part)
+        
+        return bets_by_position
+
+# ==================== 增强的对刷检测器 - 添加3D系列、位置精度和未知彩种处理 ====================
 class WashTradeDetector:
     def __init__(self, config=None):
         self.config = config or Config()
         self.data_processor = DataProcessor()
         self.lottery_identifier = LotteryIdentifier()
         self.play_normalizer = PlayCategoryNormalizer()
+        self.content_parser = ContentParser()  # 新增内容解析器
         
         self.data_processed = False
         self.df_valid = None
@@ -473,9 +761,18 @@ class WashTradeDetector:
             # 计算账户统计信息
             self.calculate_account_total_periods_by_lottery(df_clean)
             
-            # 提取投注金额和方向
+            # 提取投注金额和方向 - 增强版，添加位置精度
             df_clean['投注金额'] = df_clean['金额'].apply(lambda x: self.extract_bet_amount_safe(x))
-            df_clean['投注方向'] = df_clean['内容'].apply(lambda x: self.enhanced_extract_direction(x))
+            
+            # 新增：增强的位置判断，同时使用内容和玩法
+            df_clean['投注方向'] = df_clean.apply(
+                lambda row: self.enhanced_extract_direction_with_position(
+                    row['内容'], 
+                    row['玩法分类'] if '玩法分类' in df_clean.columns else '',
+                    row['彩种类型']
+                ), 
+                axis=1
+            )
             
             # 过滤有效记录
             df_valid = df_clean[
@@ -489,6 +786,13 @@ class WashTradeDetector:
             
             self.data_processed = True
             self.df_valid = df_valid
+            
+            # 显示未知彩种信息
+            unknown_lottery_data = df_valid[df_valid['彩种类型'] == '未知彩种']
+            if len(unknown_lottery_data) > 0:
+                st.warning(f"⚠️ 发现 {len(unknown_lottery_data)} 条未知彩种记录，将尝试进行通用对刷检测")
+                with st.expander("🔍 未知彩种详情", expanded=False):
+                    st.dataframe(unknown_lottery_data[['原始彩种', '玩法分类', '内容']].head(20))
             
             return df_valid
             
@@ -545,28 +849,124 @@ class WashTradeDetector:
             logger.warning(f"金额提取失败: {amount_text}, 错误: {e}")
             return 0
     
-    def enhanced_extract_direction(self, content):
-        """增强的投注方向提取"""
+    def enhanced_extract_direction_with_position(self, content, play_category, lottery_type):
+        """增强的投注方向提取 - 同时使用投注内容和玩法判断位置"""
         try:
             if pd.isna(content):
                 return ""
             
-            content_str = str(content).strip().lower()
+            content_str = str(content).strip()
+            play_str = str(play_category).strip()
             
-            for direction, patterns in self.config.direction_patterns.items():
-                for pattern in patterns:
-                    if pattern.lower() in content_str:
-                        return direction
+            # 增强：同时从内容和玩法中提取位置
+            position = self.enhanced_extract_position(content_str, play_str, lottery_type)
             
-            if '和值' in content_str or '和数' in content_str or '总和' in content_str:
-                for direction in ['大', '小', '单', '双', '质', '合']:
-                    if direction in content_str:
-                        return direction
+            # 提取方向信息
+            direction = self._extract_direction_from_content(content_str)
             
-            return ""
+            if not direction:
+                return ""
+            
+            # 如果有位置信息，组合成"位置-方向"格式
+            if position and position != '未知位置':
+                return f"{position}-{direction}"
+            else:
+                return direction
+            
         except Exception as e:
             logger.warning(f"方向提取失败: {content}, 错误: {e}")
             return ""
+    
+    def enhanced_extract_position(self, content, play_category, lottery_type):
+        """增强版位置提取 - 同时从投注内容和玩法中提取位置信息"""
+        content_str = str(content).strip()
+        play_str = str(play_category).strip()
+        
+        # 1. 首先从投注内容中提取位置
+        position_from_content = self._extract_position_from_content(content_str, lottery_type)
+        
+        if position_from_content != '未知位置':
+            return position_from_content
+        
+        # 2. 如果内容中没有位置，从玩法分类中提取
+        position_from_play = self._extract_position_from_play(play_str)
+        
+        if position_from_play != '未知位置':
+            return position_from_play
+        
+        return '未知位置'
+    
+    def _extract_position_from_content(self, content, lottery_type):
+        """从内容中提取位置信息 - 借鉴第一个代码的位置判断逻辑"""
+        content_str = str(content).strip()
+        
+        # 根据彩种类型获取位置关键词
+        position_keywords = self.config.position_keywords.get(lottery_type, {})
+        
+        # 对于未知彩种，使用所有位置关键词
+        if lottery_type == '未知彩种':
+            all_position_keywords = {}
+            for lottery_positions in self.config.position_keywords.values():
+                for position, keywords in lottery_positions.items():
+                    if position not in all_position_keywords:
+                        all_position_keywords[position] = []
+                    all_position_keywords[position].extend(keywords)
+            position_keywords = all_position_keywords
+        
+        for position, keywords in position_keywords.items():
+            for keyword in keywords:
+                if keyword in content_str:
+                    return position
+        
+        # 特殊处理竖线格式
+        if '|' in content_str:
+            if lottery_type == 'PK10' or lottery_type == '未知彩种':
+                bets_by_position = self.content_parser.parse_pk10_vertical_format(content_str)
+                for position in bets_by_position:
+                    if bets_by_position[position]:
+                        return position
+            elif lottery_type == '3D' or lottery_type == '未知彩种':
+                bets_by_position = self.content_parser.parse_3d_vertical_format(content_str)
+                for position in bets_by_position:
+                    if bets_by_position[position]:
+                        return position
+        
+        return '未知位置'
+    
+    def _extract_position_from_play(self, play_category):
+        """从玩法分类中提取位置信息"""
+        play_str = str(play_category).strip()
+        
+        if not play_str or play_str == '':
+            return '未知位置'
+        
+        # 使用玩法到位置的映射
+        if play_str in self.config.play_to_position_mapping:
+            return self.config.play_to_position_mapping[play_str]
+        
+        # 模糊匹配
+        play_lower = play_str.lower()
+        for play_key, position in self.config.play_to_position_mapping.items():
+            if play_key.lower() in play_lower or play_lower in play_key.lower():
+                return position
+        
+        return '未知位置'
+    
+    def _extract_direction_from_content(self, content):
+        """从内容中提取方向信息"""
+        content_str = str(content).strip().lower()
+        
+        for direction, patterns in self.config.direction_patterns.items():
+            for pattern in patterns:
+                if pattern.lower() in content_str:
+                    return direction
+        
+        if '和值' in content_str or '和数' in content_str or '总和' in content_str:
+            for direction in ['大', '小', '单', '双', '质', '合']:
+                if direction in content_str:
+                    return direction
+        
+        return ""
     
     def calculate_account_total_periods_by_lottery(self, df):
         """按彩种计算每个账户的总投注期数统计"""
@@ -585,7 +985,7 @@ class WashTradeDetector:
             self.account_record_stats_by_lottery[lottery] = record_counts
     
     def detect_all_wash_trades(self):
-        """检测所有类型的对刷交易"""
+        """检测所有类型的对刷交易 - 包括未知彩种"""
         if not self.data_processed or self.df_valid is None or len(self.df_valid) == 0:
             st.error("❌ 没有有效数据可用于检测")
             return []
@@ -594,7 +994,9 @@ class WashTradeDetector:
             'start_time': datetime.now(),
             'total_records': len(self.df_valid),
             'total_periods': self.df_valid['期号'].nunique(),
-            'total_accounts': self.df_valid['会员账号'].nunique()
+            'total_accounts': self.df_valid['会员账号'].nunique(),
+            'known_lottery_count': len(self.df_valid[self.df_valid['彩种类型'] != '未知彩种']),
+            'unknown_lottery_count': len(self.df_valid[self.df_valid['彩种类型'] == '未知彩种'])
         }
         
         df_filtered = self.exclude_multi_direction_accounts(self.df_valid)
@@ -626,12 +1028,16 @@ class WashTradeDetector:
         ).total_seconds()
         self.performance_stats['total_patterns'] = len(all_patterns)
         
+        # 统计未知彩种对刷情况
+        unknown_lottery_patterns = [p for p in all_patterns if p['彩种类型'] == '未知彩种']
+        self.performance_stats['unknown_lottery_patterns'] = len(unknown_lottery_patterns)
+        
         self.display_performance_stats()
         
         return all_patterns
     
     def detect_n_account_patterns_optimized(self, df_filtered, n_accounts):
-        """优化版的N个账户对刷模式检测"""
+        """优化版的N个账户对刷模式检测 - 支持未知彩种"""
         wash_records = []
         
         period_groups = df_filtered.groupby(['期号', '原始彩种'])
@@ -659,11 +1065,12 @@ class WashTradeDetector:
         return self.find_continuous_patterns_optimized(wash_records)
     
     def _get_valid_direction_combinations(self, n_accounts):
-        """获取有效的方向组合"""
+        """获取有效的方向组合 - 增强版，支持位置精度和未知彩种"""
         valid_combinations = []
         
-        # 对于2个账户：标准的对立组
+        # 对于2个账户：标准的对立组（包括带位置的对立组）
         if n_accounts == 2:
+            # 无位置的对立组
             for opposites in self.config.opposite_groups:
                 dir1, dir2 = list(opposites)
                 valid_combinations.append({
@@ -672,6 +1079,22 @@ class WashTradeDetector:
                     'dir2_count': 1,
                     'opposite_type': f"{dir1}-{dir2}"
                 })
+            
+            # 带位置的对立组 - 动态生成
+            # 收集所有可能的位置
+            all_positions = set()
+            for lottery_positions in self.config.position_keywords.values():
+                all_positions.update(lottery_positions.keys())
+            
+            for position in all_positions:
+                for opposites in self.config.opposite_groups:
+                    dir1, dir2 = list(opposites)
+                    valid_combinations.append({
+                        'directions': [f"{position}-{dir1}", f"{position}-{dir2}"],
+                        'dir1_count': 1,
+                        'dir2_count': 1,
+                        'opposite_type': f"{position}-{dir1} vs {position}-{dir2}"
+                    })
         
         # 对于3个及以上账户：允许多种分布
         else:
@@ -695,6 +1118,7 @@ class WashTradeDetector:
         
         # 获取当前彩种
         lottery = period_data['原始彩种'].iloc[0] if '原始彩种' in period_data.columns else period_data['彩种'].iloc[0]
+        lottery_type = period_data['彩种类型'].iloc[0] if '彩种类型' in period_data.columns else '未知'
         
         # 构建账户信息字典
         account_info = {}
@@ -712,8 +1136,8 @@ class WashTradeDetector:
         
         # 检查所有可能的账户组合
         for account_group in combinations(period_accounts, n_accounts):
-            # 新增：检查账户期数差异
-            if not self._check_account_period_difference(account_group, lottery):
+            # 新增：检查账户期数差异（已知彩种才检查）
+            if lottery_type != '未知彩种' and not self._check_account_period_difference(account_group, lottery):
                 continue
             
             group_directions = []
@@ -740,7 +1164,7 @@ class WashTradeDetector:
                     # 计算两个方向的总金额
                     dir1_total = 0
                     dir2_total = 0
-                    dir1 = combo['opposite_type'].split('-')[0]
+                    dir1 = combo['directions'][0]  # 取第一个方向作为参考
                     
                     for direction, amount in zip(group_directions, group_amounts):
                         if direction == dir1:
@@ -757,8 +1181,6 @@ class WashTradeDetector:
                         similarity = min(dir1_total, dir2_total) / max(dir1_total, dir2_total)
                         
                         if similarity >= similarity_threshold:
-                            lottery_type = period_data['彩种类型'].iloc[0] if '彩种类型' in period_data.columns else '未知'
-                            
                             record = {
                                 '期号': period_data['期号'].iloc[0],
                                 '彩种': lottery,
@@ -810,22 +1232,31 @@ class WashTradeDetector:
         return True
     
     def find_continuous_patterns_optimized(self, wash_records):
-        """优化版的连续对刷模式检测 - 修改阈值逻辑"""
+        """优化版的连续对刷模式检测 - 修复显示问题"""
         if not wash_records:
             return []
         
+        # 使用更精确的分组键，避免重复或遗漏
         account_group_patterns = defaultdict(list)
         for record in wash_records:
-            account_group_key = (tuple(sorted(record['账户组'])), record['彩种'])
+            # 使用账户组、彩种和对立类型作为复合键
+            account_group_key = (
+                tuple(sorted(record['账户组'])), 
+                record['彩种'],
+                record['对立类型']  # 添加对立类型作为分组条件
+            )
             account_group_patterns[account_group_key].append(record)
         
         continuous_patterns = []
         
-        for (account_group, lottery), records in account_group_patterns.items():
+        for (account_group, lottery, opposite_type), records in account_group_patterns.items():
             sorted_records = sorted(records, key=lambda x: x['期号'])
             
             # 修改：根据新的阈值要求确定最小对刷期数
             required_min_periods = self.get_required_min_periods(account_group, lottery)
+            
+            # 调试信息：记录每个组合的详细信息
+            logger.info(f"检测组合: 账户={account_group}, 彩种={lottery}, 对立类型={opposite_type}, 期数={len(sorted_records)}, 要求={required_min_periods}")
             
             if len(sorted_records) >= required_min_periods:
                 total_investment = sum(r['总金额'] for r in sorted_records)
@@ -871,6 +1302,10 @@ class WashTradeDetector:
                     '要求最小对刷期数': required_min_periods
                 })
         
+        # 按对刷期数排序，期数多的排在前面
+        continuous_patterns.sort(key=lambda x: x['对刷期数'], reverse=True)
+        
+        logger.info(f"最终检测到 {len(continuous_patterns)} 个连续对刷模式")
         return continuous_patterns
 
     def exclude_multi_direction_accounts(self, df_valid):
@@ -918,7 +1353,7 @@ class WashTradeDetector:
             return self.config.period_thresholds['min_periods_very_high'] # 11期
     
     def display_performance_stats(self):
-        """显示性能统计"""
+        """显示性能统计 - 增强版，包含未知彩种信息"""
         if not self.performance_stats:
             return
         
@@ -927,14 +1362,18 @@ class WashTradeDetector:
             st.write(f"- 总记录数: {self.performance_stats['total_records']:,}")
             st.write(f"- 总期号数: {self.performance_stats['total_periods']:,}")
             st.write(f"- 总账户数: {self.performance_stats['total_accounts']:,}")
+            st.write(f"- 已知彩种记录: {self.performance_stats['known_lottery_count']:,}")
+            st.write(f"- 未知彩种记录: {self.performance_stats['unknown_lottery_count']:,}")
             
             if 'detection_time' in self.performance_stats:
                 st.write(f"**检测性能:**")
                 st.write(f"- 检测时间: {self.performance_stats['detection_time']:.2f} 秒")
                 st.write(f"- 发现模式: {self.performance_stats['total_patterns']} 个")
+                if 'unknown_lottery_patterns' in self.performance_stats:
+                    st.write(f"- 未知彩种对刷组: {self.performance_stats['unknown_lottery_patterns']} 个")
     
     def display_detailed_results(self, patterns):
-        """显示详细检测结果"""
+        """显示详细检测结果 - 修复显示问题"""
         st.write("\n" + "="*60)
         st.write("🎯 多账户对刷检测结果")
         st.write("="*60)
@@ -943,38 +1382,80 @@ class WashTradeDetector:
             st.error("❌ 未发现符合阈值条件的连续对刷模式")
             return
         
-        patterns_by_lottery = defaultdict(list)
+        # 按账户数量分组显示
+        patterns_by_account_count = defaultdict(list)
         for pattern in patterns:
-            lottery_key = pattern['彩种']
-            patterns_by_lottery[lottery_key].append(pattern)
+            patterns_by_account_count[pattern['账户数量']].append(pattern)
         
-        for lottery, lottery_patterns in patterns_by_lottery.items():
-            with st.expander(f"🎲 彩种：{lottery}（发现{len(lottery_patterns)}组）", expanded=True):
-                for i, pattern in enumerate(lottery_patterns, 1):
-                    st.markdown(f"**对刷组 {i}:** {' ↔ '.join(pattern['账户组'])}")
-                    
-                    activity_icon = "🟢" if pattern['账户活跃度'] == 'low' else "🟡" if pattern['账户活跃度'] == 'medium' else "🟠" if pattern['账户活跃度'] == 'high' else "🔴"
-                    st.markdown(f"**活跃度:** {activity_icon} {pattern['账户活跃度']} | **彩种:** {pattern['彩种']} | **主要类型:** {pattern['主要对立类型']}")
-                    
-                    st.markdown(f"**账户在该彩种投注期数/记录数:** {', '.join(pattern['账户统计信息'])}")
-                    st.markdown(f"**对刷期数:** {pattern['对刷期数']}期 (要求≥{pattern['要求最小对刷期数']}期)")
-                    st.markdown(f"**总金额:** {pattern['总投注金额']:.2f}元 | **平均匹配:** {pattern['平均相似度']:.2%}")
-                    
-                    st.markdown("**详细记录:**")
-                    for j, record in enumerate(pattern['详细记录'], 1):
-                        account_directions = []
-                        for account, direction, amount in zip(record['账户组'], record['方向组'], record['金额组']):
-                            account_directions.append(f"{account}({direction}:{amount})")
-                        
-                        st.markdown(f"{j}. **期号:** {record['期号']} | **模式:** {record['模式']} | **方向:** {' ↔ '.join(account_directions)} | **匹配度:** {record['相似度']:.2%}")
-                    
-                    if i < len(lottery_patterns):
-                        st.markdown("---")
+        # 显示2个账户的组合
+        if 2 in patterns_by_account_count:
+            two_account_patterns = patterns_by_account_count[2]
+            st.success(f"✅ 发现 {len(two_account_patterns)} 组2账户对刷行为")
+            
+            patterns_by_lottery = defaultdict(list)
+            for pattern in two_account_patterns:
+                lottery_key = pattern['彩种']
+                patterns_by_lottery[lottery_key].append(pattern)
+            
+            for lottery, lottery_patterns in patterns_by_lottery.items():
+                with st.expander(f"🎲 {lottery} - 2账户对刷（{len(lottery_patterns)}组）", expanded=True):
+                    for i, pattern in enumerate(lottery_patterns, 1):
+                        self._display_single_pattern(pattern, i)
         
-        self.display_summary_statistics(patterns)
+        # 显示3个账户的组合
+        if 3 in patterns_by_account_count:
+            three_account_patterns = patterns_by_account_count[3]
+            st.success(f"🔍 发现 {len(three_account_patterns)} 组3账户对刷行为")
+            
+            patterns_by_lottery = defaultdict(list)
+            for pattern in three_account_patterns:
+                lottery_key = pattern['彩种']
+                patterns_by_lottery[lottery_key].append(pattern)
+            
+            for lottery, lottery_patterns in patterns_by_lottery.items():
+                with st.expander(f"🎲 {lottery} - 3账户对刷（{len(lottery_patterns)}组）", expanded=True):
+                    for i, pattern in enumerate(lottery_patterns, 1):
+                        self._display_single_pattern(pattern, i)
+        
+        # 显示4个及以上账户的组合
+        for account_count in range(4, self.config.max_accounts_in_group + 1):
+            if account_count in patterns_by_account_count:
+                multi_account_patterns = patterns_by_account_count[account_count]
+                st.warning(f"🚨 发现 {len(multi_account_patterns)} 组{account_count}账户对刷行为")
+                
+                patterns_by_lottery = defaultdict(list)
+                for pattern in multi_account_patterns:
+                    lottery_key = pattern['彩种']
+                    patterns_by_lottery[lottery_key].append(pattern)
+                
+                for lottery, lottery_patterns in patterns_by_lottery.items():
+                    with st.expander(f"🎲 {lottery} - {account_count}账户对刷（{len(lottery_patterns)}组）", expanded=True):
+                        for i, pattern in enumerate(lottery_patterns, 1):
+                            self._display_single_pattern(pattern, i)
     
-    def display_summary_statistics(self, patterns):
-        """显示总体统计"""
+    def _display_single_pattern(self, pattern, index):
+        """显示单个对刷模式的详细信息"""
+        st.markdown(f"**对刷组 {index}:** {' ↔ '.join(pattern['账户组'])}")
+        
+        activity_icon = "🟢" if pattern['账户活跃度'] == 'low' else "🟡" if pattern['账户活跃度'] == 'medium' else "🟠" if pattern['账户活跃度'] == 'high' else "🔴"
+        st.markdown(f"**活跃度:** {activity_icon} {pattern['账户活跃度']} | **彩种:** {pattern['彩种']} | **主要类型:** {pattern['主要对立类型']}")
+        
+        st.markdown(f"**账户在该彩种投注期数/记录数:** {', '.join(pattern['账户统计信息'])}")
+        st.markdown(f"**对刷期数:** {pattern['对刷期数']}期 (要求≥{pattern['要求最小对刷期数']}期)")
+        st.markdown(f"**总金额:** {pattern['总投注金额']:.2f}元 | **平均匹配:** {pattern['平均相似度']:.2%}")
+        
+        with st.expander(f"📋 查看详细记录 ({pattern['对刷期数']}期)", expanded=False):
+            for j, record in enumerate(pattern['详细记录'], 1):
+                account_directions = []
+                for account, direction, amount in zip(record['账户组'], record['方向组'], record['金额组']):
+                    account_directions.append(f"{account}({direction}:{amount})")
+                
+                st.markdown(f"{j}. **期号:** {record['期号']} | **模式:** {record['模式']} | **方向:** {' ↔ '.join(account_directions)} | **匹配度:** {record['相似度']:.2%}")
+        
+        st.markdown("---")
+    
+    def display_summary_statistics(self, patterns, known_patterns, unknown_patterns):
+        """显示总体统计 - 增强版，区分已知和未知彩种"""
         if not patterns:
             return
             
@@ -983,6 +1464,8 @@ class WashTradeDetector:
         st.write(f"{'='*60}")
         
         total_groups = len(patterns)
+        total_known_groups = len(known_patterns)
+        total_unknown_groups = len(unknown_patterns)
         total_accounts = sum(p['账户数量'] for p in patterns)
         total_wash_periods = sum(p['对刷期数'] for p in patterns)
         total_amount = sum(p['总投注金额'] for p in patterns)
@@ -1006,6 +1489,8 @@ class WashTradeDetector:
         
         st.write(f"**🎯 检测结果汇总:**")
         st.write(f"- 对刷组数: {total_groups} 组")
+        st.write(f"- 已知彩种对刷: {total_known_groups} 组")
+        st.write(f"- 未知彩种对刷: {total_unknown_groups} 组")
         st.write(f"- 涉及账户: {total_accounts} 个")
         st.write(f"- 总对刷期数: {total_wash_periods} 期")
         st.write(f"- 总涉及金额: {total_amount:.2f} 元")
@@ -1058,6 +1543,13 @@ def main():
                 help="账户总投注期数最大允许差异，超过此值不进行组合检测"
             )
             
+            # 未知彩种检测开关
+            enable_unknown_lottery = st.sidebar.checkbox(
+                "启用未知彩种检测", 
+                value=True,
+                help="启用对未在系统中预定义的彩种的对刷检测"
+            )
+            
             # 活跃度阈值配置
             st.sidebar.subheader("📊 活跃度阈值配置")
             st.sidebar.markdown("**新阈值设置:**")
@@ -1108,10 +1600,13 @@ def main():
                         st.metric("唯一账户数", f"{df_enhanced['会员账号'].nunique():,}")
                     with col4:
                         if '彩种类型' in df_enhanced.columns:
-                            st.metric("彩种类型数", f"{df_enhanced['彩种类型'].nunique()}")
+                            known_lottery_count = len(df_enhanced[df_enhanced['彩种类型'] != '未知彩种'])
+                            unknown_lottery_count = len(df_enhanced[df_enhanced['彩种类型'] == '未知彩种'])
+                            st.metric("彩种类型", f"{df_enhanced['彩种类型'].nunique()}种", 
+                                    delta=f"+{unknown_lottery_count}未知" if unknown_lottery_count > 0 else None)
                     
                     with st.expander("📊 数据详情", expanded=False):
-                        tab1, tab2 = st.tabs(["数据概览", "彩种分布"])
+                        tab1, tab2, tab3 = st.tabs(["数据概览", "彩种分布", "未知彩种"])
                         
                         with tab1:
                             st.dataframe(df_enhanced.head(100), use_container_width=True)
@@ -1120,6 +1615,14 @@ def main():
                             if '彩种类型' in df_enhanced.columns:
                                 lottery_type_stats = df_enhanced['彩种类型'].value_counts()
                                 st.bar_chart(lottery_type_stats)
+                        
+                        with tab3:
+                            unknown_lottery_data = df_enhanced[df_enhanced['彩种类型'] == '未知彩种']
+                            if len(unknown_lottery_data) > 0:
+                                st.write(f"发现 {len(unknown_lottery_data)} 条未知彩种记录")
+                                st.dataframe(unknown_lottery_data[['原始彩种', '玩法分类', '内容']].head(50))
+                            else:
+                                st.info("未发现未知彩种记录")
                     
                     st.info("🚀 自动开始检测对刷交易...")
                     with st.spinner("🔍 正在检测对刷交易..."):
@@ -1153,7 +1656,7 @@ def main():
         with col2:
             st.subheader("📊 专业分析")
             st.markdown("""
-            - 完整彩种支持
+            - 完整彩种支持（新增3D系列）
             - 玩法分类标准化
             - 数据质量验证
             - 详细统计报告
@@ -1193,6 +1696,16 @@ def main():
         - 避免期数差异过大的账户组合
         - 默认阈值：150期
         - 可自定义调整阈值
+
+        **🔍 位置判断增强：**
+        - **双源位置判断**：同时从投注内容和玩法分类中提取位置信息
+        - **智能优先级**：内容优先，玩法补充
+        - **完整位置覆盖**：支持所有主流彩种的位置关键词
+
+        **🎲 未知彩种支持：**
+        - **通用检测**：对未在系统中预定义的彩种进行通用对刷检测
+        - **位置推断**：使用通用位置关键词进行位置判断
+        - **单独统计**：未知彩种对刷结果单独显示和统计
 
         **⚡ 自动检测：**
         - 数据上传后自动开始处理和分析
