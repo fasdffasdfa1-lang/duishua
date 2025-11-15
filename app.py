@@ -25,7 +25,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ==================== 配置类 - 修改阈值设置 ====================
+# ==================== 配置类 - 添加账户期数差异阈值 ====================
 class Config:
     """配置参数类 - 增强版"""
     def __init__(self):
@@ -65,6 +65,9 @@ class Config:
             4: 0.9,    # 4个账户：90%匹配度
             5: 0.95    # 5个账户：95%匹配度
         }
+        
+        # 新增：账户期数差异阈值
+        self.account_period_diff_threshold = 150  # 账户总投注期数最大差异阈值
         
         # 扩展：增加龙虎方向模式，并添加质合方向
         self.direction_patterns = {
@@ -410,7 +413,7 @@ class PlayCategoryNormalizer:
         
         return category_str
 
-# ==================== 增强的对刷检测器 - 修改阈值逻辑 ====================
+# ==================== 增强的对刷检测器 - 添加账户期数差异检查 ====================
 class WashTradeDetector:
     def __init__(self, config=None):
         self.config = config or Config()
@@ -687,8 +690,11 @@ class WashTradeDetector:
         return valid_combinations
     
     def _detect_combinations_for_period(self, period_data, period_accounts, n_accounts, valid_combinations):
-        """为单个期号检测组合"""
+        """为单个期号检测组合 - 添加账户期数差异检查"""
         patterns = []
+        
+        # 获取当前彩种
+        lottery = period_data['原始彩种'].iloc[0] if '原始彩种' in period_data.columns else period_data['彩种'].iloc[0]
         
         # 构建账户信息字典
         account_info = {}
@@ -706,6 +712,10 @@ class WashTradeDetector:
         
         # 检查所有可能的账户组合
         for account_group in combinations(period_accounts, n_accounts):
+            # 新增：检查账户期数差异
+            if not self._check_account_period_difference(account_group, lottery):
+                continue
+            
             group_directions = []
             group_amounts = []
             
@@ -747,7 +757,6 @@ class WashTradeDetector:
                         similarity = min(dir1_total, dir2_total) / max(dir1_total, dir2_total)
                         
                         if similarity >= similarity_threshold:
-                            lottery = period_data['原始彩种'].iloc[0] if '原始彩种' in period_data.columns else period_data['彩种'].iloc[0]
                             lottery_type = period_data['彩种类型'].iloc[0] if '彩种类型' in period_data.columns else '未知'
                             
                             record = {
@@ -767,6 +776,38 @@ class WashTradeDetector:
                             patterns.append(record)
         
         return patterns
+    
+    def _check_account_period_difference(self, account_group, lottery):
+        """检查账户组内账户的总投注期数差异是否在阈值内"""
+        if lottery not in self.account_total_periods_by_lottery:
+            return True  # 如果没有该彩种的统计信息，默认允许组合
+        
+        total_periods_stats = self.account_total_periods_by_lottery[lottery]
+        
+        # 获取账户组内每个账户的总投注期数
+        account_periods = []
+        for account in account_group:
+            if account in total_periods_stats:
+                account_periods.append(total_periods_stats[account])
+            else:
+                # 如果某个账户没有统计信息，无法比较，默认允许组合
+                return True
+        
+        # 如果只有一个账户有期数信息，无法比较，默认允许组合
+        if len(account_periods) < 2:
+            return True
+        
+        # 计算最大和最小期数差异
+        max_period = max(account_periods)
+        min_period = min(account_periods)
+        period_diff = max_period - min_period
+        
+        # 如果期数差异超过阈值，不允许组合
+        if period_diff > self.config.account_period_diff_threshold:
+            logger.info(f"跳过账户组 {account_group}，期数差异 {period_diff} > {self.config.account_period_diff_threshold}")
+            return False
+        
+        return True
     
     def find_continuous_patterns_optimized(self, wash_records):
         """优化版的连续对刷模式检测 - 修改阈值逻辑"""
@@ -1008,6 +1049,15 @@ def main():
             base_similarity_threshold = st.sidebar.slider("基础金额匹配度阈值", 0.8, 1.0, 0.8, 0.01, help="2个账户的基础匹配度阈值")
             max_accounts = st.sidebar.slider("最大检测账户数", 2, 8, 5, help="检测的最大账户组合数量")
             
+            # 新增：账户期数差异阈值配置
+            period_diff_threshold = st.sidebar.number_input(
+                "账户期数最大差异阈值", 
+                value=150, 
+                min_value=0, 
+                max_value=1000,
+                help="账户总投注期数最大允许差异，超过此值不进行组合检测"
+            )
+            
             # 活跃度阈值配置
             st.sidebar.subheader("📊 活跃度阈值配置")
             st.sidebar.markdown("**新阈值设置:**")
@@ -1029,6 +1079,7 @@ def main():
             config.min_amount = min_amount
             config.amount_similarity_threshold = base_similarity_threshold
             config.max_accounts_in_group = max_accounts
+            config.account_period_diff_threshold = period_diff_threshold
             
             # 设置多账户匹配度阈值
             config.account_count_similarity_thresholds = {
@@ -1137,6 +1188,11 @@ def main():
         - **3个账户**：85%匹配度  
         - **4个账户**：90%匹配度
         - **5个账户**：95%匹配度
+
+        **🔄 账户期数差异检查：**
+        - 避免期数差异过大的账户组合
+        - 默认阈值：150期
+        - 可自定义调整阈值
 
         **⚡ 自动检测：**
         - 数据上传后自动开始处理和分析
