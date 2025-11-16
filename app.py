@@ -753,12 +753,7 @@ class WashTradeDetector:
             
             self.data_processed = True
             self.df_valid = df_valid
-            
-            # 🎯 调试信息：显示方向提取结果
-            st.info("🔍 方向提取结果样本:")
-            sample_data = df_valid[['内容', '玩法', '投注方向']].head(10)
-            st.dataframe(sample_data)
-            
+
             return df_valid
             
         except Exception as e:
