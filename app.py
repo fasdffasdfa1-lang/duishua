@@ -1226,13 +1226,23 @@ class WashTradeDetector:
                 for record in sorted_records:
                     pattern_count[record['模式']] += 1
                 
-                # 🎯 修复主要对立类型显示
+                # 🎯 优化主要对立类型显示
                 main_opposite_type = max(opposite_type_counts.items(), key=lambda x: x[1])[0]
                 # 如果主要对立类型包含 " vs "，则进行格式化
                 if ' vs ' in main_opposite_type:
                     parts = main_opposite_type.split(' vs ')
                     if len(parts) == 2:
-                        main_opposite_type = f"{parts[0]}-{parts[1].split('-')[-1]}" if '-' in parts[1] else f"{parts[0]}-{parts[1]}"
+                        # 提取位置和方向，格式化为 "位置-方向1-方向2"
+                        pos_dir1 = parts[0].split('-')
+                        pos_dir2 = parts[1].split('-')
+                        if len(pos_dir1) >= 2 and len(pos_dir2) >= 2:
+                            # 假设位置相同，只显示一次位置
+                            position = pos_dir1[0]  # 取第一个位置
+                            dir1 = pos_dir1[-1]     # 取最后一个部分作为方向
+                            dir2 = pos_dir2[-1]     # 取最后一个部分作为方向
+                            main_opposite_type = f"{position}-{dir1}-{dir2}"
+                        else:
+                            main_opposite_type = f"{parts[0]}-{parts[1].split('-')[-1]}" if '-' in parts[1] else f"{parts[0]}-{parts[1]}"
                 
                 # 账户统计信息
                 account_stats_info = []
@@ -1358,9 +1368,8 @@ class WashTradeDetector:
                         for account, direction, amount in zip(record['账户组'], record['方向组'], record['金额组']):
                             account_directions.append(f"{account}({direction}:{amount})")
                         
-                        # 🎯 修复详细记录显示
-                        st.markdown(f"{j}. **期号:** {record['期号']} | **模式:** {record['模式']} | **匹配度:** {record['相似度']:.2%}")
-                        st.markdown(f"   **方向:** {' ↔ '.join(account_directions)}")
+                        # 🎯 简化显示：只显示期号、方向和匹配度
+                        st.markdown(f"{j}. **期号:** {record['期号']} | **方向:** {' ↔ '.join(account_directions)} | **匹配度:** {record['相似度']:.2%}")
                     
                     if i < len(lottery_patterns):
                         st.markdown("---")
