@@ -1363,8 +1363,8 @@ class WashTradeDetector:
                         for account, direction, amount in zip(record['账户组'], record['方向组'], record['金额组']):
                             account_directions.append(f"{account}({direction}:{amount})")
                         
-                        # 🎯 简化显示：只显示期号、方向和匹配度
-                        st.markdown(f"{j}. **期号:** {record['期号']} | **方向:** {' ↔ '.join(account_directions)} | **匹配度:** {record['相似度']:.2%}")
+                        # 🎯 使用 st.write 确保内容可复制
+                        st.write(f"{j}. 期号: {record['期号']} | 方向: {' ↔ '.join(account_directions)} | 匹配度: {record['相似度']:.2%}")
                     
                     if i < len(lottery_patterns):
                         st.markdown("---")
