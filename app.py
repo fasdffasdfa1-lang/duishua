@@ -69,43 +69,39 @@ class Config:
         # 账户期数差异阈值
         self.account_period_diff_threshold = 150
         
-        # 🎯 关键修复：扩展方向模式，包含各种变异情况
+        # 🎯 关键修复：扩展方向模式，但保持变异形式的独立性
         self.direction_patterns = {
-            '小': ['两面-小', '和值-小', '小', 'small', 'xia', 'xiao', '特小', '极小', '最小', '和小'],
-            '大': ['两面-大', '和值-大', '大', 'big', 'da', 'large', '特大', '极大', '最大', '和大'], 
-            '单': ['两面-单', '和值-单', '单', 'odd', 'dan', '奇数', '特单', '总单', '总和单', '和单'],
-            '双': ['两面-双', '和值-双', '双', 'even', 'shuang', '偶数', '特双', '总双', '总和双', '和双'],
+            # 基础方向
+            '小': ['两面-小', '和值-小', '小', 'small', 'xia', 'xiao'],
+            '大': ['两面-大', '和值-大', '大', 'big', 'da', 'large'], 
+            '单': ['两面-单', '和值-单', '单', 'odd', 'dan', '奇数'],
+            '双': ['两面-双', '和值-双', '双', 'even', 'shuang', '偶数'],
             '龙': ['龙', 'long', 'dragon', '龍', '龍虎-龙'],
             '虎': ['虎', 'hu', 'tiger', '龍虎-虎'],
-            '质': ['质', '质数', 'prime', 'zhi', '質', '質數', '特质'],
-            '合': ['合', '合数', 'composite', 'he', '合數', '特合']
+            '质': ['质', '质数', 'prime', 'zhi', '質', '質數'],
+            '合': ['合', '合数', 'composite', 'he', '合數'],
+            
+            # 🎯 新增：保持变异形式的独立性
+            '特小': ['特小', '极小', '最小'],
+            '特大': ['特大', '极大', '最大'],
+            '特单': ['特单'],
+            '特双': ['特双'],
+            '总和小': ['总和小', '和小'],
+            '总和大': ['总和大', '和大'],
+            '总和单': ['总和单', '和单'],
+            '总和双': ['总和双', '和双']
         }
         
-        # 🎯 关键修复：保持基础对立组
+        # 🎯 修复：扩展对立组，包含变异形式
         self.opposite_groups = [
-            {'大', '小'}, 
-            {'单', '双'}, 
-            {'龙', '虎'}, 
-            {'质', '合'}
+            # 基础对立组
+            {'大', '小'}, {'单', '双'}, {'龙', '虎'}, {'质', '合'},
+            # 变异形式对立组
+            {'特大', '特小'}, {'特单', '特双'}, 
+            {'总和大', '总和小'}, {'总和单', '总和双'}
         ]
         
-        # 🎯 新增：方向标准化映射 - 将变异形式映射到基础方向
-        self.direction_normalization = {
-            # 大的变异形式
-            '特大': '大', '极大': '大', '最大': '大', '总和大': '大', '和大': '大',
-            # 小的变异形式  
-            '特小': '小', '极小': '小', '最小': '小', '总和小': '小', '和小': '小',
-            # 单的变异形式
-            '特单': '单', '总单': '单', '总和单': '单', '和单': '单',
-            # 双的变异形式
-            '特双': '双', '总双': '双', '总和双': '双', '和双': '双',
-            # 质的变异形式
-            '特质': '质',
-            # 合的变异形式
-            '特合': '合'
-        }
-        
-        # 位置关键词映射
+        # 位置关键词映射 - 增强版
         self.position_keywords = {
             'PK10': {
                 '冠军': ['冠军', '第1名', '第一名', '前一', '冠 军', '冠　军'],
@@ -120,16 +116,16 @@ class Config:
                 '第十名': ['第十名', '第10名']
             },
             '3D': {
-                '百位': ['百位'],
-                '十位': ['十位'],
-                '个位': ['个位']
+                '百位': ['百位', '定位_百位', '百位定位'],
+                '十位': ['十位', '定位_十位', '十位定位'],
+                '个位': ['个位', '定位_个位', '个位定位']
             },
             'SSC': {
-                '第1球': ['第1球', '万位', '第一位'],
-                '第2球': ['第2球', '千位', '第二位'],
-                '第3球': ['第3球', '百位', '第三位'],
-                '第4球': ['第4球', '十位', '第四位'],
-                '第5球': ['第5球', '个位', '第五位']
+                '第1球': ['第1球', '万位', '第一位', '定位_万位', '万位定位'],
+                '第2球': ['第2球', '千位', '第二位', '定位_千位', '千位定位'],
+                '第3球': ['第3球', '百位', '第三位', '定位_百位', '百位定位'],
+                '第4球': ['第4球', '十位', '第四位', '定位_十位', '十位定位'],
+                '第5球': ['第5球', '个位', '第五位', '定位_个位', '个位定位']
             }
         }
 
@@ -550,7 +546,7 @@ class ContentParser:
     
     @staticmethod
     def extract_basic_directions(content, config):
-        """提取基础方向 - 支持变异形式但映射到基础方向"""
+        """提取方向 - 保持变异形式独立性"""
         content_str = str(content).strip()
         directions = []
         
@@ -559,43 +555,36 @@ class ContentParser:
         
         content_lower = content_str.lower()
         
-        # 🎯 第一步：提取所有可能的方向（包括变异形式）
-        all_possible_directions = []
+        # 🎯 提取所有可能的方向（保持变异形式独立性）
         for direction, patterns in config.direction_patterns.items():
             for pattern in patterns:
                 pattern_lower = pattern.lower()
-                # 检查完整匹配或包含匹配
-                if (pattern_lower in content_lower or 
-                    content_lower in pattern_lower or
-                    any(word in content_lower for word in pattern_lower.split('-'))):
-                    all_possible_directions.append(direction)
+                # 精确匹配检查
+                if (pattern_lower == content_lower or 
+                    pattern_lower in content_lower or 
+                    content_lower in pattern_lower):
+                    directions.append(direction)
                     break
         
-        # 🎯 第二步：处理变异形式，映射到基础方向
-        normalized_directions = set()
-        for direction in all_possible_directions:
-            # 如果有变异形式映射，使用映射后的基础方向
-            normalized_dir = config.direction_normalization.get(direction, direction)
-            normalized_directions.add(normalized_dir)
-            
-            # 同时检查内容中是否直接包含基础方向关键词
-            for basic_dir in ['大', '小', '单', '双', '龙', '虎', '质', '合']:
-                if basic_dir in content_str:
-                    normalized_directions.add(basic_dir)
+        return directions
+
+    @staticmethod
+    def extract_position_from_play_category(play_category, lottery_type, config):
+        """从玩法分类中提取位置信息"""
+        play_str = str(play_category).strip()
         
-        # 🎯 第三步：特殊处理 - 检查和值相关的情况
-        if '和值' in content_str or '总和' in content_str or '和' in content_str:
-            for basic_dir in ['大', '小', '单', '双']:
-                if basic_dir in content_str:
-                    normalized_directions.add(basic_dir)
+        if not play_str:
+            return '未知位置'
         
-        # 🎯 第四步：特殊处理 - 检查两面玩法
-        if '两面' in content_str:
-            for basic_dir in ['大', '小', '单', '双', '龙', '虎', '质', '合']:
-                if basic_dir in content_str:
-                    normalized_directions.add(basic_dir)
+        # 根据彩种类型获取位置关键词
+        position_keywords = config.position_keywords.get(lottery_type, {})
         
-        return list(normalized_directions)
+        for position, keywords in position_keywords.items():
+            for keyword in keywords:
+                if keyword in play_str:
+                    return position
+        
+        return '未知位置'
 
     @staticmethod
     def parse_pk10_vertical_format(content):
@@ -727,7 +716,7 @@ class WashTradeDetector:
             return None, None
     
     def enhance_data_processing(self, df_clean):
-        """增强的数据处理流程"""
+        """增强的数据处理流程 - 修复版"""
         try:
             # 彩种识别
             if '彩种' in df_clean.columns:
@@ -741,10 +730,14 @@ class WashTradeDetector:
             # 计算账户统计信息
             self.calculate_account_total_periods_by_lottery(df_clean)
             
-            # 提取投注金额和方向 - 修复版
+            # 提取投注金额和方向 - 🎯 修复：传入玩法分类
             df_clean['投注金额'] = df_clean['金额'].apply(lambda x: self.extract_bet_amount_safe(x))
             df_clean['投注方向'] = df_clean.apply(
-                lambda row: self.enhanced_extract_direction_with_position(row['内容'], row['彩种类型']), 
+                lambda row: self.enhanced_extract_direction_with_position(
+                    row['内容'], 
+                    row.get('玩法', ''),  # 🎯 传入玩法
+                    row['彩种类型']
+                ), 
                 axis=1
             )
             
@@ -760,6 +753,11 @@ class WashTradeDetector:
             
             self.data_processed = True
             self.df_valid = df_valid
+            
+            # 🎯 调试信息：显示方向提取结果
+            st.info("🔍 方向提取结果样本:")
+            sample_data = df_valid[['内容', '玩法', '投注方向']].head(10)
+            st.dataframe(sample_data)
             
             return df_valid
             
@@ -816,30 +814,30 @@ class WashTradeDetector:
             logger.warning(f"金额提取失败: {amount_text}, 错误: {e}")
             return 0
     
-    def enhanced_extract_direction_with_position(self, content, lottery_type):
-        """🎯 修复版方向提取 - 支持变异形式但映射到基础方向"""
+    def enhanced_extract_direction_with_position(self, content, play_category, lottery_type):
+        """🎯 修复版方向提取 - 保持变异形式独立性，正确提取位置"""
         try:
             if pd.isna(content):
                 return ""
             
             content_str = str(content).strip()
             
-            # 🎯 使用修复的内容解析器提取方向（包含变异形式但映射到基础方向）
-            basic_directions = self.content_parser.extract_basic_directions(content_str, self.config)
+            # 🎯 使用修复的内容解析器提取方向（保持变异形式独立性）
+            directions = self.content_parser.extract_basic_directions(content_str, self.config)
             
-            if not basic_directions:
+            if not directions:
                 return ""
             
-            # 提取位置信息
-            position = self._extract_position_from_content(content_str, lottery_type)
+            # 🎯 从玩法分类中提取位置信息
+            position = self.content_parser.extract_position_from_play_category(play_category, lottery_type, self.config)
             
-            # 🎯 选择主要方向（优先选择和值、两面相关方向）
-            main_direction = self._select_primary_direction(basic_directions, content_str)
+            # 🎯 选择主要方向
+            main_direction = self._select_primary_direction(directions, content_str)
             
             if not main_direction:
                 return ""
             
-            # 组合位置和方向
+            # 🎯 组合位置和方向
             if position and position != '未知位置':
                 return f"{position}-{main_direction}"
             else:
@@ -850,7 +848,7 @@ class WashTradeDetector:
             return ""
     
     def _select_primary_direction(self, directions, content):
-        """选择主要方向 - 优先选择和值、两面相关方向"""
+        """选择主要方向 - 修复版"""
         if not directions:
             return ""
         
@@ -859,16 +857,18 @@ class WashTradeDetector:
         
         content_str = str(content)
         
-        # 🎯 优先级规则
+        # 🎯 优先级规则 - 修复版
         priority_rules = [
-            # 高优先级：和值、总和相关
-            lambda d: any(keyword in content_str for keyword in ['和值', '总和', '和']) and d in directions,
-            # 中优先级：两面相关  
+            # 最高优先级：总和相关
+            lambda d: any(keyword in content_str for keyword in ['总和', '总']) and d in directions,
+            # 高优先级：特字相关
+            lambda d: '特' in content_str and d in directions,
+            # 中优先级：和值相关
+            lambda d: any(keyword in content_str for keyword in ['和值', '和']) and d in directions,
+            # 基础优先级：两面相关
             lambda d: '两面' in content_str and d in directions,
-            # 基础优先级：龙虎质合
-            lambda d: d in ['龙', '虎', '质', '合'] and d in directions,
-            # 默认优先级：大小单双
-            lambda d: d in ['大', '小', '单', '双'] and d in directions
+            # 默认优先级
+            lambda d: d in directions
         ]
         
         for rule in priority_rules:
@@ -876,7 +876,6 @@ class WashTradeDetector:
             if matching_directions:
                 return matching_directions[0]
         
-        # 如果没有匹配优先级规则，返回第一个方向
         return directions[0]
     
     def _extract_position_from_content(self, content, lottery_type):
