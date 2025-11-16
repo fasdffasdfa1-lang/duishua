@@ -84,31 +84,43 @@ class Config:
         # 扩展：增加龙虎对立组，并添加质合对立组
         self.opposite_groups = [{'大', '小'}, {'单', '双'}, {'龙', '虎'}, {'质', '合'}]
         
-        # 新增：位置关键词映射 - 从第一个代码借鉴
+        # 增强：位置关键词映射 - 扩展更多位置关键词
         self.position_keywords = {
             'PK10': {
-                '冠军': ['冠军', '第1名', '第一名', '前一', '冠 军', '冠　军'],
-                '亚军': ['亚军', '第2名', '第二名', '亚 军', '亚　军'],
-                '季军': ['季军', '第3名', '第三名', '季 军', '季　军'],
-                '第四名': ['第四名', '第4名'],
-                '第五名': ['第五名', '第5名'],
-                '第六名': ['第六名', '第6名'],
-                '第七名': ['第七名', '第7名'],
-                '第八名': ['第八名', '第8名'],
-                '第九名': ['第九名', '第9名'],
-                '第十名': ['第十名', '第10名']
+                '冠军': ['冠军', '第1名', '第一名', '前一', '冠 军', '冠　军', '1st', '第一名', '1名'],
+                '亚军': ['亚军', '第2名', '第二名', '亚 军', '亚　军', '2nd', '第二名', '2名'],
+                '第三名': ['第三名', '第3名', '季军', '3rd', '第三名', '3名'],
+                '第四名': ['第四名', '第4名', '4th', '第四名', '4名'],
+                '第五名': ['第五名', '第5名', '5th', '第五名', '5名'],
+                '第六名': ['第六名', '第6名', '6th', '第六名', '6名'],
+                '第七名': ['第七名', '第7名', '7th', '第七名', '7名'],
+                '第八名': ['第八名', '第8名', '8th', '第八名', '8名'],
+                '第九名': ['第九名', '第9名', '9th', '第九名', '9名'],
+                '第十名': ['第十名', '第10名', '10th', '第十名', '10名']
             },
             '3D': {
-                '百位': ['百位'],
-                '十位': ['十位'],
-                '个位': ['个位']
+                '百位': ['百位', '百', '百位胆', '百位定位胆', 'baiwei', 'bai'],
+                '十位': ['十位', '十', '十位胆', '十位定位胆', 'shiwei', 'shi'],
+                '个位': ['个位', '个', '个位胆', '个位定位胆', 'gewei', 'ge']
             },
             'SSC': {
-                '第1球': ['第1球', '万位', '第一位'],
-                '第2球': ['第2球', '千位', '第二位'],
-                '第3球': ['第3球', '百位', '第三位'],
-                '第4球': ['第4球', '十位', '第四位'],
-                '第5球': ['第5球', '个位', '第五位']
+                '第1球': ['第1球', '万位', '第一位', '1球', 'ball1', '第一球', '万位定位胆'],
+                '第2球': ['第2球', '千位', '第二位', '2球', 'ball2', '第二球', '千位定位胆'],
+                '第3球': ['第3球', '百位', '第三位', '3球', 'ball3', '第三球', '百位定位胆'],
+                '第4球': ['第4球', '十位', '第四位', '4球', 'ball4', '第四球', '十位定位胆'],
+                '第5球': ['第5球', '个位', '第五位', '5球', 'ball5', '第五球', '个位定位胆']
+            },
+            'K3': {
+                '和值': ['和值', '总和', '和数', '点数', 'hezhi', 'sum'],
+                '三军': ['三军', '独胆', '单码', 'sanjun', 'single'],
+                '二不同号': ['二不同号', '二不同', '二不同', 'two_diff'],
+                '三不同号': ['三不同号', '三不同', '三不同', 'three_diff']
+            },
+            'LHC': {
+                '特码': ['特码', '特肖', '特码A', '特码B', '特码单双', '特码大小', 'tema', 'special'],
+                '正码': ['正码', '正特', '正码1-6', '正码特', 'zhengma', 'normal'],
+                '平特': ['平特', '平特肖', '平特尾', 'pingte', 'flat_special'],
+                '连肖': ['连肖', '二肖', '三肖', '四肖', '五肖', 'lianxiao', 'continuous']
             }
         }
 
@@ -656,7 +668,7 @@ class ContentParser:
         
         return bets_by_position
 
-# ==================== 增强的对刷检测器 - 添加3D系列和位置精度 ====================
+# ==================== 增强的对刷检测器 - 完善位置判断逻辑 ====================
 class WashTradeDetector:
     def __init__(self, config=None):
         self.config = config or Config()
@@ -719,8 +731,14 @@ class WashTradeDetector:
             
             # 提取投注金额和方向 - 增强版，添加位置精度
             df_clean['投注金额'] = df_clean['金额'].apply(lambda x: self.extract_bet_amount_safe(x))
+            
+            # 修改：传入玩法分类信息进行位置判断
             df_clean['投注方向'] = df_clean.apply(
-                lambda row: self.enhanced_extract_direction_with_position(row['内容'], row['彩种类型']), 
+                lambda row: self.enhanced_extract_direction_with_position(
+                    row['内容'], 
+                    row['玩法分类'],  # 新增玩法分类参数
+                    row['彩种类型']
+                ), 
                 axis=1
             )
             
@@ -792,16 +810,17 @@ class WashTradeDetector:
             logger.warning(f"金额提取失败: {amount_text}, 错误: {e}")
             return 0
     
-    def enhanced_extract_direction_with_position(self, content, lottery_type):
-        """增强的投注方向提取 - 添加位置精度"""
+    def enhanced_extract_direction_with_position(self, content, play_category, lottery_type):
+        """增强的投注方向提取 - 同时利用玩法和内容进行位置判断"""
         try:
             if pd.isna(content):
                 return ""
             
             content_str = str(content).strip()
+            play_category_str = str(play_category).strip() if play_category else ""
             
-            # 首先提取位置信息
-            position = self._extract_position_from_content(content_str, lottery_type)
+            # 首先提取位置信息 - 修改：同时传入玩法和内容
+            position = self._extract_position_from_content_and_play(content_str, play_category_str, lottery_type)
             
             # 提取方向信息
             direction = self._extract_direction_from_content(content_str)
@@ -816,33 +835,99 @@ class WashTradeDetector:
                 return direction
             
         except Exception as e:
-            logger.warning(f"方向提取失败: {content}, 错误: {e}")
+            logger.warning(f"方向提取失败: {content}, 玩法: {play_category}, 错误: {e}")
             return ""
     
-    def _extract_position_from_content(self, content, lottery_type):
-        """从内容中提取位置信息 - 借鉴第一个代码的位置判断逻辑"""
+    def _extract_position_from_content_and_play(self, content, play_category, lottery_type):
+        """从内容和玩法中提取位置信息 - 完整的双重判断逻辑"""
         content_str = str(content).strip()
+        play_str = str(play_category).strip()
         
         # 根据彩种类型获取位置关键词
         position_keywords = self.config.position_keywords.get(lottery_type, {})
         
+        # 1. 首先从玩法分类中提取位置（高优先级）
+        play_position = self._extract_position_from_text(play_str, position_keywords, "玩法")
+        if play_position and play_position != '未知位置':
+            logger.info(f"从玩法识别位置: {play_str} -> {play_position}")
+            return play_position
+        
+        # 2. 从内容中提取位置（中优先级）
+        content_position = self._extract_position_from_text(content_str, position_keywords, "内容")
+        if content_position and content_position != '未知位置':
+            logger.info(f"从内容识别位置: {content_str} -> {content_position}")
+            return content_position
+        
+        # 3. 特殊处理竖线格式（低优先级）
+        vertical_position = self._extract_position_from_vertical_format(content_str, lottery_type)
+        if vertical_position and vertical_position != '未知位置':
+            logger.info(f"从竖线格式识别位置: {content_str} -> {vertical_position}")
+            return vertical_position
+        
+        # 4. 检查是否有位置-方向的组合格式
+        combined_position = self._extract_position_from_combined_format(content_str, position_keywords)
+        if combined_position and combined_position != '未知位置':
+            logger.info(f"从组合格式识别位置: {content_str} -> {combined_position}")
+            return combined_position
+        
+        return '未知位置'
+    
+    def _extract_position_from_text(self, text, position_keywords, source_type):
+        """从文本中提取位置信息"""
+        if not text:
+            return '未知位置'
+        
+        text_lower = text.lower()
+        
+        # 精确匹配：完整位置名称
         for position, keywords in position_keywords.items():
             for keyword in keywords:
-                if keyword in content_str:
+                keyword_lower = keyword.lower()
+                # 检查是否包含关键词（考虑边界情况）
+                if (keyword_lower == text_lower or 
+                    f" {keyword_lower} " in f" {text_lower} " or
+                    text_lower.startswith(keyword_lower + "-") or
+                    text_lower.endswith("-" + keyword_lower)):
                     return position
         
-        # 特殊处理竖线格式
-        if '|' in content_str:
+        # 模糊匹配：包含关键词
+        for position, keywords in position_keywords.items():
+            for keyword in keywords:
+                if keyword.lower() in text_lower:
+                    return position
+        
+        return '未知位置'
+    
+    def _extract_position_from_vertical_format(self, content, lottery_type):
+        """从竖线格式中提取位置信息"""
+        if '|' not in content:
+            return '未知位置'
+        
+        try:
             if lottery_type == 'PK10':
-                bets_by_position = self.content_parser.parse_pk10_vertical_format(content_str)
+                bets_by_position = self.content_parser.parse_pk10_vertical_format(content)
                 for position in bets_by_position:
                     if bets_by_position[position]:
                         return position
             elif lottery_type == '3D':
-                bets_by_position = self.content_parser.parse_3d_vertical_format(content_str)
+                bets_by_position = self.content_parser.parse_3d_vertical_format(content)
                 for position in bets_by_position:
                     if bets_by_position[position]:
                         return position
+        except Exception as e:
+            logger.warning(f"竖线格式解析失败: {content}, 错误: {str(e)}")
+        
+        return '未知位置'
+    
+    def _extract_position_from_combined_format(self, content, position_keywords):
+        """从位置-方向组合格式中提取位置"""
+        if '-' not in content:
+            return '未知位置'
+        
+        parts = content.split('-')
+        if len(parts) >= 2:
+            position_part = parts[0].strip()
+            return self._extract_position_from_text(position_part, position_keywords, "组合格式")
         
         return '未知位置'
     
@@ -852,13 +937,26 @@ class WashTradeDetector:
         
         for direction, patterns in self.config.direction_patterns.items():
             for pattern in patterns:
-                if pattern.lower() in content_str:
+                pattern_lower = pattern.lower()
+                # 精确匹配方向关键词
+                if (pattern_lower == content_str or 
+                    f" {pattern_lower} " in f" {content_str} " or
+                    content_str.startswith(pattern_lower + "-") or
+                    content_str.endswith("-" + pattern_lower) or
+                    pattern_lower in content_str):
                     return direction
         
+        # 特殊处理：和值相关的方向
         if '和值' in content_str or '和数' in content_str or '总和' in content_str:
             for direction in ['大', '小', '单', '双', '质', '合']:
                 if direction in content_str:
                     return direction
+        
+        # 检查是否有方向在内容中明确出现
+        direction_keywords = ['大', '小', '单', '双', '龙', '虎', '质', '合']
+        for direction in direction_keywords:
+            if direction in content_str:
+                return direction
         
         return ""
     
@@ -1421,7 +1519,7 @@ def main():
                             st.metric("彩种类型数", f"{df_enhanced['彩种类型'].nunique()}")
                     
                     with st.expander("📊 数据详情", expanded=False):
-                        tab1, tab2 = st.tabs(["数据概览", "彩种分布"])
+                        tab1, tab2, tab3 = st.tabs(["数据概览", "彩种分布", "位置判断详情"])
                         
                         with tab1:
                             st.dataframe(df_enhanced.head(100), use_container_width=True)
@@ -1430,6 +1528,23 @@ def main():
                             if '彩种类型' in df_enhanced.columns:
                                 lottery_type_stats = df_enhanced['彩种类型'].value_counts()
                                 st.bar_chart(lottery_type_stats)
+                        
+                        with tab3:
+                            # 显示位置判断的详细分析
+                            if '投注方向' in df_enhanced.columns:
+                                position_analysis = df_enhanced[['玩法分类', '内容', '投注方向']].copy()
+                                position_analysis['位置来源'] = position_analysis.apply(
+                                    lambda row: "玩法" if '-' in row['投注方向'] and row['玩法分类'] in row['投注方向'] else 
+                                               "内容" if '-' in row['投注方向'] else "无位置", 
+                                    axis=1
+                                )
+                                st.dataframe(position_analysis.head(50), use_container_width=True)
+                                
+                                # 位置来源统计
+                                source_stats = position_analysis['位置来源'].value_counts()
+                                st.write("**位置判断来源统计:**")
+                                for source, count in source_stats.items():
+                                    st.write(f"- {source}: {count} 条记录")
                     
                     st.info("🚀 自动开始检测对刷交易...")
                     with st.spinner("🔍 正在检测对刷交易..."):
@@ -1504,10 +1619,11 @@ def main():
         - 默认阈值：150期
         - 可自定义调整阈值
 
-        **🎲 新增彩种支持：**
-        - **3D系列**：排列三、福彩3D、极速3D等
-        - **位置精度**：冠军到第十名、百位十位个位等精确位置判断
-        - **竖线格式**：支持PK10和3D的竖线分隔格式解析
+        **🎲 位置判断增强：**
+        - **双重判断机制**：同时利用玩法和内容进行位置判断
+        - **优先级顺序**：玩法分类 > 投注内容 > 竖线格式 > 组合格式
+        - **精确匹配**：支持完整位置名称和关键词匹配
+        - **多格式支持**：PK10竖线格式、3D竖线格式、位置-方向组合格式
 
         **⚡ 自动检测：**
         - 数据上传后自动开始处理和分析
