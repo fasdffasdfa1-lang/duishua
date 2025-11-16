@@ -1054,118 +1054,114 @@ class WashTradeDetector:
         
         return valid_combinations
     
-        def _detect_combinations_for_period(self, period_data, period_accounts, n_accounts, valid_combinations):
-            """简化版组合检测 - 只处理基础方向"""
-            patterns = []
+    def _detect_combinations_for_period(self, period_data, period_accounts, n_accounts, valid_combinations):
+        """为单个期号检测组合 - 修复版"""
+        patterns = []
+        
+        # 获取当前彩种
+        lottery = period_data['原始彩种'].iloc[0] if '原始彩种' in period_data.columns else period_data['彩种'].iloc[0]
+        
+        # 🎯 构建账户信息字典
+        account_info = {}
+        for _, row in period_data.iterrows():
+            account = row['会员账号']
+            direction = row['投注方向']
+            amount = row['投注金额']
             
-            # 获取当前彩种
-            lottery = period_data['原始彩种'].iloc[0] if '原始彩种' in period_data.columns else period_data['彩种'].iloc[0]
+            if account not in account_info:
+                account_info[account] = []
+            account_info[account].append({
+                'direction': direction,
+                'amount': amount
+            })
+        
+        # 检查所有可能的账户组合
+        for account_group in combinations(period_accounts, n_accounts):
+            # 检查账户期数差异
+            if not self._check_account_period_difference(account_group, lottery):
+                continue
             
-            # 🎯 构建账户信息字典 - 只记录基础方向
-            account_info = {}
-            for _, row in period_data.iterrows():
-                account = row['会员账号']
-                direction = row['投注方向']
-                amount = row['投注金额']
-                
-                # 🎯 过滤：只处理包含基础方向的记录
-                if not any(basic_dir in direction for basic_dir in ['大', '小', '单', '双', '龙', '虎', '质', '合']):
-                    continue
-                    
-                if account not in account_info:
-                    account_info[account] = []
-                account_info[account].append({
-                    'direction': direction,
-                    'amount': amount
-                })
+            group_directions = []
+            group_amounts = []
             
-            # 检查所有可能的账户组合
-            for account_group in combinations(period_accounts, n_accounts):
-                # 检查账户期数差异
-                if not self._check_account_period_difference(account_group, lottery):
-                    continue
+            for account in account_group:
+                if account in account_info and account_info[account]:
+                    first_bet = account_info[account][0]
+                    group_directions.append(first_bet['direction'])
+                    group_amounts.append(first_bet['amount'])
+            
+            if len(group_directions) != n_accounts:
+                continue
+            
+            # 🎯 检查是否匹配任何有效的方向组合
+            for combo in valid_combinations:
+                target_directions = combo['directions']
                 
-                group_directions = []
-                group_amounts = []
+                actual_directions_sorted = sorted(group_directions)
+                target_directions_sorted = sorted(target_directions)
                 
-                for account in account_group:
-                    if account in account_info and account_info[account]:
-                        first_bet = account_info[account][0]
-                        group_directions.append(first_bet['direction'])
-                        group_amounts.append(first_bet['amount'])
-                
-                if len(group_directions) != n_accounts:
-                    continue
-                
-                # 🎯 检查是否匹配任何有效的方向组合
-                for combo in valid_combinations:
-                    target_directions = combo['directions']
+                if actual_directions_sorted == target_directions_sorted:
+                    # 计算两个方向的总金额
+                    dir1_total = 0
+                    dir2_total = 0
+                    dir1 = combo['directions'][0]  # 取第一个方向作为参考
                     
-                    actual_directions_sorted = sorted(group_directions)
-                    target_directions_sorted = sorted(target_directions)
+                    for direction, amount in zip(group_directions, group_amounts):
+                        if direction == dir1:
+                            dir1_total += amount
+                        else:
+                            dir2_total += amount
                     
-                    if actual_directions_sorted == target_directions_sorted:
-                        # 计算两个方向的总金额
-                        dir1_total = 0
-                        dir2_total = 0
-                        dir1 = combo['directions'][0]  # 取第一个方向作为参考
+                    # 检查金额相似度
+                    similarity_threshold = self.config.account_count_similarity_thresholds.get(
+                        n_accounts, self.config.amount_similarity_threshold
+                    )
+                    
+                    if dir1_total > 0 and dir2_total > 0:
+                        similarity = min(dir1_total, dir2_total) / max(dir1_total, dir2_total)
                         
-                        for direction, amount in zip(group_directions, group_amounts):
-                            if direction == dir1:
-                                dir1_total += amount
-                            else:
-                                dir2_total += amount
-                        
-                        # 检查金额相似度
-                        similarity_threshold = self.config.account_count_similarity_thresholds.get(
-                            n_accounts, self.config.amount_similarity_threshold
-                        )
-                        
-                        if dir1_total > 0 and dir2_total > 0:
-                            similarity = min(dir1_total, dir2_total) / max(dir1_total, dir2_total)
+                        if similarity >= similarity_threshold:
+                            lottery_type = period_data['彩种类型'].iloc[0] if '彩种类型' in period_data.columns else '未知'
                             
-                            if similarity >= similarity_threshold:
-                                lottery_type = period_data['彩种类型'].iloc[0] if '彩种类型' in period_data.columns else '未知'
-                                
-                                # 🎯 修复模式字符串生成
-                                if ' vs ' in combo['opposite_type']:
-                                    # 带位置的对立类型，如 "第3球-小 vs 第3球-大"
-                                    pattern_parts = combo['opposite_type'].split(' vs ')
-                                    if len(pattern_parts) == 2:
-                                        dir1_part = pattern_parts[0].split('-')
-                                        dir2_part = pattern_parts[1].split('-')
-                                        if len(dir1_part) == 2 and len(dir2_part) == 2:
-                                            # 格式：位置-方向(数量个) vs 位置-方向(数量个)
-                                            pattern_str = f"{dir1_part[0]}-{dir1_part[1]}({combo['dir1_count']}个) vs {dir2_part[0]}-{dir2_part[1]}({combo['dir2_count']}个)"
-                                        else:
-                                            pattern_str = f"{pattern_parts[0]}({combo['dir1_count']}个) vs {pattern_parts[1]}({combo['dir2_count']}个)"
+                            # 🎯 修复模式字符串生成
+                            if ' vs ' in combo['opposite_type']:
+                                # 带位置的对立类型，如 "第3球-小 vs 第3球-大"
+                                pattern_parts = combo['opposite_type'].split(' vs ')
+                                if len(pattern_parts) == 2:
+                                    dir1_part = pattern_parts[0].split('-')
+                                    dir2_part = pattern_parts[1].split('-')
+                                    if len(dir1_part) == 2 and len(dir2_part) == 2:
+                                        # 格式：位置-方向(数量个) vs 位置-方向(数量个)
+                                        pattern_str = f"{dir1_part[0]}-{dir1_part[1]}({combo['dir1_count']}个) vs {dir2_part[0]}-{dir2_part[1]}({combo['dir2_count']}个)"
                                     else:
-                                        pattern_str = combo['opposite_type']
+                                        pattern_str = f"{pattern_parts[0]}({combo['dir1_count']}个) vs {pattern_parts[1]}({combo['dir2_count']}个)"
                                 else:
-                                    # 基础对立类型，如 "大-小"
-                                    opposite_parts = combo['opposite_type'].split('-')
-                                    if len(opposite_parts) == 2:
-                                        pattern_str = f"{opposite_parts[0]}({combo['dir1_count']}个) vs {opposite_parts[1]}({combo['dir2_count']}个)"
-                                    else:
-                                        pattern_str = combo['opposite_type']
-                                
-                                record = {
-                                    '期号': period_data['期号'].iloc[0],
-                                    '彩种': lottery,
-                                    '彩种类型': lottery_type,
-                                    '账户组': list(account_group),
-                                    '方向组': group_directions,
-                                    '金额组': group_amounts,
-                                    '总金额': dir1_total + dir2_total,
-                                    '相似度': similarity,
-                                    '账户数量': n_accounts,
-                                    '模式': pattern_str,  # 🎯 使用修复后的模式字符串
-                                    '对立类型': combo['opposite_type']
-                                }
-                                
-                                patterns.append(record)
-            
-            return patterns
+                                    pattern_str = combo['opposite_type']
+                            else:
+                                # 基础对立类型，如 "大-小"
+                                opposite_parts = combo['opposite_type'].split('-')
+                                if len(opposite_parts) == 2:
+                                    pattern_str = f"{opposite_parts[0]}({combo['dir1_count']}个) vs {opposite_parts[1]}({combo['dir2_count']}个)"
+                                else:
+                                    pattern_str = combo['opposite_type']
+                            
+                            record = {
+                                '期号': period_data['期号'].iloc[0],
+                                '彩种': lottery,
+                                '彩种类型': lottery_type,
+                                '账户组': list(account_group),
+                                '方向组': group_directions,
+                                '金额组': group_amounts,
+                                '总金额': dir1_total + dir2_total,
+                                '相似度': similarity,
+                                '账户数量': n_accounts,
+                                '模式': pattern_str,  # 🎯 使用修复后的模式字符串
+                                '对立类型': combo['opposite_type']
+                            }
+                            
+                            patterns.append(record)
+        
+        return patterns
     
     def _check_account_period_difference(self, account_group, lottery):
         """检查账户组内账户的总投注期数差异是否在阈值内"""
