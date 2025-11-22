@@ -134,13 +134,15 @@ class DataProcessor:
     def __init__(self):
         self.required_columns = ['会员账号', '彩种', '期号', '玩法', '内容', '金额']
         self.column_mapping = {
-            '会员账号': ['会员账号', '会员账户', '账号', '账户', '用户账号', '玩家账号', '用户ID', '玩家ID'],
-            '彩种': ['彩种', '彩神', '彩票种类', '游戏类型', '彩票类型', '游戏彩种', '彩票名称'],
-            '期号': ['期号', '期数', '期次', '期', '奖期', '期号信息', '期号编号'],
-            '玩法': ['玩法', '玩法分类', '投注类型', '类型', '投注玩法', '玩法类型', '分类'],
-            '内容': ['内容', '投注内容', '下注内容', '注单内容', '投注号码', '号码内容', '投注信息'],
-            '金额': ['金额', '下注总额', '投注金额', '总额', '下注金额', '投注额', '金额数值']
+            '会员账号': ['会员账号', '会员账户', '账号', '账户', '用户账号', '玩家账号', '用户ID', '玩家ID', '用户名称', '玩家名称'],
+            '彩种': ['彩种', '彩神', '彩票种类', '游戏类型', '彩票类型', '游戏彩种', '彩票名称', '彩系', '游戏名称'],
+            '期号': ['期号', '期数', '期次', '期', '奖期', '期号信息', '期号编号', '开奖期号', '奖期号'],
+            '玩法': ['玩法', '玩法分类', '投注类型', '类型', '投注玩法', '玩法类型', '分类', '玩法名称', '投注方式'],
+            '内容': ['内容', '投注内容', '下注内容', '注单内容', '投注号码', '号码内容', '投注信息', '号码', '选号'],
+            '金额': ['金额', '下注总额', '投注金额', '总额', '下注金额', '投注额', '金额数值', '单注金额', '投注额', '钱', '元']
         }
+        
+        self.similarity_threshold = 0.7
     
     def smart_column_identification(self, df_columns):
         """智能列识别"""
@@ -158,21 +160,16 @@ class DataProcessor:
                     for possible_name in possible_names:
                         possible_name_lower = possible_name.lower().replace(' ', '').replace('_', '').replace('-', '')
                         
-                        if standard_col == '会员账号':
-                            account_keywords = ['会员', '账号', '账户', '用户', '玩家', 'id']
-                            if any(keyword in actual_col_lower for keyword in account_keywords):
-                                identified_columns[actual_col] = standard_col
-                                st.success(f"✅ 识别列名: {actual_col} -> {standard_col}")
-                                found = True
-                                break
-                        else:
-                            if (possible_name_lower in actual_col_lower or 
-                                actual_col_lower in possible_name_lower or
-                                len(set(possible_name_lower) & set(actual_col_lower)) / len(possible_name_lower) > 0.7):
-                                identified_columns[actual_col] = standard_col
-                                st.success(f"✅ 识别列名: {actual_col} -> {standard_col}")
-                                found = True
-                                break
+                        similarity_score = self._calculate_string_similarity(possible_name_lower, actual_col_lower)
+                        
+                        if (possible_name_lower in actual_col_lower or 
+                            actual_col_lower in possible_name_lower or
+                            similarity_score >= self.similarity_threshold):
+                            
+                            identified_columns[actual_col] = standard_col
+                            st.success(f"✅ 识别列名: {actual_col} -> {standard_col} (相似度: {similarity_score:.2f})")
+                            found = True
+                            break
                     
                     if found:
                         break
@@ -181,6 +178,22 @@ class DataProcessor:
                     st.warning(f"⚠️ 未识别到 {standard_col} 对应的列名")
         
         return identified_columns
+    
+    # ========== 🆕 新增这个方法 ==========
+    def _calculate_string_similarity(self, str1, str2):
+        """计算字符串相似度 - 整合第一套代码算法"""
+        if not str1 or not str2:
+            return 0
+        
+        # 使用集合交集计算相似度
+        set1 = set(str1)
+        set2 = set(str2)
+        intersection = set1 & set2
+        
+        if not set1:
+            return 0
+        
+        return len(intersection) / len(set1)
     
     def find_data_start(self, df):
         """智能找到数据起始位置"""
@@ -207,6 +220,38 @@ class DataProcessor:
                 null_count = df[col].isnull().sum()
                 if null_count > 0:
                     issues.append(f"列 '{col}' 有 {null_count} 个空值")
+
+        if '会员账号' in df.columns:
+            # 检查截断账号
+            truncated_accounts = df[df['会员账号'].str.contains(r'\.\.\.|…', na=False)]
+            if len(truncated_accounts) > 0:
+                issues.append(f"发现 {len(truncated_accounts)} 个可能被截断的会员账号")
+            
+            # 检查账号长度异常
+            account_lengths = df['会员账号'].str.len()
+            if account_lengths.max() > 50:
+                issues.append("发现异常长度的会员账号")
+            
+            # 显示账号格式样本
+            unique_accounts = df['会员账号'].unique()[:5]
+            sample_info = " | ".join([f"'{acc}'" for acc in unique_accounts])
+            st.info(f"会员账号格式样本: {sample_info}")
+        
+        if '期号' in df.columns:
+            df['期号'] = df['期号'].astype(str).str.replace(r'\.0$', '', regex=True)
+            invalid_periods = df[~df['期号'].str.match(r'^[\dA-Za-z]+$')]
+            if len(invalid_periods) > 0:
+                issues.append(f"发现 {len(invalid_periods)} 条无效期号记录")
+        
+        if '彩种' in df.columns:
+            lottery_stats = df['彩种'].value_counts()
+            st.info(f"🎲 彩种分布: 共{len(lottery_stats)}种，前5: {', '.join([f'{k}({v}条)' for k,v in lottery_stats.head().items()])}")
+        
+        if hasattr(df, '投注方向') and '投注方向' in df.columns:
+            direction_stats = df['投注方向'].value_counts().head(10)
+            with st.expander("🎯 投注方向分布TOP10", expanded=False):
+                for direction, count in direction_stats.items():
+                    st.write(f"  - {direction}: {count}次")
         
         # 特别检查会员账号的完整性
         if '会员账号' in df.columns:
@@ -686,6 +731,23 @@ class WashTradeDetector:
         self.account_total_periods_by_lottery = defaultdict(dict)
         self.account_record_stats_by_lottery = defaultdict(dict)
         self.performance_stats = {}
+
+        self._cache_clear()
+    
+    def _cache_clear(self):
+        """清空缓存"""
+        self.cached_extract_bet_amount.cache_clear()
+        self.cached_extract_direction.cache_clear()
+    
+    @lru_cache(maxsize=2000)  # 🔄 增大缓存容量
+    def cached_extract_bet_amount(self, amount_text):
+        """增强缓存金额提取"""
+        return self.extract_bet_amount_safe(amount_text)
+    
+    @lru_cache(maxsize=1000)  # 🔄 增大缓存容量
+    def cached_extract_direction(self, content, play_category, lottery_type):
+        """增强缓存方向提取"""
+        return self.enhanced_extract_direction_with_position(content, play_category, lottery_type)
     
     def upload_and_process(self, uploaded_file):
         """上传并处理文件"""
@@ -730,16 +792,35 @@ class WashTradeDetector:
             # 计算账户统计信息
             self.calculate_account_total_periods_by_lottery(df_clean)
             
-            # 提取投注金额和方向 - 🎯 修复：传入玩法分类
-            df_clean['投注金额'] = df_clean['金额'].apply(lambda x: self.extract_bet_amount_safe(x))
-            df_clean['投注方向'] = df_clean.apply(
-                lambda row: self.enhanced_extract_direction_with_position(
-                    row['内容'], 
-                    row.get('玩法', ''),  # 🎯 传入玩法
-                    row['彩种类型']
-                ), 
-                axis=1
-            )
+            # 提取投注金额和方向 - 使用缓存版本
+            st.info("💰 正在提取投注金额和方向...")
+            progress_bar = st.progress(0)
+            total_rows = len(df_clean)
+            
+            # 分批处理显示进度
+            batch_size = 1000
+            for i in range(0, total_rows, batch_size):
+                end_idx = min(i + batch_size, total_rows)
+                batch_df = df_clean.iloc[i:end_idx]
+                
+                # 处理当前批次
+                df_clean.loc[i:end_idx-1, '投注金额'] = batch_df['金额'].apply(
+                    lambda x: self.cached_extract_bet_amount(str(x))
+                )
+                df_clean.loc[i:end_idx-1, '投注方向'] = batch_df.apply(
+                    lambda row: self.cached_extract_direction(
+                        row['内容'], 
+                        row.get('玩法', ''), 
+                        row['彩种类型']
+                    ), 
+                    axis=1
+                )
+                
+                # 更新进度
+                progress = (end_idx) / total_rows
+                progress_bar.progress(progress)
+            
+            progress_bar.empty()
             
             # 过滤有效记录
             df_valid = df_clean[
@@ -1497,6 +1578,16 @@ def main():
             st.success(f"✅ 已上传文件: {uploaded_file.name}")
             
             with st.spinner("🔄 正在解析数据..."):
+                with st.spinner("🔍 正在进行增强列名识别..."):
+                    df_temp = pd.read_excel(uploaded_file, header=None, nrows=50)
+                    column_mapping = detector.data_processor.smart_column_identification(df_temp.columns)
+                    if column_mapping:
+                        df = df_temp.rename(columns=column_mapping)
+                        st.success("✅ 增强列名识别完成!")
+                
+                with st.spinner("🔍 正在进行增强数据验证..."):
+                    quality_issues = detector.data_processor.validate_data_quality(df)
+                
                 df_enhanced, filename = detector.upload_and_process(uploaded_file)
                 
                 if df_enhanced is not None and len(df_enhanced) > 0:
