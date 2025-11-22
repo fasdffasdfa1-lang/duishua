@@ -1352,6 +1352,59 @@ class WashTradeDetector:
         
         return continuous_patterns
 
+    def _calculate_detailed_account_stats(self, patterns):
+        """计算详细账户统计 - 类似第一套代码的格式"""
+        account_participation = defaultdict(lambda: {
+            'periods': set(),
+            'lotteries': set(),
+            'positions': set(),
+            'total_combinations': 0,
+            'total_bet_amount': 0,
+            'continuous_periods': 0
+        })
+        
+        # 收集账户参与信息
+        for pattern in patterns:
+            for account in pattern['账户组']:
+                account_info = account_participation[account]
+                
+                # 添加期号
+                for record in pattern['详细记录']:
+                    account_info['periods'].add(record['期号'])
+                
+                # 添加彩种
+                account_info['lotteries'].add(pattern['彩种'])
+                
+                # 添加位置信息（从详细记录中提取）
+                for record in pattern['详细记录']:
+                    for direction in record['方向组']:
+                        if '-' in direction:  # 格式为"位置-方向"
+                            position = direction.split('-')[0]
+                            account_info['positions'].add(position)
+                
+                account_info['total_combinations'] += 1
+                account_info['total_bet_amount'] += pattern['总投注金额'] / len(pattern['账户组'])  # 平均分配金额
+                account_info['continuous_periods'] = max(account_info['continuous_periods'], pattern['对刷期数'])
+        
+        # 转换为显示格式
+        account_stats = []
+        for account, info in account_participation.items():
+            stat_record = {
+                '账户': account,
+                '参与组合数': info['total_combinations'],
+                '涉及期数': len(info['periods']),
+                '涉及彩种': len(info['lotteries']),
+                '总投注金额': info['total_bet_amount'],
+                '平均每期金额': info['total_bet_amount'] / len(info['periods']) if info['periods'] else 0
+            }
+            
+            if info['positions']:
+                stat_record['涉及位置'] = ', '.join(sorted(info['positions']))
+            
+            account_stats.append(stat_record)
+        
+        return sorted(account_stats, key=lambda x: x['参与组合数'], reverse=True)
+
     def exclude_multi_direction_accounts(self, df_valid):
         """排除同一账户多方向下注"""
         multi_direction_mask = (
@@ -1421,7 +1474,24 @@ class WashTradeDetector:
         if not patterns:
             st.error("❌ 未发现符合阈值条件的连续对刷模式")
             return
+
+        st.subheader("👥 参与账户详细统计")
         
+        # 计算账户参与统计
+        account_stats = self._calculate_detailed_account_stats(patterns)
+        
+        if account_stats:
+            df_stats = pd.DataFrame(account_stats)
+            
+            # 使用第一套代码的展示样式
+            st.dataframe(
+                df_stats,
+                use_container_width=True,
+                hide_index=True,
+                height=min(400, len(df_stats) * 35 + 38)
+            )
+        
+        # ========== 原有的彩种分组显示保持不变 ==========
         patterns_by_lottery = defaultdict(list)
         for pattern in patterns:
             lottery_key = pattern['彩种']
@@ -1445,12 +1515,12 @@ class WashTradeDetector:
                         for account, direction, amount in zip(record['账户组'], record['方向组'], record['金额组']):
                             account_directions.append(f"{account}({direction}:{amount})")
                         
-                        # 🎯 使用 st.write 确保内容可复制
                         st.write(f"{j}. 期号: {record['期号']} | 方向: {' ↔ '.join(account_directions)} | 匹配度: {record['相似度']:.2%}")
                     
                     if i < len(lottery_patterns):
                         st.markdown("---")
         
+        # 调用修改后的总体统计显示
         self.display_summary_statistics(patterns)
     
     def display_summary_statistics(self, patterns):
@@ -1484,32 +1554,132 @@ class WashTradeDetector:
             for opposite_type, count in pattern['对立类型分布'].items():
                 opposite_type_stats[opposite_type] += count
         
-        st.write(f"**🎯 检测结果汇总:**")
-        st.write(f"- 对刷组数: {total_groups} 组")
-        st.write(f"- 涉及账户: {total_accounts} 个")
-        st.write(f"- 总对刷期数: {total_wash_periods} 期")
-        st.write(f"- 总涉及金额: {total_amount:.2f} 元")
+        col1, col2, col3, col4 = st.columns(4)
         
-        st.write(f"**👥 按账户数量分布:**")
-        for account_count, count in sorted(account_count_stats.items()):
-            st.write(f"- {account_count}个账户组: {count} 组")
+        with col1:
+            st.metric(
+                label="总对刷组数", 
+                value=total_groups,
+                help="检测到的对刷组合总数"
+            )
         
-        st.write(f"**🎲 按彩种分布:**")
-        for lottery, count in lottery_stats.items():
-            st.write(f"- {lottery}: {count} 组")
+        with col2:
+            st.metric(
+                label="涉及账户数", 
+                value=total_accounts,
+                help="参与对刷的账户总数"
+            )
+        
+        with col3:
+            st.metric(
+                label="总对刷期数", 
+                value=total_wash_periods,
+                help="发生对刷行为的期数总和"
+            )
+        
+        with col4:
+            st.metric(
+                label="总涉及金额", 
+                value=f"¥{total_amount:,.2f}",
+                help="对刷行为涉及的总金额"
+            )
+        
+        # ========== 🆕 新增这里：彩种类型统计卡片 ==========
+        st.subheader("🎲 彩种类型统计")
+        
+        # 定义彩种类型显示名称
+        lottery_display_names = {
+            'PK10': 'PK10/赛车',
+            'K3': '快三',
+            'LHC': '六合彩', 
+            'SSC': '时时彩',
+            '3D': '3D系列'
+        }
+        
+        # 创建彩种统计列
+        lottery_cols = st.columns(min(5, len(lottery_stats)))
+        
+        for i, (lottery, count) in enumerate(lottery_stats.items()):
+            if i < len(lottery_cols):
+                with lottery_cols[i]:
+                    display_name = lottery_display_names.get(lottery, lottery)
+                    # 计算该彩种的总对刷期数
+                    lottery_periods = sum(p['对刷期数'] for p in patterns if p['彩种'] == lottery)
+                    st.metric(
+                        label=display_name,
+                        value=f"{count}组",
+                        delta=f"{lottery_periods}期"
+                    )
+        
+        # ========== 🆕 新增这里：账户数量分布卡片 ==========
+        st.subheader("👥 账户组合分布")
+        
+        account_cols = st.columns(min(4, len(account_count_stats)))
+        
+        for i, (account_count, group_count) in enumerate(sorted(account_count_stats.items())):
+            if i < len(account_cols):
+                with account_cols[i]:
+                    # 计算该类型组合的总对刷期数
+                    account_type_periods = sum(p['对刷期数'] for p in patterns if p['账户数量'] == account_count)
+                    st.metric(
+                        label=f"{account_count}账户组合",
+                        value=f"{group_count}组",
+                        delta=f"{account_type_periods}期"
+                    )
+        
+        # ========== 🆕 新增这里：活跃度分布卡片 ==========
+        st.subheader("📈 活跃度分布")
+        
+        activity_display_names = {
+            'low': '低活跃',
+            'medium': '中活跃',
+            'high': '高活跃',
+            'very_high': '极高活跃'
+        }
+        
+        activity_cols = st.columns(min(4, len(activity_stats)))
+        
+        for i, (activity, count) in enumerate(activity_stats.items()):
+            if i < len(activity_cols):
+                with activity_cols[i]:
+                    display_name = activity_display_names.get(activity, activity)
+                    # 计算该活跃度的总对刷期数
+                    activity_periods = sum(p['对刷期数'] for p in patterns if p['账户活跃度'] == activity)
+                    st.metric(
+                        label=display_name,
+                        value=f"{count}组",
+                        delta=f"{activity_periods}期"
+                    )
+        
+        # ========== 保留原有的详细分布信息在折叠框中 ==========
+        with st.expander("📋 详细分布信息", expanded=False):
+            st.write(f"**🎯 检测结果汇总:**")
+            st.write(f"- 对刷组数: {total_groups} 组")
+            st.write(f"- 涉及账户: {total_accounts} 个")
+            st.write(f"- 总对刷期数: {total_wash_periods} 期")
+            st.write(f"- 总涉及金额: {total_amount:.2f} 元")
             
-        st.write(f"**📈 按活跃度分布:**")
-        for activity, count in activity_stats.items():
-            st.write(f"- {activity}活跃度: {count} 组")
+            st.write(f"**👥 按账户数量分布:**")
+            for account_count, count in sorted(account_count_stats.items()):
+                st.write(f"- {account_count}个账户组: {count} 组")
             
-        st.write(f"**🎯 按对立类型分布:**")
-        for opposite_type, count in opposite_type_stats.items():
-            # 🎯 修复对立类型显示格式
-            if ' vs ' in opposite_type:
-                display_type = opposite_type.replace(' vs ', '-')
-            else:
-                display_type = opposite_type
-            st.write(f"- {display_type}: {count} 期对刷")
+            st.write(f"**🎲 按彩种分布:**")
+            for lottery, count in lottery_stats.items():
+                st.write(f"- {lottery}: {count} 组")
+                
+            st.write(f"**📈 按活跃度分布:**")
+            for activity, count in activity_stats.items():
+                display_name = activity_display_names.get(activity, activity)
+                st.write(f"- {display_name}: {count} 组")
+                
+            st.write(f"**🎯 按对立类型分布:**")
+            for opposite_type, count in opposite_type_stats.items():
+                # 修复对立类型显示格式
+                if ' vs ' in opposite_type:
+                    display_type = opposite_type.replace(' vs ', '-')
+                else:
+                    display_type = opposite_type
+                st.write(f"- {display_type}: {count} 期对刷")
 
 # ==================== 主函数 ====================
 def main():
