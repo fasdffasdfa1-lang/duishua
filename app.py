@@ -344,6 +344,7 @@ class DataProcessor:
             if '期号' in df_clean.columns:
                 df_clean['期号'] = df_clean['期号'].str.replace(r'\.0$', '', regex=True)
             
+            # ========== 🔄 修复这里：调用增强的数据验证 ==========
             self.validate_data_quality(df_clean)
             
             st.success(f"✅ 数据清洗完成: {initial_count} -> {len(df_clean)} 条记录")
@@ -1578,20 +1579,18 @@ def main():
             st.success(f"✅ 已上传文件: {uploaded_file.name}")
             
             with st.spinner("🔄 正在解析数据..."):
-                with st.spinner("🔍 正在进行增强列名识别..."):
-                    df_temp = pd.read_excel(uploaded_file, header=None, nrows=50)
-                    column_mapping = detector.data_processor.smart_column_identification(df_temp.columns)
-                    if column_mapping:
-                        df = df_temp.rename(columns=column_mapping)
-                        st.success("✅ 增强列名识别完成!")
-                
-                with st.spinner("🔍 正在进行增强数据验证..."):
-                    quality_issues = detector.data_processor.validate_data_quality(df)
-                
+                # ========== 🆕 修复这里：正确的数据处理流程 ==========
+                # 直接调用 upload_and_process，它会内部处理列名识别和数据验证
                 df_enhanced, filename = detector.upload_and_process(uploaded_file)
                 
                 if df_enhanced is not None and len(df_enhanced) > 0:
                     st.success("✅ 数据解析完成")
+                    
+                    # ========== 🆕 新增这里：显示数据质量验证结果 ==========
+                    # 在数据处理器中已经有数据验证，这里只是显示结果
+                    with st.expander("📊 数据质量验证结果", expanded=False):
+                        # 这里可以显示detector中已经进行的验证结果
+                        st.info("数据质量验证已在处理过程中完成")
                     
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
