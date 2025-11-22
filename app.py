@@ -1560,12 +1560,9 @@ class WashTradeDetector:
                     
                     if i < len(lottery_patterns):
                         st.markdown("---")
-        
-        # 调用修改后的总体统计显示
-        self.display_summary_statistics(patterns)
     
-    def _display_compact_summary(self, patterns):
-        """显示紧凑版总体统计 - 根据您提供的图片格式"""
+    def display_summary_statistics(self, patterns):
+        """显示总体统计 - 根据最新图片样式调整"""
         if not patterns:
             return
             
@@ -1593,7 +1590,7 @@ class WashTradeDetector:
             for opposite_type, count in pattern['对立类型分布'].items():
                 opposite_type_stats[opposite_type] += count
         
-        # ========== 第一行：关键指标 ==========
+        # ========== 第一行：总体指标 ==========
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
@@ -1611,18 +1608,28 @@ class WashTradeDetector:
         # ========== 第二行：彩种类型统计 ==========
         st.subheader("🎲 彩种类型统计")
         
+        # 定义彩种类型显示名称
+        lottery_display_names = {
+            'PK10': 'PK10/赛车',
+            'K3': '快三',
+            'LHC': '六合彩', 
+            'SSC': '时时彩',
+            '3D': '3D系列'
+        }
+        
         # 创建彩种统计列
         lottery_cols = st.columns(min(5, len(lottery_stats)))
         
         for i, (lottery, count) in enumerate(lottery_stats.items()):
             if i < len(lottery_cols):
                 with lottery_cols[i]:
+                    display_name = lottery_display_names.get(lottery, lottery)
                     st.metric(
-                        label=lottery,
+                        label=display_name,
                         value=f"{count}组"
                     )
         
-        # ========== 第三行：两列布局 ==========
+        # ========== 第三行：账户组合分布和活跃度分布 ==========
         col_left, col_right = st.columns(2)
         
         with col_left:
@@ -1661,12 +1668,12 @@ class WashTradeDetector:
             st.metric("平均每组金额", f"¥{avg_group_amount:,.2f}")
         
         with metric_col2:
-            # 业务类型总额
+            # 计算业务类型总金额
             business_total = total_amount
             st.metric("业务类型总额", f"¥{business_total:,.2f}")
         
         with metric_col3:
-            # 参与总账户数
+            # 显示总账户数
             st.metric("参与总账户数", total_accounts)
         
         # ========== 第五行：主要对立类型 ==========
