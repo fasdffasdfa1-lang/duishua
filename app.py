@@ -1497,7 +1497,7 @@ class WashTradeDetector:
                 st.write(f"- 发现模式: {self.performance_stats['total_patterns']} 个")
     
     def display_detailed_results(self, patterns):
-        """显示详细检测结果 - 调整顺序，总体统计在前"""
+        """显示详细检测结果 - 确保只有一个总体统计"""
         st.write("\n" + "="*60)
         st.write("🎯 多账户对刷检测结果")
         st.write("="*60)
@@ -1506,12 +1506,13 @@ class WashTradeDetector:
             st.error("❌ 未发现符合阈值条件的连续对刷模式")
             return
     
-        # ========== 第一步：显示总体统计 ==========
-        self.display_summary_statistics(patterns)
+        # ========== 只显示一个总体统计 ==========
+        # 直接在这里显示总体统计，不再调用单独的display_summary_statistics方法
+        self._display_compact_summary(patterns)
         
         st.write("\n" + "="*60)
         
-        # ========== 第二步：显示参与账户详细统计 ==========
+        # ========== 显示参与账户详细统计 ==========
         st.subheader("👥 参与账户详细统计")
         
         # 计算账户参与统计
@@ -1520,7 +1521,7 @@ class WashTradeDetector:
         if account_stats:
             df_stats = pd.DataFrame(account_stats)
             
-            # 使用表格形式展示，类似您提供的图片格式
+            # 使用表格形式展示
             st.dataframe(
                 df_stats,
                 use_container_width=True,
@@ -1528,7 +1529,7 @@ class WashTradeDetector:
                 height=min(400, len(df_stats) * 35 + 38)
             )
         
-        # ========== 第三步：按彩种分组显示详细对刷组 ==========
+        # ========== 按彩种分组显示详细对刷组 ==========
         st.write("\n" + "="*60)
         st.subheader("🔍 详细对刷组分析")
         
@@ -1563,8 +1564,8 @@ class WashTradeDetector:
         # 调用修改后的总体统计显示
         self.display_summary_statistics(patterns)
     
-    def display_summary_statistics(self, patterns):
-        """显示总体统计 - 根据最新图片样式调整"""
+    def _display_compact_summary(self, patterns):
+        """显示紧凑版总体统计 - 根据您提供的图片格式"""
         if not patterns:
             return
             
@@ -1592,7 +1593,7 @@ class WashTradeDetector:
             for opposite_type, count in pattern['对立类型分布'].items():
                 opposite_type_stats[opposite_type] += count
         
-        # ========== 第一行：总体指标 ==========
+        # ========== 第一行：关键指标 ==========
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
@@ -1610,28 +1611,18 @@ class WashTradeDetector:
         # ========== 第二行：彩种类型统计 ==========
         st.subheader("🎲 彩种类型统计")
         
-        # 定义彩种类型显示名称
-        lottery_display_names = {
-            'PK10': 'PK10/赛车',
-            'K3': '快三',
-            'LHC': '六合彩', 
-            'SSC': '时时彩',
-            '3D': '3D系列'
-        }
-        
         # 创建彩种统计列
         lottery_cols = st.columns(min(5, len(lottery_stats)))
         
         for i, (lottery, count) in enumerate(lottery_stats.items()):
             if i < len(lottery_cols):
                 with lottery_cols[i]:
-                    display_name = lottery_display_names.get(lottery, lottery)
                     st.metric(
-                        label=display_name,
+                        label=lottery,
                         value=f"{count}组"
                     )
         
-        # ========== 第三行：账户组合分布和活跃度分布 ==========
+        # ========== 第三行：两列布局 ==========
         col_left, col_right = st.columns(2)
         
         with col_left:
@@ -1670,12 +1661,12 @@ class WashTradeDetector:
             st.metric("平均每组金额", f"¥{avg_group_amount:,.2f}")
         
         with metric_col2:
-            # 计算业务类型总金额
+            # 业务类型总额
             business_total = total_amount
             st.metric("业务类型总额", f"¥{business_total:,.2f}")
         
         with metric_col3:
-            # 显示总账户数
+            # 参与总账户数
             st.metric("参与总账户数", total_accounts)
         
         # ========== 第五行：主要对立类型 ==========
