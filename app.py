@@ -1507,8 +1507,8 @@ class WashTradeDetector:
             return
     
         # ========== 只显示一个总体统计 ==========
-        # 直接在这里显示总体统计，不再调用单独的display_summary_statistics方法
-        self._display_compact_summary(patterns)
+        # 使用 display_summary_statistics 方法
+        self.display_summary_statistics(patterns)  # 修复这里：使用已定义的方法
         
         st.write("\n" + "="*60)
         
@@ -1560,6 +1560,8 @@ class WashTradeDetector:
                     
                     if i < len(lottery_patterns):
                         st.markdown("---")
+        
+        # 🚫 删除这一行：self.display_summary_statistics(patterns)
     
     def display_summary_statistics(self, patterns):
         """显示总体统计 - 根据最新图片样式调整"""
