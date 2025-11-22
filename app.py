@@ -844,34 +844,44 @@ class WashTradeDetector:
             return pd.DataFrame()
     
     def extract_bet_amount_safe(self, amount_text):
-        """安全提取投注金额"""
+        """安全提取投注金额 - 增强版"""
         try:
             if pd.isna(amount_text):
                 return 0
             
             text = str(amount_text).strip()
             
+            # 处理科学计数法
+            if 'E' in text or 'e' in text:
+                try:
+                    amount = float(text)
+                    if amount >= self.config.min_amount:
+                        return amount
+                except:
+                    pass
+            
             # 直接转换
             try:
-                cleaned_text = text.replace(',', '').replace('，', '').replace(' ', '')
-                if re.match(r'^-?\d+(\.\d+)?$', cleaned_text):
+                # 移除所有非数字字符（除了小数点和负号）
+                cleaned_text = re.sub(r'[^\d.-]', '', text)
+                if cleaned_text and cleaned_text != '-':
                     amount = float(cleaned_text)
                     if amount >= self.config.min_amount:
                         return amount
             except:
                 pass
             
-            # 模式匹配
+            # 模式匹配 - 增强模式
             patterns = [
-                r'投注[:：]?\s*(\d+[,，]?\d*\.?\d*)',
-                r'下注[:：]?\s*(\d+[,，]?\d*\.?\d*)',
-                r'金额[:：]?\s*(\d+[,，]?\d*\.?\d*)',
-                r'总额[:：]?\s*(\d+[,，]?\d*\.?\d*)',
-                r'(\d+[,，]?\d*\.?\d*)\s*元',
-                r'￥\s*(\d+[,，]?\d*\.?\d*)',
-                r'¥\s*(\d+[,，]?\d*\.?\d*)',
-                r'[\$￥¥]?\s*(\d+[,，]?\d*\.?\d+)',
-                r'(\d+[,，]?\d*\.?\d+)',
+                r'投注[:：]?\s*([-]?\d+[,，]?\d*\.?\d*)',
+                r'下注[:：]?\s*([-]?\d+[,，]?\d*\.?\d*)',
+                r'金额[:：]?\s*([-]?\d+[,，]?\d*\.?\d*)',
+                r'总额[:：]?\s*([-]?\d+[,，]?\d*\.?\d*)',
+                r'([-]?\d+[,，]?\d*\.?\d*)\s*元',
+                r'￥\s*([-]?\d+[,，]?\d*\.?\d*)',
+                r'¥\s*([-]?\d+[,，]?\d*\.?\d*)',
+                r'[\$￥¥]?\s*([-]?\d+[,，]?\d*\.?\d+)',
+                r'([-]?\d+[,，]?\d*\.?\d+)',
             ]
             
             for pattern in patterns:
@@ -1353,15 +1363,31 @@ class WashTradeDetector:
         return continuous_patterns
 
     def _calculate_detailed_account_stats(self, patterns):
-        """计算详细账户统计 - 类似第一套代码的格式"""
+        """计算详细账户统计 - 修复金额计算逻辑"""
         account_participation = defaultdict(lambda: {
             'periods': set(),
             'lotteries': set(),
             'positions': set(),
             'total_combinations': 0,
-            'total_bet_amount': 0,
-            'continuous_periods': 0
+            'total_bet_amount': 0,  # 修复：使用实际投注金额而不是平均分配
+            'continuous_periods': 0,
+            'actual_bet_records': []  # 新增：记录实际投注金额
         })
+        
+        # 🎯 修复：首先从原始数据中收集账户的实际投注金额
+        if self.df_valid is not None:
+            for _, row in self.df_valid.iterrows():
+                account = row['会员账号']
+                amount = row['投注金额']
+                period = row['期号']
+                lottery = row['彩种'] if '彩种' in row else '未知'
+                
+                if account in account_participation:
+                    account_participation[account]['actual_bet_records'].append({
+                        'amount': amount,
+                        'period': period,
+                        'lottery': lottery
+                    })
         
         # 收集账户参与信息
         for pattern in patterns:
@@ -1383,8 +1409,24 @@ class WashTradeDetector:
                             account_info['positions'].add(position)
                 
                 account_info['total_combinations'] += 1
-                account_info['total_bet_amount'] += pattern['总投注金额'] / len(pattern['账户组'])  # 平均分配金额
                 account_info['continuous_periods'] = max(account_info['continuous_periods'], pattern['对刷期数'])
+                
+                # 🎯 修复：使用实际投注金额而不是平均分配
+                # 计算该账户在对刷模式中的实际投注金额
+                pattern_bet_amount = 0
+                for record in pattern['详细记录']:
+                    for acc, amt in zip(record['账户组'], record['金额组']):
+                        if acc == account:
+                            pattern_bet_amount += amt
+                
+                account_info['total_bet_amount'] += pattern_bet_amount
+        
+        # 🎯 修复：对于没有在对刷模式中找到金额记录的账户，使用原始数据中的金额
+        for account, info in account_participation.items():
+            if info['total_bet_amount'] == 0 and info['actual_bet_records']:
+                # 使用原始数据中该账户的总投注金额
+                total_actual_bet = sum(record['amount'] for record in info['actual_bet_records'])
+                info['total_bet_amount'] = total_actual_bet
         
         # 转换为显示格式
         account_stats = []
@@ -1403,7 +1445,7 @@ class WashTradeDetector:
             
             account_stats.append(stat_record)
         
-        return sorted(account_stats, key=lambda x: x['参与组合数'], reverse=True)
+        return sorted(account_stats, key=lambda x: x['总投注金额'], reverse=True)
 
     def exclude_multi_direction_accounts(self, df_valid):
         """排除同一账户多方向下注"""
@@ -1524,7 +1566,7 @@ class WashTradeDetector:
         self.display_summary_statistics(patterns)
     
     def display_summary_statistics(self, patterns):
-        """显示总体统计"""
+        """显示总体统计 - 整合版，去除重复的详细分布信息"""
         if not patterns:
             return
             
@@ -1554,6 +1596,7 @@ class WashTradeDetector:
             for opposite_type, count in pattern['对立类型分布'].items():
                 opposite_type_stats[opposite_type] += count
         
+        # ========== 总体指标卡片 ==========
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
@@ -1584,7 +1627,7 @@ class WashTradeDetector:
                 help="对刷行为涉及的总金额"
             )
         
-        # ========== 🆕 新增这里：彩种类型统计卡片 ==========
+        # ========== 🎯 整合的彩种类型统计 ==========
         st.subheader("🎲 彩种类型统计")
         
         # 定义彩种类型显示名称
@@ -1611,7 +1654,7 @@ class WashTradeDetector:
                         delta=f"{lottery_periods}期"
                     )
         
-        # ========== 🆕 新增这里：账户数量分布卡片 ==========
+        # ========== 👥 整合的账户组合分布 ==========
         st.subheader("👥 账户组合分布")
         
         account_cols = st.columns(min(4, len(account_count_stats)))
@@ -1627,14 +1670,14 @@ class WashTradeDetector:
                         delta=f"{account_type_periods}期"
                     )
         
-        # ========== 🆕 新增这里：活跃度分布卡片 ==========
+        # ========== 📈 整合的活跃度分布 ==========
         st.subheader("📈 活跃度分布")
         
         activity_display_names = {
-            'low': '低活跃',
-            'medium': '中活跃',
-            'high': '高活跃',
-            'very_high': '极高活跃'
+            'low': '低活跃度',
+            'medium': '中活跃度',
+            'high': '高活跃度',
+            'very_high': '极高活跃度'
         }
         
         activity_cols = st.columns(min(4, len(activity_stats)))
@@ -1651,35 +1694,58 @@ class WashTradeDetector:
                         delta=f"{activity_periods}期"
                     )
         
-        # ========== 保留原有的详细分布信息在折叠框中 ==========
-        with st.expander("📋 详细分布信息", expanded=False):
-            st.write(f"**🎯 检测结果汇总:**")
-            st.write(f"- 对刷组数: {total_groups} 组")
-            st.write(f"- 涉及账户: {total_accounts} 个")
-            st.write(f"- 总对刷期数: {total_wash_periods} 期")
-            st.write(f"- 总涉及金额: {total_amount:.2f} 元")
-            
-            st.write(f"**👥 按账户数量分布:**")
+        # ========== 🎯 多功能数据展示 ==========
+        st.subheader("📈 关键指标")
+        
+        # 计算平均每组金额
+        avg_group_amount = total_amount / total_groups if total_groups > 0 else 0
+        
+        metric_col1, metric_col2, metric_col3 = st.columns(3)
+        
+        with metric_col1:
+            st.metric("平均每组金额", f"¥{avg_group_amount:,.2f}")
+        
+        with metric_col2:
+            # 计算业务类型总金额（可以自定义业务逻辑）
+            business_total = total_amount  # 这里可以根据需要调整业务逻辑
+            st.metric("业务类型总额", f"¥{business_total:,.2f}")
+        
+        with metric_col3:
+            # 显示总账户数（作为多功能数据）
+            st.metric("参与总账户数", total_accounts)
+        
+        # ========== 🚫 移除重复的详细分布信息展开框 ==========
+        # 原来的 with st.expander("📋 详细分布信息", expanded=False) 部分已删除
+        
+        # ========== 🆕 简洁的关键数据汇总 ==========
+        st.info("🎯 **关键数据汇总**")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.write("**按账户数量分布:**")
             for account_count, count in sorted(account_count_stats.items()):
-                st.write(f"- {account_count}个账户组: {count} 组")
+                st.write(f"- {account_count}个账户组: {count}组")
             
-            st.write(f"**🎲 按彩种分布:**")
+            st.write("**按彩种分布:**")
             for lottery, count in lottery_stats.items():
-                st.write(f"- {lottery}: {count} 组")
-                
-            st.write(f"**📈 按活跃度分布:**")
+                display_name = lottery_display_names.get(lottery, lottery)
+                st.write(f"- {display_name}: {count}组")
+        
+        with col2:
+            st.write("**按活跃度分布:**")
             for activity, count in activity_stats.items():
                 display_name = activity_display_names.get(activity, activity)
-                st.write(f"- {display_name}: {count} 组")
-                
-            st.write(f"**🎯 按对立类型分布:**")
-            for opposite_type, count in opposite_type_stats.items():
-                # 修复对立类型显示格式
+                st.write(f"- {display_name}: {count}组")
+            
+            st.write("**主要对立类型:**")
+            top_opposites = sorted(opposite_type_stats.items(), key=lambda x: x[1], reverse=True)[:3]
+            for opposite_type, count in top_opposites:
+                # 简化对立类型显示
                 if ' vs ' in opposite_type:
                     display_type = opposite_type.replace(' vs ', '-')
                 else:
                     display_type = opposite_type
-                st.write(f"- {display_type}: {count} 期对刷")
+                st.write(f"- {display_type}: {count}期")
 
 # ==================== 主函数 ====================
 def main():
