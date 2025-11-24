@@ -802,24 +802,42 @@ class WashTradeDetector:
             return None, None
     
     def enhance_data_processing(self, df_clean):
-        """增强的数据处理流程 - 修复版"""
+        """增强的数据处理流程 - 添加详细调试信息"""
         try:
             # 彩种识别
             if '彩种' in df_clean.columns:
                 df_clean['原始彩种'] = df_clean['彩种']
                 df_clean['彩种类型'] = df_clean['彩种'].apply(self.lottery_identifier.identify_lottery_type)
+                st.info(f"🎲 彩种识别完成，共识别 {df_clean['彩种类型'].nunique()} 种彩种类型")
             
             # 玩法分类统一
             if '玩法' in df_clean.columns:
                 df_clean['玩法分类'] = df_clean['玩法'].apply(self.play_normalizer.normalize_category)
+                st.info(f"🎯 玩法分类完成，共 {df_clean['玩法分类'].nunique()} 种玩法分类")
             
             # 计算账户统计信息
             self.calculate_account_total_periods_by_lottery(df_clean)
+            
+            # 🆕 详细调试：显示数据样本
+            st.subheader("🔍 数据样本分析")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("原始数据样本:")
+                st.dataframe(df_clean[['会员账号', '彩种', '期号', '玩法', '内容']].head(10))
+            
+            with col2:
+                st.write("彩种类型分布:")
+                lottery_dist = df_clean['彩种类型'].value_counts()
+                st.dataframe(lottery_dist)
             
             # 提取投注金额和方向 - 使用缓存版本
             st.info("💰 正在提取投注金额和方向...")
             progress_bar = st.progress(0)
             total_rows = len(df_clean)
+            
+            # 🆕 详细调试：显示提取过程
+            sample_extractions = []
             
             # 分批处理显示进度
             batch_size = 1000
@@ -835,10 +853,25 @@ class WashTradeDetector:
                     lambda row: self.cached_extract_direction(
                         row['内容'], 
                         row.get('玩法', ''), 
-                        row['彩种类型']
+                        row['彩种类型'] if '彩种类型' in df_clean.columns else 'six_mark'
                     ), 
                     axis=1
                 )
+                
+                # 🆕 收集样本提取结果用于调试
+                if i == 0 and len(batch_df) > 0:
+                    for idx, row in batch_df.head(5).iterrows():
+                        sample_extractions.append({
+                            '内容': row['内容'],
+                            '玩法': row.get('玩法', ''),
+                            '彩种类型': row.get('彩种类型', 'six_mark'),
+                            '提取金额': self.cached_extract_bet_amount(str(row['金额'])),
+                            '提取方向': self.cached_extract_direction(
+                                row['内容'], 
+                                row.get('玩法', ''), 
+                                row.get('彩种类型', 'six_mark')
+                            )
+                        })
                 
                 # 更新进度
                 progress = (end_idx) / total_rows
@@ -846,82 +879,199 @@ class WashTradeDetector:
             
             progress_bar.empty()
             
+            # 🆕 显示提取样本结果
+            st.subheader("🔍 提取结果样本")
+            if sample_extractions:
+                extraction_df = pd.DataFrame(sample_extractions)
+                st.dataframe(extraction_df)
+            
+            # 🆕 详细调试：显示提取统计
+            st.subheader("📊 提取统计信息")
+            
+            # 金额提取统计
+            amount_stats = df_clean['投注金额'].describe()
+            st.write("金额提取统计:")
+            st.write(f"- 最小值: {amount_stats['min']:.2f}")
+            st.write(f"- 最大值: {amount_stats['max']:.2f}")
+            st.write(f"- 平均值: {amount_stats['mean']:.2f}")
+            st.write(f"- 零金额记录: {len(df_clean[df_clean['投注金额'] == 0])}")
+            
+            # 方向提取统计
+            direction_stats = df_clean['投注方向'].value_counts()
+            st.write("方向提取统计:")
+            if len(direction_stats) > 0:
+                st.dataframe(direction_stats.head(10))
+            else:
+                st.write("❌ 没有提取到任何方向")
+            
             # 过滤有效记录
+            initial_count = len(df_clean)
+            
+            # 🆕 详细调试：显示过滤条件
+            st.subheader("🔍 过滤条件分析")
+            st.write(f"过滤条件:")
+            st.write(f"- 最小金额阈值: {self.config.min_amount}")
+            st.write(f"- 方向不为空")
+            
+            empty_direction_count = len(df_clean[df_clean['投注方向'] == ''])
+            low_amount_count = len(df_clean[df_clean['投注金额'] < self.config.min_amount])
+            
+            st.write(f"过滤前统计:")
+            st.write(f"- 总记录数: {initial_count}")
+            st.write(f"- 方向为空的记录: {empty_direction_count}")
+            st.write(f"- 金额小于阈值的记录: {low_amount_count}")
+            
             df_valid = df_clean[
                 (df_clean['投注方向'] != '') & 
                 (df_clean['投注金额'] >= self.config.min_amount)
             ].copy()
             
+            st.write(f"过滤后记录数: {len(df_valid)}")
+            
             if len(df_valid) == 0:
                 st.error("❌ 过滤后没有有效记录")
+                
+                # 🆕 详细诊断问题
+                st.subheader("🔍 问题诊断")
+                
+                # 检查金额提取问题
+                if amount_stats['max'] == 0:
+                    st.error("❌ 金额提取全部为0，请检查金额列格式")
+                    st.write("金额列样本:")
+                    st.dataframe(df_clean[['金额']].head(10))
+                
+                # 检查方向提取问题
+                if empty_direction_count == initial_count:
+                    st.error("❌ 方向提取全部为空，请检查内容和玩法列")
+                    st.write("内容和玩法列样本:")
+                    st.dataframe(df_clean[['内容', '玩法']].head(10))
+                    
+                    # 测试方向提取
+                    st.write("方向提取测试:")
+                    test_samples = []
+                    for idx, row in df_clean.head(5).iterrows():
+                        test_direction = self.cached_extract_direction(
+                            row['内容'], 
+                            row.get('玩法', ''), 
+                            row.get('彩种类型', 'six_mark')
+                        )
+                        test_samples.append({
+                            '内容': row['内容'],
+                            '玩法': row.get('玩法', ''),
+                            '彩种类型': row.get('彩种类型', 'six_mark'),
+                            '提取方向': test_direction
+                        })
+                    st.dataframe(pd.DataFrame(test_samples))
+                
                 return pd.DataFrame()
-            
+    
             self.data_processed = True
             self.df_valid = df_valid
-
-            return df_valid
+    
+            st.success(f"✅ 数据处理完成，有效记录: {len(df_valid)}")
             
+            # 🆕 显示有效数据统计
+            st.subheader("📊 有效数据统计")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("有效记录数", len(df_valid))
+            with col2:
+                st.metric("唯一账户数", df_valid['会员账号'].nunique())
+            with col3:
+                st.metric("唯一期号数", df_valid['期号'].nunique())
+            
+            # 显示有效数据样本
+            with st.expander("📋 有效数据样本", expanded=False):
+                st.dataframe(df_valid[['会员账号', '期号', '彩种', '玩法', '内容', '投注方向', '投注金额']].head(10))
+    
+            return df_valid
+                
         except Exception as e:
+            st.error(f"❌ 数据处理增强失败: {str(e)}")
             logger.error(f"数据处理增强失败: {str(e)}")
-            st.error(f"数据处理增强失败: {str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
             return pd.DataFrame()
     
     def extract_bet_amount_safe(self, amount_text):
-        """安全提取投注金额 - 增强版"""
+        """安全提取投注金额 - 增强版处理各种格式"""
         try:
             if pd.isna(amount_text):
                 return 0
             
             text = str(amount_text).strip()
             
-            # 处理科学计数法
+            # 🆕 调试日志
+            logger.debug(f"金额提取输入: '{text}'")
+            
+            # 处理空字符串
+            if text == '':
+                return 0
+            
+            # 方法1: 直接转换（处理纯数字）
+            try:
+                # 移除所有非数字字符（除了点和负号）
+                cleaned_text = re.sub(r'[^\d.-]', '', text)
+                if cleaned_text and cleaned_text != '-' and cleaned_text != '.':
+                    amount = float(cleaned_text)
+                    if amount >= self.config.min_amount:
+                        logger.debug(f"直接转换成功: {text} -> {amount}")
+                        return amount
+            except Exception as e:
+                logger.debug(f"直接转换失败: {text}, 错误: {e}")
+                pass
+            
+            # 方法2: 处理千位分隔符格式
+            try:
+                # 移除逗号和全角逗号，然后转换
+                cleaned_text = text.replace(',', '').replace('，', '')
+                amount = float(cleaned_text)
+                if amount >= self.config.min_amount:
+                    logger.debug(f"千位分隔符转换成功: {text} -> {amount}")
+                    return amount
+            except Exception as e:
+                logger.debug(f"千位分隔符转换失败: {text}, 错误: {e}")
+                pass
+            
+            # 方法3: 处理科学计数法
             if 'E' in text or 'e' in text:
                 try:
                     amount = float(text)
                     if amount >= self.config.min_amount:
+                        logger.debug(f"科学计数法转换成功: {text} -> {amount}")
                         return amount
                 except:
                     pass
             
-            # 直接转换
-            try:
-                # 移除所有非数字字符（除了小数点和负号）
-                cleaned_text = re.sub(r'[^\d.-]', '', text)
-                if cleaned_text and cleaned_text != '-':
-                    amount = float(cleaned_text)
-                    if amount >= self.config.min_amount:
-                        return amount
-            except:
-                pass
-            
-            # 模式匹配 - 增强模式
+            # 方法4: 使用正则表达式提取各种格式
             patterns = [
-                r'投注[:：]?\s*([-]?\d+[,，]?\d*\.?\d*)',
-                r'下注[:：]?\s*([-]?\d+[,，]?\d*\.?\d*)',
-                r'金额[:：]?\s*([-]?\d+[,，]?\d*\.?\d*)',
-                r'总额[:：]?\s*([-]?\d+[,，]?\d*\.?\d*)',
-                r'([-]?\d+[,，]?\d*\.?\d*)\s*元',
-                r'￥\s*([-]?\d+[,，]?\d*\.?\d*)',
-                r'¥\s*([-]?\d+[,，]?\d*\.?\d*)',
-                r'[\$￥¥]?\s*([-]?\d+[,，]?\d*\.?\d+)',
-                r'([-]?\d+[,，]?\d*\.?\d+)',
+                r'投注\s*[:：]?\s*([\d,.]+)',
+                r'金额\s*[:：]?\s*([\d,.]+)',
+                r'下注金额\s*([\d,.]+)',
+                r'([\d,.]+)\s*元',
+                r'￥\s*([\d,.]+)',
+                r'¥\s*([\d,.]+)',
+                r'([\d,.]+)\s*RMB',
+                r'([\d,.]+)$'
             ]
             
             for pattern in patterns:
-                match = re.search(pattern, text)
+                match = re.search(pattern, text, re.IGNORECASE)
                 if match:
-                    amount_str = match.group(1).replace(',', '').replace('，', '').replace(' ', '')
+                    amount_str = match.group(1).replace(',', '').replace('，', '')
                     try:
                         amount = float(amount_str)
                         if amount >= self.config.min_amount:
+                            logger.debug(f"正则匹配成功: {text} -> {amount}")
                             return amount
                     except:
                         continue
             
+            logger.debug(f"所有提取方法失败: {text}")
             return 0
-            
+                
         except Exception as e:
-            logger.warning(f"金额提取失败: {amount_text}, 错误: {e}")
+            logger.warning(f"金额提取失败: {amount_text}, 错误: {str(e)}")
             return 0
     
     def enhanced_extract_direction_with_position(self, content, play_category, lottery_type):
@@ -932,11 +1082,14 @@ class WashTradeDetector:
             
             content_str = str(content).strip()
             
-            # 🆕 完善：预处理内容
+            # 🆕 调试日志
+            logger.debug(f"方向提取输入 - 内容: '{content_str}', 玩法: '{play_category}', 彩种: '{lottery_type}'")
+            
+            # 完善：预处理内容
             if not content_str or content_str.lower() in ['', 'null', 'none', 'nan']:
                 return ""
             
-            # 🆕 完善：清理特殊字符和空白
+            # 完善：清理特殊字符和空白
             content_str = re.sub(r'[\s\u3000]+', ' ', content_str)
             content_str = re.sub(r'[\(（].*?[\)）]', '', content_str)  # 移除括号内容
             
@@ -944,16 +1097,22 @@ class WashTradeDetector:
             if '|' in content_str:
                 position_directions = self._extract_directions_from_vertical_format(content_str, lottery_type)
                 if position_directions:
-                    return position_directions[0] if position_directions else ""
+                    result = position_directions[0] if position_directions else ""
+                    logger.debug(f"竖线格式提取成功: {content_str} -> {result}")
+                    return result
             
             # 🆕 完善：处理冒号分隔格式（如"冠军:大"）
             if ':' in content_str or '：' in content_str:
                 position_directions = self._extract_directions_from_colon_format(content_str)
                 if position_directions:
-                    return position_directions[0] if position_directions else ""
+                    result = position_directions[0] if position_directions else ""
+                    logger.debug(f"冒号格式提取成功: {content_str} -> {result}")
+                    return result
             
             # 原有的方向提取逻辑
             directions = self.content_parser.extract_basic_directions(content_str, self.config)
+            
+            logger.debug(f"基础方向提取结果: {directions}")
             
             if not directions:
                 return ""
@@ -969,9 +1128,12 @@ class WashTradeDetector:
             
             # 🆕 完善：组合位置和方向
             if position and position != '未知位置':
-                return f"{position}-{main_direction}"
+                result = f"{position}-{main_direction}"
             else:
-                return main_direction
+                result = main_direction
+            
+            logger.debug(f"最终方向提取结果: {result}")
+            return result
             
         except Exception as e:
             logger.warning(f"方向提取失败: {content}, 错误: {e}")
