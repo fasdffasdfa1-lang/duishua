@@ -166,6 +166,48 @@ class DataProcessor:
         }
         
         self.similarity_threshold = 0.7
+
+    def validate_data_format(self, df):
+        """验证数据格式"""
+        st.subheader("🔍 数据格式验证")
+        
+        issues = []
+        
+        # 检查必要列
+        required_columns = ['会员账号', '彩种', '期号', '玩法', '内容']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            issues.append(f"缺少必要列: {missing_columns}")
+        
+        # 检查数据样本
+        st.write("数据样本:")
+        st.dataframe(df.head(10))
+        
+        # 检查列数据类型
+        st.write("列数据类型:")
+        col_types = df.dtypes.astype(str)
+        st.write(col_types)
+        
+        # 检查空值
+        st.write("空值统计:")
+        null_stats = df.isnull().sum()
+        st.write(null_stats)
+        
+        # 检查内容列是否包含有效数据
+        if '内容' in df.columns:
+            content_sample = df['内容'].head(10).tolist()
+            st.write("内容列样本:")
+            for i, content in enumerate(content_sample, 1):
+                st.write(f"{i}. {content}")
+        
+        if issues:
+            st.error("❌ 数据格式问题:")
+            for issue in issues:
+                st.error(f"- {issue}")
+            return False
+        
+        st.success("✅ 数据格式验证通过")
+        return True
     
     def smart_column_identification(self, df_columns):
         """智能列识别"""
@@ -791,7 +833,8 @@ class WashTradeDetector:
                 df_clean = self.data_processor.clean_data(uploaded_file)
             
             if df_clean is not None and len(df_clean) > 0:
-                df_enhanced = self.enhance_data_processing(df_clean)
+                # 🆕 第6点：调用增强的数据处理（包含详细调试信息）
+                df_enhanced = self.enhance_data_processing_with_debug(df_clean)
                 return df_enhanced, filename
             else:
                 return None, None
@@ -800,6 +843,200 @@ class WashTradeDetector:
             logger.error(f"文件处理失败: {str(e)}")
             st.error(f"文件处理失败: {str(e)}")
             return None, None
+    
+    # 🆕 第6点：重命名或替换原有的 enhance_data_processing 方法
+    def enhance_data_processing_with_debug(self, df_clean):
+        """增强的数据处理流程 - 包含详细调试信息"""
+        try:
+            # 🆕 详细调试：显示数据样本
+            st.subheader("🔍 数据样本分析")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("原始数据样本:")
+                st.dataframe(df_clean[['会员账号', '彩种', '期号', '玩法', '内容']].head(10))
+            
+            with col2:
+                st.write("彩种类型分布:")
+                if '彩种' in df_clean.columns:
+                    lottery_dist = df_clean['彩种'].value_counts()
+                    st.dataframe(lottery_dist)
+            
+            # 彩种识别
+            if '彩种' in df_clean.columns:
+                df_clean['原始彩种'] = df_clean['彩种']
+                df_clean['彩种类型'] = df_clean['彩种'].apply(self.lottery_identifier.identify_lottery_type)
+                st.info(f"🎲 彩种识别完成，共识别 {df_clean['彩种类型'].nunique()} 种彩种类型")
+            
+            # 玩法分类统一
+            if '玩法' in df_clean.columns:
+                df_clean['玩法分类'] = df_clean['玩法'].apply(self.play_normalizer.normalize_category)
+                st.info(f"🎯 玩法分类完成，共 {df_clean['玩法分类'].nunique()} 种玩法分类")
+            
+            # 计算账户统计信息
+            self.calculate_account_total_periods_by_lottery(df_clean)
+            
+            # 提取投注金额和方向 - 使用缓存版本
+            st.info("💰 正在提取投注金额和方向...")
+            progress_bar = st.progress(0)
+            total_rows = len(df_clean)
+            
+            # 🆕 详细调试：显示提取过程
+            sample_extractions = []
+            
+            # 分批处理显示进度
+            batch_size = 1000
+            for i in range(0, total_rows, batch_size):
+                end_idx = min(i + batch_size, total_rows)
+                batch_df = df_clean.iloc[i:end_idx]
+                
+                # 处理当前批次
+                df_clean.loc[i:end_idx-1, '投注金额'] = batch_df['金额'].apply(
+                    lambda x: self.cached_extract_bet_amount(str(x))
+                )
+                df_clean.loc[i:end_idx-1, '投注方向'] = batch_df.apply(
+                    lambda row: self.cached_extract_direction(
+                        row['内容'], 
+                        row.get('玩法', ''), 
+                        row['彩种类型'] if '彩种类型' in df_clean.columns else 'six_mark'
+                    ), 
+                    axis=1
+                )
+                
+                # 🆕 收集样本提取结果用于调试
+                if i == 0 and len(batch_df) > 0:
+                    for idx, row in batch_df.head(5).iterrows():
+                        sample_extractions.append({
+                            '内容': row['内容'],
+                            '玩法': row.get('玩法', ''),
+                            '彩种类型': row.get('彩种类型', 'six_mark'),
+                            '提取金额': self.cached_extract_bet_amount(str(row['金额'])),
+                            '提取方向': self.cached_extract_direction(
+                                row['内容'], 
+                                row.get('玩法', ''), 
+                                row.get('彩种类型', 'six_mark')
+                            )
+                        })
+                
+                # 更新进度
+                progress = (end_idx) / total_rows
+                progress_bar.progress(progress)
+            
+            progress_bar.empty()
+            
+            # 🆕 显示提取样本结果
+            st.subheader("🔍 提取结果样本")
+            if sample_extractions:
+                extraction_df = pd.DataFrame(sample_extractions)
+                st.dataframe(extraction_df)
+            
+            # 🆕 详细调试：显示提取统计
+            st.subheader("📊 提取统计信息")
+            
+            # 金额提取统计
+            amount_stats = df_clean['投注金额'].describe()
+            st.write("金额提取统计:")
+            st.write(f"- 最小值: {amount_stats['min']:.2f}")
+            st.write(f"- 最大值: {amount_stats['max']:.2f}")
+            st.write(f"- 平均值: {amount_stats['mean']:.2f}")
+            st.write(f"- 零金额记录: {len(df_clean[df_clean['投注金额'] == 0])}")
+            
+            # 方向提取统计
+            direction_stats = df_clean['投注方向'].value_counts()
+            st.write("方向提取统计:")
+            if len(direction_stats) > 0:
+                st.dataframe(direction_stats.head(10))
+            else:
+                st.write("❌ 没有提取到任何方向")
+            
+            # 过滤有效记录
+            initial_count = len(df_clean)
+            
+            # 🆕 详细调试：显示过滤条件
+            st.subheader("🔍 过滤条件分析")
+            st.write(f"过滤条件:")
+            st.write(f"- 最小金额阈值: {self.config.min_amount}")
+            st.write(f"- 方向不为空")
+            
+            empty_direction_count = len(df_clean[df_clean['投注方向'] == ''])
+            low_amount_count = len(df_clean[df_clean['投注金额'] < self.config.min_amount])
+            
+            st.write(f"过滤前统计:")
+            st.write(f"- 总记录数: {initial_count}")
+            st.write(f"- 方向为空的记录: {empty_direction_count}")
+            st.write(f"- 金额小于阈值的记录: {low_amount_count}")
+            
+            df_valid = df_clean[
+                (df_clean['投注方向'] != '') & 
+                (df_clean['投注金额'] >= self.config.min_amount)
+            ].copy()
+            
+            st.write(f"过滤后记录数: {len(df_valid)}")
+            
+            if len(df_valid) == 0:
+                st.error("❌ 过滤后没有有效记录")
+                
+                # 🆕 详细诊断问题
+                st.subheader("🔍 问题诊断")
+                
+                # 检查金额提取问题
+                if amount_stats['max'] == 0:
+                    st.error("❌ 金额提取全部为0，请检查金额列格式")
+                    st.write("金额列样本:")
+                    st.dataframe(df_clean[['金额']].head(10))
+                
+                # 检查方向提取问题
+                if empty_direction_count == initial_count:
+                    st.error("❌ 方向提取全部为空，请检查内容和玩法列")
+                    st.write("内容和玩法列样本:")
+                    st.dataframe(df_clean[['内容', '玩法']].head(10))
+                    
+                    # 测试方向提取
+                    st.write("方向提取测试:")
+                    test_samples = []
+                    for idx, row in df_clean.head(5).iterrows():
+                        test_direction = self.cached_extract_direction(
+                            row['内容'], 
+                            row.get('玩法', ''), 
+                            row.get('彩种类型', 'six_mark')
+                        )
+                        test_samples.append({
+                            '内容': row['内容'],
+                            '玩法': row.get('玩法', ''),
+                            '彩种类型': row.get('彩种类型', 'six_mark'),
+                            '提取方向': test_direction
+                        })
+                    st.dataframe(pd.DataFrame(test_samples))
+                
+                return pd.DataFrame()
+
+            self.data_processed = True
+            self.df_valid = df_valid
+
+            st.success(f"✅ 数据处理完成，有效记录: {len(df_valid)}")
+            
+            # 🆕 显示有效数据统计
+            st.subheader("📊 有效数据统计")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("有效记录数", len(df_valid))
+            with col2:
+                st.metric("唯一账户数", df_valid['会员账号'].nunique())
+            with col3:
+                st.metric("唯一期号数", df_valid['期号'].nunique())
+            
+            # 显示有效数据样本
+            with st.expander("📋 有效数据样本", expanded=False):
+                st.dataframe(df_valid[['会员账号', '期号', '彩种', '玩法', '内容', '投注方向', '投注金额']].head(10))
+
+            return df_valid
+                
+        except Exception as e:
+            st.error(f"❌ 数据处理增强失败: {str(e)}")
+            logger.error(f"数据处理增强失败: {str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
+            return pd.DataFrame()
     
     def enhance_data_processing(self, df_clean):
         """增强的数据处理流程 - 添加详细调试信息"""
@@ -2006,9 +2243,10 @@ def main():
             # 配置参数
             st.sidebar.header("⚙️ 检测参数配置")
             
-            min_amount = st.sidebar.number_input("最小投注金额", value=10, min_value=1, help="低于此金额的记录将被过滤")
+            # 🆕 第4点：降低默认阈值进行测试
+            min_amount = st.sidebar.number_input("最小投注金额", value=1, min_value=0, help="测试阶段建议设置为1")
             base_similarity_threshold = st.sidebar.slider("基础金额匹配度阈值", 0.8, 1.0, 0.8, 0.01, help="2个账户的基础匹配度阈值")
-            max_accounts = st.sidebar.slider("最大检测账户数", 2, 8, 5, help="检测的最大账户组合数量")
+            max_accounts = st.sidebar.slider("最大检测账户数", 2, 2, 2, help="专注于2个账户对立检测")
             
             # 账户期数差异阈值配置
             period_diff_threshold = st.sidebar.number_input(
@@ -2019,35 +2257,16 @@ def main():
                 help="账户总投注期数最大允许差异，超过此值不进行组合检测"
             )
             
-            # 活跃度阈值配置
-            st.sidebar.subheader("📊 活跃度阈值配置")
-            st.sidebar.markdown("**新阈值设置:**")
-            st.sidebar.markdown("- **1-10期:** 要求≥3期连续对刷")
-            st.sidebar.markdown("- **11-50期:** 要求≥5期连续对刷")  
-            st.sidebar.markdown("- **51-100期:** 要求≥8期连续对刷")
-            st.sidebar.markdown("- **100期以上:** 要求≥11期连续对刷")
-            
-            # 多账户匹配度配置
-            st.sidebar.subheader("🎯 多账户匹配度配置")
-            st.sidebar.markdown("**账户数量 vs 匹配度要求:**")
-            st.sidebar.markdown("- **2个账户:** 80%匹配度")
-            st.sidebar.markdown("- **3个账户:** 85%匹配度")  
-            st.sidebar.markdown("- **4个账户:** 90%匹配度")
-            st.sidebar.markdown("- **5个账户:** 95%匹配度")
-            
-            # 更新配置参数
+            # 🆕 第4点：或者直接设置较低的默认值
             config = Config()
-            config.min_amount = min_amount
+            config.min_amount = 1  # 测试阶段设置为1
             config.amount_similarity_threshold = base_similarity_threshold
             config.max_accounts_in_group = max_accounts
             config.account_period_diff_threshold = period_diff_threshold
             
-            # 设置多账户匹配度阈值
+            # 设置匹配度阈值 - 只保留2个账户
             config.account_count_similarity_thresholds = {
-                2: base_similarity_threshold,
-                3: max(base_similarity_threshold + 0.05, 0.85),
-                4: max(base_similarity_threshold + 0.1, 0.9),
-                5: max(base_similarity_threshold + 0.15, 0.95)
+                2: base_similarity_threshold
             }
             
             detector = WashTradeDetector(config)
@@ -2055,11 +2274,15 @@ def main():
             st.success(f"✅ 已上传文件: {uploaded_file.name}")
             
             with st.spinner("🔄 正在解析数据..."):
-                # ========== 🆕 修复这里：正确的数据处理流程 ==========
-                # 直接调用 upload_and_process，它会内部处理列名识别和数据验证
+                # 🆕 第5点：添加数据格式验证
                 df_enhanced, filename = detector.upload_and_process(uploaded_file)
                 
                 if df_enhanced is not None and len(df_enhanced) > 0:
+                    # 🆕 第5点：调用数据格式验证
+                    if not detector.data_processor.validate_data_format(df_enhanced):
+                        st.error("❌ 数据格式验证失败，请检查文件格式")
+                        return
+                    
                     st.success("✅ 数据解析完成")
                     
                     # ========== 🆕 新增这里：显示数据质量验证结果 ==========
