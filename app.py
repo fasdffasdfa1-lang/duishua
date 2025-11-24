@@ -27,7 +27,6 @@ st.set_page_config(
 
 # ==================== 配置类 - 修复版 ====================
 class Config:
-    """配置参数类 - 修复版，支持变异形式但映射到基础方向"""
     def __init__(self):
         self.min_amount = 10
         self.amount_similarity_threshold = 0.8
@@ -69,8 +68,9 @@ class Config:
         # 账户期数差异阈值
         self.account_period_diff_threshold = 150
         
-        # 🎯 关键修复：扩展方向模式，但保持变异形式的独立性
-        self.direction_patterns = {
+        # 🎯 关键修复：扩展方向模式，采用合并策略
+        # 基础方向模式
+        self.base_direction_patterns = {
             # 基础方向
             '小': ['两面-小', '和值-小', '小', 'small', 'xia', 'xiao'],
             '大': ['两面-大', '和值-大', '大', 'big', 'da', 'large'], 
@@ -80,25 +80,40 @@ class Config:
             '虎': ['虎', 'hu', 'tiger', '龍虎-虎'],
             '质': ['质', '质数', 'prime', 'zhi', '質', '質數'],
             '合': ['合', '合数', 'composite', 'he', '合數'],
-            
-            # 🎯 新增：保持变异形式的独立性
-            '特小': ['特小', '极小', '最小'],
-            '特大': ['特大', '极大', '最大'],
-            '特单': ['特单'],
-            '特双': ['特双'],
-            '总和小': ['总和小', '和小'],
-            '总和大': ['总和大', '和大'],
-            '总和单': ['总和单', '和单'],
-            '总和双': ['总和双', '和双']
         }
         
-        # 🎯 修复：扩展对立组，包含变异形式
+        # 🎯 增强方向模式 - 保持变异形式独立性
+        self.enhanced_direction_patterns = {
+            # 变异形式 - 保持独立
+            '特小': ['特小', '极小', '最小', '特小单', '特小双'],
+            '特大': ['特大', '极大', '最大', '特单大', '特双大'],
+            '特单': ['特单'],
+            '特双': ['特双'],
+            '总和小': ['总和小', '和小', '总和-小', '和值小'],
+            '总和大': ['总和大', '和大', '总和-大', '和值大'],
+            '总和单': ['总和单', '和单', '总和-单', '和值单'],
+            '总和双': ['总和双', '和双', '总和-双', '和值双'],
+            
+            # 🆕 新增复合方向
+            '大单': ['大单', '单大', 'big-odd'],
+            '大双': ['大双', '双大', 'big-even'],
+            '小单': ['小单', '单小', 'small-odd'],
+            '小双': ['小双', '双小', 'small-even'],
+        }
+        
+        # 🎯 合并方向模式 - 增强模式优先
+        self.direction_patterns = {**self.base_direction_patterns, **self.enhanced_direction_patterns}
+        
+        # 🎯 修复：扩展对立组，包含变异形式和复合对立
         self.opposite_groups = [
             # 基础对立组
             {'大', '小'}, {'单', '双'}, {'龙', '虎'}, {'质', '合'},
             # 变异形式对立组
             {'特大', '特小'}, {'特单', '特双'}, 
-            {'总和大', '总和小'}, {'总和单', '总和双'}
+            {'总和大', '总和小'}, {'总和单', '总和双'},
+            # 🆕 新增复合对立组
+            {'大单', '小双'}, {'大双', '小单'},
+            {'特大', '特小'}, {'特单', '特双'}
         ]
         
         # 位置关键词映射 - 增强版
@@ -614,6 +629,126 @@ class ContentParser:
         
         return directions
 
+    # 🆕 新增：增强方向提取方法
+    @staticmethod
+    def enhanced_extract_directions(content, config):
+        """🎯 增强版方向提取 - 提高识别精度"""
+        try:
+            if pd.isna(content):
+                return []
+            
+            content_str = str(content).strip()
+            
+            # 🆕 预处理内容
+            content_clean = ContentParser.preprocess_content(content_str)
+            
+            # 🆕 多层级方向提取
+            directions = ContentParser.multi_level_direction_extraction(content_clean, config)
+            
+            return directions
+                
+        except Exception as e:
+            logger.warning(f"方向提取失败: {content}, 错误: {e}")
+            return []
+
+    @staticmethod
+    def preprocess_content(content):
+        """🆕 内容预处理"""
+        content_str = str(content).strip()
+        
+        # 统一标点符号
+        content_str = content_str.replace('，', ',').replace('；', ';').replace('：', ':')
+        
+        # 移除多余空格
+        content_str = re.sub(r'\s+', ' ', content_str).strip()
+        
+        # 处理特殊字符
+        content_str = re.sub(r'[\(\)（）【】]', '', content_str)
+        
+        return content_str
+
+    @staticmethod
+    def multi_level_direction_extraction(content, config):
+        """🆕 多层级方向提取"""
+        directions = set()
+        
+        # 第一层：精确匹配
+        for direction, patterns in config.direction_patterns.items():
+            for pattern in patterns:
+                if pattern == content:  # 完全匹配
+                    directions.add(direction)
+                    break
+        
+        # 第二层：包含匹配
+        if not directions:
+            for direction, patterns in config.direction_patterns.items():
+                for pattern in patterns:
+                    if pattern in content:
+                        directions.add(direction)
+        
+        # 第三层：关键词匹配
+        if not directions:
+            content_lower = content.lower()
+            direction_keywords = {
+                '大': ['大', 'big', 'large', 'da'],
+                '小': ['小', 'small', 'xiao'],
+                '单': ['单', 'odd', 'dan', '奇'],
+                '双': ['双', 'even', 'shuang', '偶'],
+                '龙': ['龙', 'long', 'dragon'],
+                '虎': ['虎', 'hu', 'tiger'],
+                '质': ['质', 'prime', 'zhi'],
+                '合': ['合', 'composite', 'he']
+            }
+            
+            for direction, keywords in direction_keywords.items():
+                for keyword in keywords:
+                    if keyword in content_lower:
+                        directions.add(direction)
+                        break
+        
+        return list(directions)
+
+    @staticmethod
+    def prioritize_directions(directions, content, play_category):
+        """🆕 方向优先级排序"""
+        if not directions:
+            return ""
+        
+        if len(directions) == 1:
+            return directions[0]
+        
+        content_lower = content.lower()
+        play_lower = play_category.lower() if play_category else ""
+        
+        # 🆕 优先级规则
+        priority_scores = {}
+        
+        for direction in directions:
+            score = 0
+            
+            # 1. 完全匹配加分
+            if direction == content_lower:
+                score += 100
+            
+            # 2. 玩法相关加分
+            if any(word in play_lower for word in ['两面', '和值', '大小单双']):
+                score += 50
+            
+            # 3. 内容关键词加分
+            if '总' in content_lower and '总和' in direction:
+                score += 30
+            elif '特' in content_lower and '特' in direction:
+                score += 30
+            
+            # 4. 基础方向优先级
+            if direction in ['大', '小', '单', '双']:
+                score += 20
+            
+            priority_scores[direction] = score
+        
+        # 返回最高分的方向
+        return max(priority_scores.items(), key=lambda x: x[1])[0]
+
     @staticmethod
     def extract_position_from_play_category(play_category, lottery_type, config):
         """从玩法分类中提取位置信息"""
@@ -732,7 +867,7 @@ class WashTradeDetector:
         self.account_total_periods_by_lottery = defaultdict(dict)
         self.account_record_stats_by_lottery = defaultdict(dict)
         self.performance_stats = {}
-
+    
         self._cache_clear()
     
     def _cache_clear(self):
@@ -902,15 +1037,15 @@ class WashTradeDetector:
             return 0
     
     def enhanced_extract_direction_with_position(self, content, play_category, lottery_type):
-        """🎯 修复版方向提取 - 保持变异形式独立性，正确提取位置"""
+        """🎯 修复版方向提取 - 使用增强的方向识别"""
         try:
             if pd.isna(content):
                 return ""
             
             content_str = str(content).strip()
             
-            # 🎯 使用修复的内容解析器提取方向（保持变异形式独立性）
-            directions = self.content_parser.extract_basic_directions(content_str, self.config)
+            # 🎯 使用增强的内容解析器提取方向
+            directions = self.content_parser.enhanced_extract_directions(content_str, self.config)
             
             if not directions:
                 return ""
@@ -918,8 +1053,8 @@ class WashTradeDetector:
             # 🎯 从玩法分类中提取位置信息
             position = self.content_parser.extract_position_from_play_category(play_category, lottery_type, self.config)
             
-            # 🎯 选择主要方向
-            main_direction = self._select_primary_direction(directions, content_str)
+            # 🎯 方向优先级排序和选择
+            main_direction = self.content_parser.prioritize_directions(directions, content_str, play_category)
             
             if not main_direction:
                 return ""
@@ -1083,10 +1218,10 @@ class WashTradeDetector:
         return self.find_continuous_patterns_optimized(wash_records)
     
     def _get_valid_direction_combinations(self, n_accounts):
-        """🎯 修复版有效方向组合生成 - 保持基础对立组但支持变异形式"""
+        """🎯 修复版有效方向组合生成 - 使用增强的对立组"""
         valid_combinations = []
         
-        # 🎯 基础对立组处理 - 保持4组基础对立关系
+        # 🎯 基础对立组处理 - 使用增强的对立组
         for opposites in self.config.opposite_groups:
             opposite_list = list(opposites)
             
@@ -1098,7 +1233,8 @@ class WashTradeDetector:
                         'directions': [dir1, dir2],
                         'dir1_count': 1,
                         'dir2_count': 1,
-                        'opposite_type': f"{dir1}-{dir2}"
+                        'opposite_type': f"{dir1}-{dir2}",
+                        'combination_type': 'basic'
                     })
             else:
                 # 3个及以上账户：多种分布
@@ -1110,12 +1246,13 @@ class WashTradeDetector:
                             'directions': [dir1] * i + [dir2] * j,
                             'dir1_count': i,
                             'dir2_count': j,
-                            'opposite_type': f"{dir1}-{dir2}"
+                            'opposite_type': f"{dir1}-{dir2}",
+                            'combination_type': 'basic'
                         })
         
         # 🎯 带位置的对立组 - 动态生成（支持变异形式）
         positions = ['冠军', '亚军', '第三名', '第四名', '第五名', 
-                    '第六名', '第七名', '第八名', '第九名', '第十名',
+                    '第六名', '第七名', '第七名', '第八名', '第九名', '第十名',
                     '百位', '十位', '个位', '第1球', '第2球', '第3球', '第4球', '第5球']
         
         for position in positions:
@@ -1127,7 +1264,8 @@ class WashTradeDetector:
                             'directions': [f"{position}-{dir1}", f"{position}-{dir2}"],
                             'dir1_count': 1,
                             'dir2_count': 1,
-                            'opposite_type': f"{position}-{dir1} vs {position}-{dir2}"
+                            'opposite_type': f"{position}-{dir1} vs {position}-{dir2}",
+                            'combination_type': 'positional'
                         })
                     else:
                         for i in range(1, n_accounts):
@@ -1136,7 +1274,8 @@ class WashTradeDetector:
                                 'directions': [f"{position}-{dir1}"] * i + [f"{position}-{dir2}"] * j,
                                 'dir1_count': i,
                                 'dir2_count': j,
-                                'opposite_type': f"{position}-{dir1} vs {position}-{dir2}"
+                                'opposite_type': f"{position}-{dir1} vs {position}-{dir2}",
+                                'combination_type': 'positional'
                             })
         
         return valid_combinations
@@ -1495,6 +1634,67 @@ class WashTradeDetector:
                 st.write(f"**检测性能:**")
                 st.write(f"- 检测时间: {self.performance_stats['detection_time']:.2f} 秒")
                 st.write(f"- 发现模式: {self.performance_stats['total_patterns']} 个")
+
+    def enhanced_analyze_opposite_patterns(self, patterns):
+        """🆕 增强对立模式分析"""
+        if not patterns:
+            return {}
+        
+        analysis = {
+            'total_groups': len(patterns),
+            'opposite_type_stats': defaultdict(int),
+            'position_stats': defaultdict(int),
+            'combination_type_stats': defaultdict(int),
+            'lottery_opposite_stats': defaultdict(lambda: defaultdict(int))
+        }
+        
+        for pattern in patterns:
+            # 统计对立类型
+            main_opposite = pattern['主要对立类型']
+            analysis['opposite_type_stats'][main_opposite] += 1
+            
+            # 统计位置分布
+            for record in pattern['详细记录']:
+                for direction in record['方向组']:
+                    if '-' in direction:
+                        position = direction.split('-')[0]
+                        analysis['position_stats'][position] += 1
+            
+            # 统计彩种对立模式
+            lottery = pattern['彩种']
+            analysis['lottery_opposite_stats'][lottery][main_opposite] += 1
+        
+        return analysis
+    
+    def display_enhanced_opposite_analysis(self, patterns):
+        """🆕 显示增强的对立模式分析"""
+        if not patterns:
+            return
+        
+        analysis = self.enhanced_analyze_opposite_patterns(patterns)
+        
+        st.subheader("🎯 对立模式深度分析")
+        
+        # 对立类型分布
+        with st.expander("📊 对立类型分布", expanded=True):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("**主要对立类型:**")
+                for opposite_type, count in sorted(analysis['opposite_type_stats'].items(), key=lambda x: x[1], reverse=True)[:10]:
+                    st.write(f"- {opposite_type}: {count}组")
+            
+            with col2:
+                st.write("**位置分布:**")
+                for position, count in sorted(analysis['position_stats'].items(), key=lambda x: x[1], reverse=True)[:10]:
+                    st.write(f"- {position}: {count}次")
+        
+        # 彩种对立模式分析
+        with st.expander("🎲 彩种对立模式分析", expanded=False):
+            for lottery, opposite_stats in analysis['lottery_opposite_stats'].items():
+                st.write(f"**{lottery}:**")
+                for opposite_type, count in sorted(opposite_stats.items(), key=lambda x: x[1], reverse=True)[:5]:
+                    st.write(f"  - {opposite_type}: {count}组")
     
     def display_detailed_results(self, patterns):
         """显示详细检测结果 - 确保只有一个总体统计"""
@@ -1801,6 +2001,10 @@ def main():
                     
                     if patterns:
                         st.success(f"✅ 检测完成！发现 {len(patterns)} 个对刷组")
+                        
+                        # 🆕 添加增强对立模式分析
+                        detector.display_enhanced_opposite_analysis(patterns)
+                        
                         detector.display_detailed_results(patterns)
                     else:
                         st.warning("⚠️ 未发现符合阈值条件的对刷行为")
