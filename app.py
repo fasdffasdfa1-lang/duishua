@@ -653,31 +653,146 @@ class PlayCategoryNormalizer:
 
 # ==================== 内容解析器 - 修复版 ====================
 class ContentParser:
-    """修复内容解析器 - 支持变异形式但映射到基础方向"""
+    @staticmethod
+    def enhanced_direction_extraction(content, play_category, lottery_type, config):
+        """🎯 增强版方向提取 - 处理各种格式"""
+        try:
+            if pd.isna(content) or not content:
+                return ""
+            
+            content_str = str(content).strip()
+            play_str = str(play_category).strip() if pd.notna(play_category) else ""
+            
+            # 🎯 调试信息
+            logger.debug(f"方向提取 - 内容: '{content_str}', 玩法: '{play_str}'")
+            
+            # 方法1: 基础方向词提取
+            directions = ContentParser.extract_basic_directions(content_str, config)
+            if directions:
+                return directions[0]  # 返回第一个找到的方向
+            
+            # 方法2: 数字推断方向 (针对定位胆等)
+            number_direction = ContentParser.extract_direction_from_numbers(content_str, play_str, lottery_type)
+            if number_direction:
+                return number_direction
+            
+            # 方法3: 玩法关键词推断
+            play_direction = ContentParser.extract_direction_from_play(play_str, content_str)
+            if play_direction:
+                return play_direction
+            
+            # 方法4: 内容模式匹配
+            pattern_direction = ContentParser.extract_direction_from_patterns(content_str)
+            if pattern_direction:
+                return pattern_direction
+            
+            return ""
+            
+        except Exception as e:
+            logger.warning(f"方向提取失败: {content}, 错误: {e}")
+            return ""
     
     @staticmethod
-    def extract_basic_directions(content, config):
-        """提取方向 - 保持变异形式独立性"""
-        content_str = str(content).strip()
-        directions = []
+    def extract_direction_from_numbers(content, play_category, lottery_type):
+        """从数字内容推断方向"""
+        try:
+            content_str = str(content)
+            
+            # 提取所有数字
+            numbers = re.findall(r'\d+', content_str)
+            numbers = [int(num) for num in numbers if num]
+            
+            if not numbers:
+                return ""
+            
+            # 根据彩种和玩法推断方向
+            if lottery_type in ['PK10', '10_number']:
+                # PK10: 1-5为小, 6-10为大
+                if all(1 <= num <= 5 for num in numbers):
+                    return '小'
+                elif all(6 <= num <= 10 for num in numbers):
+                    return '大'
+            
+            elif lottery_type in ['K3', 'fast_three']:
+                # 快三: 和值判断
+                if len(numbers) == 1:
+                    total = numbers[0]
+                    if 3 <= total <= 10:
+                        return '小'
+                    elif 11 <= total <= 18:
+                        return '大'
+            
+            elif lottery_type in ['SSC', '3D']:
+                # 时时彩/3D: 单个数字判断
+                if len(numbers) == 1:
+                    num = numbers[0]
+                    if num in [0, 2, 4, 6, 8]:
+                        return '双'
+                    elif num in [1, 3, 5, 7, 9]:
+                        return '单'
+            
+            return ""
+        except:
+            return ""
+    
+    @staticmethod
+    def extract_direction_from_play(play_category, content):
+        """从玩法分类推断方向"""
+        play_str = str(play_category).lower()
+        content_str = str(content).lower()
         
-        if not content_str:
-            return directions
+        # 两面玩法
+        if '两面' in play_str or '双面' in play_str:
+            if '大' in content_str:
+                return '大'
+            elif '小' in content_str:
+                return '小'
+            elif '单' in content_str:
+                return '单'
+            elif '双' in content_str:
+                return '双'
         
-        content_lower = content_str.lower()
+        # 龙虎玩法
+        if '龙虎' in play_str:
+            if '龙' in content_str:
+                return '龙'
+            elif '虎' in content_str:
+                return '虎'
         
-        # 🎯 提取所有可能的方向（保持变异形式独立性）
-        for direction, patterns in config.direction_patterns.items():
-            for pattern in patterns:
-                pattern_lower = pattern.lower()
-                # 精确匹配检查
-                if (pattern_lower == content_lower or 
-                    pattern_lower in content_lower or 
-                    content_lower in pattern_lower):
-                    directions.append(direction)
-                    break
+        # 和值玩法
+        if '和值' in play_str:
+            if '大' in content_str:
+                return '和值-大'
+            elif '小' in content_str:
+                return '和值-小'
+            elif '单' in content_str:
+                return '和值-单'
+            elif '双' in content_str:
+                return '和值-双'
         
-        return directions
+        return ""
+    
+    @staticmethod
+    def extract_direction_from_patterns(content):
+        """从内容模式推断方向"""
+        content_lower = str(content).lower()
+        
+        # 常见方向模式
+        patterns = {
+            '大': ['大', 'da', 'big', 'large', 'd'],
+            '小': ['小', 'xiao', 'small', 'little', 'x'],
+            '单': ['单', 'dan', 'odd', 'o'],
+            '双': ['双', 'shuang', 'even', 'e', 's'],
+            '龙': ['龙', 'long', 'dragon', 'l'],
+            '虎': ['虎', 'hu', 'tiger', 'h']
+        }
+        
+        for direction, keywords in patterns.items():
+            for keyword in keywords:
+                if keyword in content_lower:
+                    return direction
+        
+        return ""
 
     @staticmethod
     def extract_position_from_play_category(play_category, lottery_type, config):
@@ -895,7 +1010,7 @@ class WashTradeDetector:
                     lambda x: self.cached_extract_bet_amount(str(x))
                 )
                 df_clean.loc[i:end_idx-1, '投注方向'] = batch_df.apply(
-                    lambda row: self.cached_extract_direction(
+                    lambda row: self.enhanced_extract_direction_with_position(
                         row['内容'], 
                         row.get('玩法', ''), 
                         row['彩种类型'] if '彩种类型' in df_clean.columns else 'six_mark'
@@ -1312,124 +1427,211 @@ class WashTradeDetector:
             return 0
     
     def enhanced_extract_direction_with_position(self, content, play_category, lottery_type):
-        """🎯 增强版方向提取 - 完善位置和方向识别"""
+        """🎯 最终修复版方向提取"""
         try:
-            if pd.isna(content):
+            if pd.isna(content) or not content:
                 return ""
             
-            content_str = str(content).strip()
+            # 使用增强的方向提取
+            direction = self.content_parser.enhanced_direction_extraction(
+                content, play_category, lottery_type, self.config
+            )
             
-            # 🆕 调试日志
-            logger.debug(f"方向提取输入 - 内容: '{content_str}', 玩法: '{play_category}', 彩种: '{lottery_type}'")
+            # 如果还是空，尝试最后的手段
+            if not direction:
+                direction = self._last_resort_direction_extraction(content, play_category)
             
-            # 完善：预处理内容
-            if not content_str or content_str.lower() in ['', 'null', 'none', 'nan']:
-                return ""
-            
-            # 完善：清理特殊字符和空白
-            content_str = re.sub(r'[\s\u3000]+', ' ', content_str)
-            content_str = re.sub(r'[\(（].*?[\)）]', '', content_str)  # 移除括号内容
-            
-            # 🆕 完善：处理竖线分隔格式（如PK10, 3D）
-            if '|' in content_str:
-                position_directions = self._extract_directions_from_vertical_format(content_str, lottery_type)
-                if position_directions:
-                    result = position_directions[0] if position_directions else ""
-                    logger.debug(f"竖线格式提取成功: {content_str} -> {result}")
-                    return result
-            
-            # 🆕 完善：处理冒号分隔格式（如"冠军:大"）
-            if ':' in content_str or '：' in content_str:
-                position_directions = self._extract_directions_from_colon_format(content_str)
-                if position_directions:
-                    result = position_directions[0] if position_directions else ""
-                    logger.debug(f"冒号格式提取成功: {content_str} -> {result}")
-                    return result
-            
-            # 原有的方向提取逻辑
-            directions = self.content_parser.extract_basic_directions(content_str, self.config)
-            
-            logger.debug(f"基础方向提取结果: {directions}")
-            
-            if not directions:
-                return ""
-            
-            # 🆕 完善：从玩法分类中提取位置信息
-            position = self._enhanced_extract_position_from_play(play_category, lottery_type, content_str)
-            
-            # 🆕 完善：智能选择主要方向
-            main_direction = self._smart_select_primary_direction(directions, content_str, lottery_type)
-            
-            if not main_direction:
-                return ""
-            
-            # 🆕 完善：组合位置和方向
-            if position and position != '未知位置':
-                result = f"{position}-{main_direction}"
-            else:
-                result = main_direction
-            
-            logger.debug(f"最终方向提取结果: {result}")
-            return result
+            return direction
             
         except Exception as e:
             logger.warning(f"方向提取失败: {content}, 错误: {e}")
             return ""
     
-    def _smart_select_primary_direction(self, directions, content, lottery_type):
-        """智能选择主要方向 - 完善版"""
-        if not directions:
-            return ""
-        
-        if len(directions) == 1:
-            return directions[0]
-        
+    def _last_resort_direction_extraction(self, content, play_category):
+        """最后的手段：基于内容和玩法的启发式提取"""
         content_str = str(content).lower()
-        lottery_type_str = str(lottery_type).lower()
+        play_str = str(play_category).lower()
         
-        # 🎯 完善：根据彩种类型设定优先级
-        priority_rules = []
+        # 检查内容中的关键词
+        direction_keywords = {
+            '大': ['大', 'da', 'big'],
+            '小': ['小', 'xiao', 'small'], 
+            '单': ['单', 'dan', 'odd'],
+            '双': ['双', 'shuang', 'even'],
+            '龙': ['龙', 'long', 'dragon'],
+            '虎': ['虎', 'hu', 'tiger']
+        }
         
-        if lottery_type_str in ['lhc', 'six_mark']:
-            # 六合彩优先级：大小单双 > 龙虎 > 质合 > 家野
-            priority_rules = [
-                lambda d: any(keyword in content_str for keyword in ['大小','单双']) and d in directions,
-                lambda d: any(keyword in content_str for keyword in ['龙虎']) and d in directions,
-                lambda d: any(keyword in content_str for keyword in ['质合']) and d in directions,
-                lambda d: any(keyword in content_str for keyword in ['家野']) and d in directions,
-                lambda d: d in directions
-            ]
-        elif lottery_type_str in ['k3', 'fast_three']:
-            # 快三优先级：和值 > 三军 > 大小单双
-            priority_rules = [
-                lambda d: any(keyword in content_str for keyword in ['和值','和数','和']) and d in directions,
-                lambda d: any(keyword in content_str for keyword in ['三军','三軍','独胆']) and d in directions,
-                lambda d: any(keyword in content_str for keyword in ['大小','单双']) and d in directions,
-                lambda d: d in directions
-            ]
-        elif lottery_type_str in ['pk10', '10_number']:
-            # PK10/赛车优先级：位置+方向 > 单独方向
-            priority_rules = [
-                lambda d: '-' in d and d in directions,  # 优先选择带位置的方向
-                lambda d: any(keyword in content_str for keyword in ['大小','单双','龙虎']) and d in directions,
-                lambda d: d in directions
-            ]
-        else:
-            # 默认优先级
-            priority_rules = [
-                lambda d: any(keyword in content_str for keyword in ['总和','总']) and d in directions,
-                lambda d: '特' in content_str and d in directions,
-                lambda d: any(keyword in content_str for keyword in ['和值','和']) and d in directions,
-                lambda d: '两面' in content_str and d in directions,
-                lambda d: d in directions
-            ]
+        for direction, keywords in direction_keywords.items():
+            for keyword in keywords:
+                if keyword in content_str:
+                    return direction
         
-        for rule in priority_rules:
-            matching_directions = [d for d in directions if rule(d)]
-            if matching_directions:
-                return matching_directions[0]
+        # 检查玩法中的方向提示
+        if '大' in play_str:
+            return '大'
+        elif '小' in play_str:
+            return '小'
+        elif '单' in play_str:
+            return '单'
+        elif '双' in play_str:
+            return '双'
+        elif '龙' in play_str:
+            return '龙'
+        elif '虎' in play_str:
+            return '虎'
         
-        return directions[0]
+        return ""
+    
+    def _extract_direction_for_dingweidan(self, content, play_category, lottery_type):
+        """处理定位胆玩法的方向提取"""
+        content_lower = content.lower()
+        
+        # 🆕 修复：从内容中提取位置信息
+        position_keywords = {
+            '冠军': ['冠军', '第1名', '第一名', '1st', '前一'],
+            '亚军': ['亚军', '第2名', '第二名', '2nd'],
+            '季军': ['季军', '第3名', '第三名', '3rd'],
+            '第四名': ['第四名', '第4名', '4th'],
+            '第五名': ['第五名', '第5名', '5th'],
+            '第六名': ['第六名', '第6名', '6th'],
+            '第七名': ['第七名', '第7名', '7th'],
+            '第八名': ['第八名', '第8名', '8th'],
+            '第九名': ['第九名', '第9名', '9th'],
+            '第十名': ['第十名', '第10名', '10th'],
+        }
+        
+        # 查找位置
+        detected_position = None
+        for position, keywords in position_keywords.items():
+            for keyword in keywords:
+                if keyword in content_lower:
+                    detected_position = position
+                    break
+            if detected_position:
+                break
+        
+        # 🆕 修复：从号码推断方向（针对PK10/赛车）
+        if detected_position and lottery_type in ['PK10', '10_number']:
+            # 提取号码
+            numbers = self._extract_numbers_from_content(content)
+            if numbers:
+                # 根据号码推断方向（小:1-5, 大:6-10）
+                if all(1 <= num <= 5 for num in numbers):
+                    direction = '小'
+                elif all(6 <= num <= 10 for num in numbers):
+                    direction = '大'
+                else:
+                    # 混合号码，无法确定方向
+                    direction = '未知'
+                
+                if direction != '未知':
+                    return f"{detected_position}-{direction}"
+        
+        return detected_position if detected_position else ""
+    
+    def _extract_direction_for_liangmian(self, content, play_category, lottery_type):
+        """处理两面玩法的方向提取"""
+        content_lower = content.lower()
+        
+        # 直接提取方向词
+        direction_keywords = {
+            '大': ['大', 'da', 'big'],
+            '小': ['小', 'xiao', 'small'], 
+            '单': ['单', 'dan', 'odd'],
+            '双': ['双', 'shuang', 'even']
+        }
+        
+        for direction, keywords in direction_keywords.items():
+            for keyword in keywords:
+                if keyword in content_lower:
+                    return direction
+        
+        return ""
+    
+    def _extract_direction_for_hezhi(self, content, play_category, lottery_type):
+        """处理和值玩法的方向提取"""
+        content_lower = content.lower()
+        
+        # 快三和值方向
+        if lottery_type in ['K3', 'fast_three']:
+            direction_keywords = {
+                '大': ['大', 'da', 'big'],
+                '小': ['小', 'xiao', 'small'],
+                '单': ['单', 'dan', 'odd'],
+                '双': ['双', 'shuang', 'even']
+            }
+            
+            for direction, keywords in direction_keywords.items():
+                for keyword in keywords:
+                    if keyword in content_lower:
+                        return f"和值-{direction}"
+        
+        return "和值"
+    
+    def _extract_direction_for_longhu(self, content, play_category, lottery_type):
+        """处理龙虎玩法的方向提取"""
+        content_lower = content.lower()
+        
+        direction_keywords = {
+            '龙': ['龙', 'long', 'dragon'],
+            '虎': ['虎', 'hu', 'tiger']
+        }
+        
+        for direction, keywords in direction_keywords.items():
+            for keyword in keywords:
+                if keyword in content_lower:
+                    return direction
+        
+        return ""
+    
+    def _extract_direction_generic(self, content, play_category, lottery_type):
+        """通用方向提取方法"""
+        content_lower = content.lower()
+        
+        # 尝试提取所有可能的方向
+        all_directions = []
+        
+        # 检查基础方向
+        base_directions = ['大', '小', '单', '双', '龙', '虎', '质', '合']
+        for direction in base_directions:
+            if direction in content_lower:
+                all_directions.append(direction)
+        
+        # 检查特殊方向
+        special_directions = {
+            '特大': ['特大', '极大'],
+            '特小': ['特小', '极小'], 
+            '特单': ['特单'],
+            '特双': ['特双']
+        }
+        
+        for direction, keywords in special_directions.items():
+            for keyword in keywords:
+                if keyword in content_lower:
+                    all_directions.append(direction)
+        
+        if all_directions:
+            return all_directions[0]  # 返回第一个找到的方向
+        
+        return ""
+    
+    def _extract_numbers_from_content(self, content):
+        """从内容中提取号码"""
+        try:
+            content_str = str(content)
+            numbers = []
+            
+            # 提取所有1-2位数字
+            number_matches = re.findall(r'\b\d{1,2}\b', content_str)
+            for match in number_matches:
+                num = int(match)
+                if 1 <= num <= 49:  # 常见彩票号码范围
+                    numbers.append(num)
+            
+            return numbers
+        except:
+            return []
     
     def _extract_position_from_content(self, content, lottery_type):
         """从内容中提取位置信息"""
@@ -2240,6 +2442,11 @@ def main():
     
     if uploaded_file is not None:
         try:
+            # 🆕 新增：数据诊断模式
+            st.sidebar.header("🔧 诊断模式")
+            debug_mode = st.sidebar.checkbox("启用诊断模式", value=True, 
+                                           help="显示详细的数据解析过程")
+            
             # 配置参数
             st.sidebar.header("⚙️ 检测参数配置")
             
@@ -2254,42 +2461,86 @@ def main():
                 index=0,
                 help="当前专注于2个账户对立检测"
             )
-            st.sidebar.info(f"🎯 检测模式: {max_accounts}个账户对立检测")
-            
-            # 账户期数差异阈值配置
-            period_diff_threshold = st.sidebar.number_input(
-                "账户期数最大差异阈值", 
-                value=150, 
-                min_value=0, 
-                max_value=1000,
-                help="账户总投注期数最大允许差异，超过此值不进行组合检测"
-            )
             
             # 更新配置参数
             config = Config()
             config.min_amount = min_amount
             config.amount_similarity_threshold = base_similarity_threshold
             config.max_accounts_in_group = max_accounts
-            config.account_period_diff_threshold = period_diff_threshold
-            
-            # 设置匹配度阈值 - 只保留2个账户
-            config.account_count_similarity_thresholds = {
-                2: base_similarity_threshold
-            }
             
             detector = WashTradeDetector(config)
             
             st.success(f"✅ 已上传文件: {uploaded_file.name}")
             
+            # 🆕 新增：详细数据诊断
+            if debug_mode:
+                st.header("🔍 数据诊断分析")
+                
+                # 读取原始数据
+                df_raw = pd.read_excel(uploaded_file)
+                st.subheader("📋 原始数据样本")
+                st.dataframe(df_raw.head(20))
+                
+                st.subheader("📊 原始数据信息")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write(f"**数据维度:** {df_raw.shape}")
+                    st.write(f"**列名:** {list(df_raw.columns)}")
+                with col2:
+                    st.write(f"**数据类型:**")
+                    st.write(df_raw.dtypes.astype(str))
+                
+                # 检查关键列是否存在
+                required_cols = ['会员账号', '期号', '内容', '金额', '玩法', '彩种']
+                missing_cols = [col for col in required_cols if col not in df_raw.columns]
+                if missing_cols:
+                    st.error(f"❌ 缺少关键列: {missing_cols}")
+                    st.info("尝试自动识别列名...")
+                    
+                    # 显示列名映射
+                    processor = DataProcessor()
+                    column_mapping = processor.smart_column_identification(df_raw.columns)
+                    st.write("自动列名映射:", column_mapping)
+            
             with st.spinner("🔄 正在解析数据..."):
-                # 🆕 第5点：添加数据格式验证
                 df_enhanced, filename = detector.upload_and_process(uploaded_file)
                 
                 if df_enhanced is not None and len(df_enhanced) > 0:
-                    # 🆕 第5点：调用数据格式验证
-                    if not detector.data_processor.validate_data_format(df_enhanced):
-                        st.error("❌ 数据格式验证失败，请检查文件格式")
-                        return
+                    # 🆕 新增：详细的方向提取诊断
+                    if debug_mode and '投注方向' in df_enhanced.columns:
+                        st.subheader("🎯 方向提取诊断")
+                        
+                        # 分析方向提取结果
+                        direction_stats = df_enhanced['投注方向'].value_counts()
+                        empty_directions = len(df_enhanced[df_enhanced['投注方向'] == ''])
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.metric("总记录数", len(df_enhanced))
+                            st.metric("有效方向数", len(direction_stats))
+                        with col2:
+                            st.metric("空方向数", empty_directions)
+                            st.metric("方向提取成功率", 
+                                    f"{(len(df_enhanced) - empty_directions) / len(df_enhanced) * 100:.1f}%")
+                        
+                        # 显示方向提取样本
+                        st.write("**方向提取样本:**")
+                        sample_data = []
+                        for idx, row in df_enhanced.head(10).iterrows():
+                            sample_data.append({
+                                '内容': row['内容'],
+                                '玩法': row.get('玩法', ''),
+                                '彩种': row.get('彩种', ''),
+                                '提取方向': row['投注方向'],
+                                '提取金额': row.get('投注金额', 0)
+                            })
+                        st.dataframe(pd.DataFrame(sample_data))
+                        
+                        # 显示内容格式分析
+                        st.write("**内容格式分析:**")
+                        content_samples = df_enhanced['内容'].head(10).tolist()
+                        for i, content in enumerate(content_samples, 1):
+                            st.write(f"{i}. `{content}`")
                     
                     st.success("✅ 数据解析完成")
                     
