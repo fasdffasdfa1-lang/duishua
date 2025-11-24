@@ -2243,10 +2243,18 @@ def main():
             # 配置参数
             st.sidebar.header("⚙️ 检测参数配置")
             
-            # 🆕 第4点：降低默认阈值进行测试
+            # 🆕 修复：降低默认阈值进行测试
             min_amount = st.sidebar.number_input("最小投注金额", value=1, min_value=0, help="测试阶段建议设置为1")
-            base_similarity_threshold = st.sidebar.slider("基础金额匹配度阈值", 0.8, 1.0, 0.8, 0.01, help="2个账户的基础匹配度阈值")
-            max_accounts = st.sidebar.slider("最大检测账户数", 2, 2, 2, help="专注于2个账户对立检测")
+            base_similarity_threshold = st.sidebar.slider("基础金额匹配度阈值", 0.1, 1.0, 0.8, 0.01, help="2个账户的基础匹配度阈值")
+            
+            # 🆕 修复：使用选择框替代滑块
+            max_accounts = st.sidebar.selectbox(
+                "检测账户数模式",
+                options=[2],
+                index=0,
+                help="当前专注于2个账户对立检测"
+            )
+            st.sidebar.info(f"🎯 检测模式: {max_accounts}个账户对立检测")
             
             # 账户期数差异阈值配置
             period_diff_threshold = st.sidebar.number_input(
@@ -2257,9 +2265,9 @@ def main():
                 help="账户总投注期数最大允许差异，超过此值不进行组合检测"
             )
             
-            # 🆕 第4点：或者直接设置较低的默认值
+            # 更新配置参数
             config = Config()
-            config.min_amount = 1  # 测试阶段设置为1
+            config.min_amount = min_amount
             config.amount_similarity_threshold = base_similarity_threshold
             config.max_accounts_in_group = max_accounts
             config.account_period_diff_threshold = period_diff_threshold
