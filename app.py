@@ -71,57 +71,34 @@ class Config:
         
         # 🎯 关键修复：扩展方向模式，但保持变异形式的独立性
         self.direction_patterns = {
-            # 核心基础对立方向
-            '小': ['两面-小', '和值-小', '小', 'small', 'xia', 'xiao', 'x', 's', '小数'],
-            '大': ['两面-大', '和值-大', '大', 'big', 'da', 'large', 'd', 'b', '大数'],
-            '单': ['两面-单', '和值-单', '单', 'odd', 'dan', '奇数', 'jd', 'o', '单数'],
-            '双': ['两面-双', '和值-双', '双', 'even', 'shuang', '偶数', 'sd', 'e', '双数'],
-            '龙': ['龙', 'long', 'dragon', '龍', '龍虎-龙', 'l', 'd', 'long'],
-            '虎': ['虎', 'hu', 'tiger', '龍虎-虎', 'h', 't', 'tiger'],
+            # 基础方向
+            '小': ['两面-小', '和值-小', '小', 'small', 'xia', 'xiao'],
+            '大': ['两面-大', '和值-大', '大', 'big', 'da', 'large'], 
+            '单': ['两面-单', '和值-单', '单', 'odd', 'dan', '奇数'],
+            '双': ['两面-双', '和值-双', '双', 'even', 'shuang', '偶数'],
+            '龙': ['龙', 'long', 'dragon', '龍', '龍虎-龙'],
+            '虎': ['虎', 'hu', 'tiger', '龍虎-虎'],
+            '质': ['质', '质数', 'prime', 'zhi', '質', '質數'],
+            '合': ['合', '合数', 'composite', 'he', '合數'],
             
-            # 🎯 完善：质合对立
-            '质': ['质', '质数', 'prime', 'zhi', '質', '質數', 'p', 'z'],
-            '合': ['合', '合数', 'composite', 'he', '合數', 'c', 'h'],
-            
-            # 🎯 完善：家野对立
-            '家': ['家', '家禽', '家畜', '家庭', 'jia', 'home'],
-            '野': ['野', '野兽', '野生', '野外', 'ye', 'wild'],
-            
-            # 🎯 完善：特殊对立形式
-            '特小': ['特小', '极小', '最小', '非常小', 'tx', 'jx'],
-            '特大': ['特大', '极大', '最大', '非常大', 'td', 'jd'],
-            '特单': ['特单', '极单', '最单', '非常单'],
-            '特双': ['特双', '极双', '最双', '非常双'],
-            '总和小': ['总和小', '和小', '总和-小', '和值小', 'zhex'],
-            '总和大': ['总和大', '和大', '总和-大', '和值大', 'zhd'],
-            '总和单': ['总和单', '和单', '总和-单', '和值单', 'zhdan'],
-            '总和双': ['总和双', '和双', '总和-双', '和值双', 'zhshuang'],
-            
-            # 🎯 完善：快三特殊对立
-            '三军大': ['三军大', '三軍大', '单码大', '大数'],
-            '三军小': ['三军小', '三軍小', '单码小', '小数'],
-            '三军单': ['三军单', '三軍单', '单码单', '单数'], 
-            '三军双': ['三军双', '三軍双', '单码双', '双数'],
+            # 🎯 新增：保持变异形式的独立性
+            '特小': ['特小', '极小', '最小'],
+            '特大': ['特大', '极大', '最大'],
+            '特单': ['特单'],
+            '特双': ['特双'],
+            '总和小': ['总和小', '和小'],
+            '总和大': ['总和大', '和大'],
+            '总和单': ['总和单', '和单'],
+            '总和双': ['总和双', '和双']
         }
         
         # 🎯 修复：扩展对立组，包含变异形式
         self.opposite_groups = [
-            # 核心基础对立组
-            {'大', '小'}, 
-            {'单', '双'}, 
-            {'龙', '虎'},
-            {'质', '合'},
-            {'家', '野'},
-            
-            # 🎯 完善：特殊形式对立组
-            {'特大', '特小'},
-            {'特单', '特双'},
-            {'总和大', '总和小'},
-            {'总和单', '总和双'},
-            
-            # 🎯 完善：快三对立组
-            {'三军大', '三军小'},
-            {'三军单', '三军双'},
+            # 基础对立组
+            {'大', '小'}, {'单', '双'}, {'龙', '虎'}, {'质', '合'},
+            # 变异形式对立组
+            {'特大', '特小'}, {'特单', '特双'}, 
+            {'总和大', '总和小'}, {'总和单', '总和双'}
         ]
         
         # 位置关键词映射 - 增强版
@@ -166,80 +143,39 @@ class DataProcessor:
         }
         
         self.similarity_threshold = 0.7
-
-    def validate_data_format(self, df):
-        """验证数据格式"""
-        st.subheader("🔍 数据格式验证")
-        
-        issues = []
-        
-        # 检查必要列
-        required_columns = ['会员账号', '彩种', '期号', '玩法', '内容']
-        missing_columns = [col for col in required_columns if col not in df.columns]
-        if missing_columns:
-            issues.append(f"缺少必要列: {missing_columns}")
-        
-        # 检查数据样本
-        st.write("数据样本:")
-        st.dataframe(df.head(10))
-        
-        # 检查列数据类型
-        st.write("列数据类型:")
-        col_types = df.dtypes.astype(str)
-        st.write(col_types)
-        
-        # 检查空值
-        st.write("空值统计:")
-        null_stats = df.isnull().sum()
-        st.write(null_stats)
-        
-        # 检查内容列是否包含有效数据
-        if '内容' in df.columns:
-            content_sample = df['内容'].head(10).tolist()
-            st.write("内容列样本:")
-            for i, content in enumerate(content_sample, 1):
-                st.write(f"{i}. {content}")
-        
-        if issues:
-            st.error("❌ 数据格式问题:")
-            for issue in issues:
-                st.error(f"- {issue}")
-            return False
-        
-        st.success("✅ 数据格式验证通过")
-        return True
     
     def smart_column_identification(self, df_columns):
-        """智能列识别 - 增强版"""
+        """智能列识别"""
         identified_columns = {}
         actual_columns = [str(col).strip() for col in df_columns]
         
-        # 🆕 新增：显示原始列名帮助调试
-        st.info(f"📋 检测到的原始列名: {actual_columns}")
-        
-        for standard_col, possible_names in self.column_mapping.items():
-            found = False
-            for actual_col in actual_columns:
-                actual_col_lower = actual_col.lower().replace(' ', '').replace('_', '').replace('-', '')
-                
-                for possible_name in possible_names:
-                    possible_name_lower = possible_name.lower().replace(' ', '').replace('_', '').replace('-', '')
+        with st.expander("🔍 列名识别详情", expanded=False):
+            st.info(f"检测到的列名: {actual_columns}")
+            
+            for standard_col, possible_names in self.column_mapping.items():
+                found = False
+                for actual_col in actual_columns:
+                    actual_col_lower = actual_col.lower().replace(' ', '').replace('_', '').replace('-', '')
                     
-                    # 🆕 增强匹配条件
-                    if (possible_name_lower == actual_col_lower or 
-                        possible_name_lower in actual_col_lower or 
-                        actual_col_lower in possible_name_lower):
+                    for possible_name in possible_names:
+                        possible_name_lower = possible_name.lower().replace(' ', '').replace('_', '').replace('-', '')
                         
-                        identified_columns[actual_col] = standard_col
-                        st.success(f"✅ 识别列名: {actual_col} -> {standard_col}")
-                        found = True
+                        similarity_score = self._calculate_string_similarity(possible_name_lower, actual_col_lower)
+                        
+                        if (possible_name_lower in actual_col_lower or 
+                            actual_col_lower in possible_name_lower or
+                            similarity_score >= self.similarity_threshold):
+                            
+                            identified_columns[actual_col] = standard_col
+                            st.success(f"✅ 识别列名: {actual_col} -> {standard_col} (相似度: {similarity_score:.2f})")
+                            found = True
+                            break
+                    
+                    if found:
                         break
                 
-                if found:
-                    break
-            
-            if not found:
-                st.warning(f"⚠️ 未识别到 {standard_col} 对应的列名")
+                if not found:
+                    st.warning(f"⚠️ 未识别到 {standard_col} 对应的列名")
         
         return identified_columns
     
@@ -353,30 +289,21 @@ class DataProcessor:
         return issues
     
     def clean_data(self, uploaded_file):
-        """数据清洗主函数 - 增强调试版"""
+        """数据清洗主函数"""
         try:
-            # 🆕 显示文件信息
-            st.info(f"📁 文件: {uploaded_file.name}")
-            
-            # 读取原始数据
             df_temp = pd.read_excel(uploaded_file, header=None, nrows=50)
             st.info(f"原始数据维度: {df_temp.shape}")
             
-            # 🆕 显示前几行帮助识别数据结构
-            st.write("前5行原始数据:")
-            st.dataframe(df_temp.head(5))
-            
-            # 查找数据起始位置
             start_row, start_col = self.find_data_start(df_temp)
             st.info(f"数据起始位置: 第{start_row+1}行, 第{start_col+1}列")
             
-            # 读取清洗后的数据
             df_clean = pd.read_excel(
                 uploaded_file, 
                 header=start_row,
                 skiprows=range(start_row + 1) if start_row > 0 else None,
                 dtype=str,
-                na_filter=False
+                na_filter=False,
+                keep_default_na=False
             )
             
             if start_col > 0:
@@ -384,38 +311,56 @@ class DataProcessor:
             
             st.info(f"清理后数据维度: {df_clean.shape}")
             
-            # 🆕 显示清理后的列名
-            st.write("清理后的列名:", list(df_clean.columns))
-            
-            # 智能列识别
             column_mapping = self.smart_column_identification(df_clean.columns)
             if column_mapping:
                 df_clean = df_clean.rename(columns=column_mapping)
                 st.success("✅ 列名识别完成!")
             
-            # 🆕 检查必要列
             missing_columns = [col for col in self.required_columns if col not in df_clean.columns]
-            if missing_columns:
-                st.error(f"❌ 仍然缺少列: {missing_columns}")
-                st.info("尝试手动映射...")
+            if missing_columns and len(df_clean.columns) >= 4:
+                st.warning("自动映射列名...")
+                manual_mapping = {}
+                col_names = ['会员账号', '彩种', '期号', '内容', '玩法', '金额']
+                for i, col_name in enumerate(col_names):
+                    if i < len(df_clean.columns):
+                        manual_mapping[df_clean.columns[i]] = col_name
                 
-                # 手动映射逻辑
-                if len(df_clean.columns) >= len(self.required_columns):
-                    manual_map = {}
-                    st.write("请手动选择列映射:")
-                    
-                    for i, req_col in enumerate(self.required_columns):
-                        if i < len(df_clean.columns):
-                            manual_map[df_clean.columns[i]] = req_col
-                            st.write(f"  {df_clean.columns[i]} -> {req_col}")
-                    
-                    df_clean = df_clean.rename(columns=manual_map)
+                df_clean = df_clean.rename(columns=manual_mapping)
+                st.info(f"手动重命名后的列: {list(df_clean.columns)}")
             
-            # 继续原有处理逻辑...
-            # ...
+            initial_count = len(df_clean)
+            df_clean = df_clean.dropna(subset=[col for col in self.required_columns if col in df_clean.columns])
+            df_clean = df_clean.dropna(axis=1, how='all')
+            
+            for col in self.required_columns:
+                if col in df_clean.columns:
+                    if col == '会员账号':
+                        df_clean[col] = df_clean[col].apply(
+                            lambda x: str(x) if pd.notna(x) else ''
+                        )
+                    else:
+                        df_clean[col] = df_clean[col].astype(str).str.strip()
+            
+            if '期号' in df_clean.columns:
+                df_clean['期号'] = df_clean['期号'].str.replace(r'\.0$', '', regex=True)
+            
+            # ========== 🔄 修复这里：调用增强的数据验证 ==========
+            self.validate_data_quality(df_clean)
+            
+            st.success(f"✅ 数据清洗完成: {initial_count} -> {len(df_clean)} 条记录")
+            
+            st.info(f"📊 唯一会员账号数: {df_clean['会员账号'].nunique()}")
+            
+            if '彩种' in df_clean.columns:
+                lottery_dist = df_clean['彩种'].value_counts()
+                with st.expander("🎯 彩种分布", expanded=False):
+                    st.dataframe(lottery_dist.reset_index().rename(columns={'index': '彩种', '彩种': '数量'}))
+            
+            return df_clean
             
         except Exception as e:
             st.error(f"❌ 数据清洗失败: {str(e)}")
+            logger.error(f"数据清洗失败: {str(e)}")
             return None
 
 # ==================== 彩种识别器 ====================
@@ -643,146 +588,31 @@ class PlayCategoryNormalizer:
 
 # ==================== 内容解析器 - 修复版 ====================
 class ContentParser:
-    @staticmethod
-    def enhanced_direction_extraction(content, play_category, lottery_type, config):
-        """🎯 增强版方向提取 - 处理各种格式"""
-        try:
-            if pd.isna(content) or not content:
-                return ""
-            
-            content_str = str(content).strip()
-            play_str = str(play_category).strip() if pd.notna(play_category) else ""
-            
-            # 🎯 调试信息
-            logger.debug(f"方向提取 - 内容: '{content_str}', 玩法: '{play_str}'")
-            
-            # 方法1: 基础方向词提取
-            directions = ContentParser.extract_basic_directions(content_str, config)
-            if directions:
-                return directions[0]  # 返回第一个找到的方向
-            
-            # 方法2: 数字推断方向 (针对定位胆等)
-            number_direction = ContentParser.extract_direction_from_numbers(content_str, play_str, lottery_type)
-            if number_direction:
-                return number_direction
-            
-            # 方法3: 玩法关键词推断
-            play_direction = ContentParser.extract_direction_from_play(play_str, content_str)
-            if play_direction:
-                return play_direction
-            
-            # 方法4: 内容模式匹配
-            pattern_direction = ContentParser.extract_direction_from_patterns(content_str)
-            if pattern_direction:
-                return pattern_direction
-            
-            return ""
-            
-        except Exception as e:
-            logger.warning(f"方向提取失败: {content}, 错误: {e}")
-            return ""
+    """修复内容解析器 - 支持变异形式但映射到基础方向"""
     
     @staticmethod
-    def extract_direction_from_numbers(content, play_category, lottery_type):
-        """从数字内容推断方向"""
-        try:
-            content_str = str(content)
-            
-            # 提取所有数字
-            numbers = re.findall(r'\d+', content_str)
-            numbers = [int(num) for num in numbers if num]
-            
-            if not numbers:
-                return ""
-            
-            # 根据彩种和玩法推断方向
-            if lottery_type in ['PK10', '10_number']:
-                # PK10: 1-5为小, 6-10为大
-                if all(1 <= num <= 5 for num in numbers):
-                    return '小'
-                elif all(6 <= num <= 10 for num in numbers):
-                    return '大'
-            
-            elif lottery_type in ['K3', 'fast_three']:
-                # 快三: 和值判断
-                if len(numbers) == 1:
-                    total = numbers[0]
-                    if 3 <= total <= 10:
-                        return '小'
-                    elif 11 <= total <= 18:
-                        return '大'
-            
-            elif lottery_type in ['SSC', '3D']:
-                # 时时彩/3D: 单个数字判断
-                if len(numbers) == 1:
-                    num = numbers[0]
-                    if num in [0, 2, 4, 6, 8]:
-                        return '双'
-                    elif num in [1, 3, 5, 7, 9]:
-                        return '单'
-            
-            return ""
-        except:
-            return ""
-    
-    @staticmethod
-    def extract_direction_from_play(play_category, content):
-        """从玩法分类推断方向"""
-        play_str = str(play_category).lower()
-        content_str = str(content).lower()
+    def extract_basic_directions(content, config):
+        """提取方向 - 保持变异形式独立性"""
+        content_str = str(content).strip()
+        directions = []
         
-        # 两面玩法
-        if '两面' in play_str or '双面' in play_str:
-            if '大' in content_str:
-                return '大'
-            elif '小' in content_str:
-                return '小'
-            elif '单' in content_str:
-                return '单'
-            elif '双' in content_str:
-                return '双'
+        if not content_str:
+            return directions
         
-        # 龙虎玩法
-        if '龙虎' in play_str:
-            if '龙' in content_str:
-                return '龙'
-            elif '虎' in content_str:
-                return '虎'
+        content_lower = content_str.lower()
         
-        # 和值玩法
-        if '和值' in play_str:
-            if '大' in content_str:
-                return '和值-大'
-            elif '小' in content_str:
-                return '和值-小'
-            elif '单' in content_str:
-                return '和值-单'
-            elif '双' in content_str:
-                return '和值-双'
+        # 🎯 提取所有可能的方向（保持变异形式独立性）
+        for direction, patterns in config.direction_patterns.items():
+            for pattern in patterns:
+                pattern_lower = pattern.lower()
+                # 精确匹配检查
+                if (pattern_lower == content_lower or 
+                    pattern_lower in content_lower or 
+                    content_lower in pattern_lower):
+                    directions.append(direction)
+                    break
         
-        return ""
-    
-    @staticmethod
-    def extract_direction_from_patterns(content):
-        """从内容模式推断方向"""
-        content_lower = str(content).lower()
-        
-        # 常见方向模式
-        patterns = {
-            '大': ['大', 'da', 'big', 'large', 'd'],
-            '小': ['小', 'xiao', 'small', 'little', 'x'],
-            '单': ['单', 'dan', 'odd', 'o'],
-            '双': ['双', 'shuang', 'even', 'e', 's'],
-            '龙': ['龙', 'long', 'dragon', 'l'],
-            '虎': ['虎', 'hu', 'tiger', 'h']
-        }
-        
-        for direction, keywords in patterns.items():
-            for keyword in keywords:
-                if keyword in content_lower:
-                    return direction
-        
-        return ""
+        return directions
 
     @staticmethod
     def extract_position_from_play_category(play_category, lottery_type, config):
@@ -938,8 +768,7 @@ class WashTradeDetector:
                 df_clean = self.data_processor.clean_data(uploaded_file)
             
             if df_clean is not None and len(df_clean) > 0:
-                # 🆕 第6点：调用增强的数据处理（包含详细调试信息）
-                df_enhanced = self.enhance_data_processing_with_debug(df_clean)
+                df_enhanced = self.enhance_data_processing(df_clean)
                 return df_enhanced, filename
             else:
                 return None, None
@@ -949,237 +778,25 @@ class WashTradeDetector:
             st.error(f"文件处理失败: {str(e)}")
             return None, None
     
-    # 🆕 第6点：重命名或替换原有的 enhance_data_processing 方法
-    def enhance_data_processing_with_debug(self, df_clean):
-        """增强的数据处理流程 - 包含详细调试信息"""
-        try:
-            # 🆕 详细调试：显示数据样本
-            st.subheader("🔍 数据样本分析")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.write("原始数据样本:")
-                st.dataframe(df_clean[['会员账号', '彩种', '期号', '玩法', '内容']].head(10))
-            
-            with col2:
-                st.write("彩种类型分布:")
-                if '彩种' in df_clean.columns:
-                    lottery_dist = df_clean['彩种'].value_counts()
-                    st.dataframe(lottery_dist)
-            
-            # 彩种识别
-            if '彩种' in df_clean.columns:
-                df_clean['原始彩种'] = df_clean['彩种']
-                df_clean['彩种类型'] = df_clean['彩种'].apply(self.lottery_identifier.identify_lottery_type)
-                st.info(f"🎲 彩种识别完成，共识别 {df_clean['彩种类型'].nunique()} 种彩种类型")
-            
-            # 玩法分类统一
-            if '玩法' in df_clean.columns:
-                df_clean['玩法分类'] = df_clean['玩法'].apply(self.play_normalizer.normalize_category)
-                st.info(f"🎯 玩法分类完成，共 {df_clean['玩法分类'].nunique()} 种玩法分类")
-            
-            # 计算账户统计信息
-            self.calculate_account_total_periods_by_lottery(df_clean)
-            
-            # 提取投注金额和方向 - 使用缓存版本
-            st.info("💰 正在提取投注金额和方向...")
-            progress_bar = st.progress(0)
-            total_rows = len(df_clean)
-            
-            # 🆕 详细调试：显示提取过程
-            sample_extractions = []
-            
-            # 分批处理显示进度
-            batch_size = 1000
-            for i in range(0, total_rows, batch_size):
-                end_idx = min(i + batch_size, total_rows)
-                batch_df = df_clean.iloc[i:end_idx]
-                
-                # 处理当前批次
-                df_clean.loc[i:end_idx-1, '投注金额'] = batch_df['金额'].apply(
-                    lambda x: self.cached_extract_bet_amount(str(x))
-                )
-                df_clean.loc[i:end_idx-1, '投注方向'] = batch_df.apply(
-                    lambda row: self.enhanced_extract_direction_with_position(
-                        row['内容'], 
-                        row.get('玩法', ''), 
-                        row['彩种类型'] if '彩种类型' in df_clean.columns else 'six_mark'
-                    ), 
-                    axis=1
-                )
-                
-                # 🆕 收集样本提取结果用于调试
-                if i == 0 and len(batch_df) > 0:
-                    for idx, row in batch_df.head(5).iterrows():
-                        sample_extractions.append({
-                            '内容': row['内容'],
-                            '玩法': row.get('玩法', ''),
-                            '彩种类型': row.get('彩种类型', 'six_mark'),
-                            '提取金额': self.cached_extract_bet_amount(str(row['金额'])),
-                            '提取方向': self.cached_extract_direction(
-                                row['内容'], 
-                                row.get('玩法', ''), 
-                                row.get('彩种类型', 'six_mark')
-                            )
-                        })
-                
-                # 更新进度
-                progress = (end_idx) / total_rows
-                progress_bar.progress(progress)
-            
-            progress_bar.empty()
-            
-            # 🆕 显示提取样本结果
-            st.subheader("🔍 提取结果样本")
-            if sample_extractions:
-                extraction_df = pd.DataFrame(sample_extractions)
-                st.dataframe(extraction_df)
-            
-            # 🆕 详细调试：显示提取统计
-            st.subheader("📊 提取统计信息")
-            
-            # 金额提取统计
-            amount_stats = df_clean['投注金额'].describe()
-            st.write("金额提取统计:")
-            st.write(f"- 最小值: {amount_stats['min']:.2f}")
-            st.write(f"- 最大值: {amount_stats['max']:.2f}")
-            st.write(f"- 平均值: {amount_stats['mean']:.2f}")
-            st.write(f"- 零金额记录: {len(df_clean[df_clean['投注金额'] == 0])}")
-            
-            # 方向提取统计
-            direction_stats = df_clean['投注方向'].value_counts()
-            st.write("方向提取统计:")
-            if len(direction_stats) > 0:
-                st.dataframe(direction_stats.head(10))
-            else:
-                st.write("❌ 没有提取到任何方向")
-            
-            # 过滤有效记录
-            initial_count = len(df_clean)
-            
-            # 🆕 详细调试：显示过滤条件
-            st.subheader("🔍 过滤条件分析")
-            st.write(f"过滤条件:")
-            st.write(f"- 最小金额阈值: {self.config.min_amount}")
-            st.write(f"- 方向不为空")
-            
-            empty_direction_count = len(df_clean[df_clean['投注方向'] == ''])
-            low_amount_count = len(df_clean[df_clean['投注金额'] < self.config.min_amount])
-            
-            st.write(f"过滤前统计:")
-            st.write(f"- 总记录数: {initial_count}")
-            st.write(f"- 方向为空的记录: {empty_direction_count}")
-            st.write(f"- 金额小于阈值的记录: {low_amount_count}")
-            
-            df_valid = df_clean[
-                (df_clean['投注方向'] != '') & 
-                (df_clean['投注金额'] >= self.config.min_amount)
-            ].copy()
-            
-            st.write(f"过滤后记录数: {len(df_valid)}")
-            
-            if len(df_valid) == 0:
-                st.error("❌ 过滤后没有有效记录")
-                
-                # 🆕 详细诊断问题
-                st.subheader("🔍 问题诊断")
-                
-                # 检查金额提取问题
-                if amount_stats['max'] == 0:
-                    st.error("❌ 金额提取全部为0，请检查金额列格式")
-                    st.write("金额列样本:")
-                    st.dataframe(df_clean[['金额']].head(10))
-                
-                # 检查方向提取问题
-                if empty_direction_count == initial_count:
-                    st.error("❌ 方向提取全部为空，请检查内容和玩法列")
-                    st.write("内容和玩法列样本:")
-                    st.dataframe(df_clean[['内容', '玩法']].head(10))
-                    
-                    # 测试方向提取
-                    st.write("方向提取测试:")
-                    test_samples = []
-                    for idx, row in df_clean.head(5).iterrows():
-                        test_direction = self.cached_extract_direction(
-                            row['内容'], 
-                            row.get('玩法', ''), 
-                            row.get('彩种类型', 'six_mark')
-                        )
-                        test_samples.append({
-                            '内容': row['内容'],
-                            '玩法': row.get('玩法', ''),
-                            '彩种类型': row.get('彩种类型', 'six_mark'),
-                            '提取方向': test_direction
-                        })
-                    st.dataframe(pd.DataFrame(test_samples))
-                
-                return pd.DataFrame()
-
-            self.data_processed = True
-            self.df_valid = df_valid
-
-            st.success(f"✅ 数据处理完成，有效记录: {len(df_valid)}")
-            
-            # 🆕 显示有效数据统计
-            st.subheader("📊 有效数据统计")
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("有效记录数", len(df_valid))
-            with col2:
-                st.metric("唯一账户数", df_valid['会员账号'].nunique())
-            with col3:
-                st.metric("唯一期号数", df_valid['期号'].nunique())
-            
-            # 显示有效数据样本
-            with st.expander("📋 有效数据样本", expanded=False):
-                st.dataframe(df_valid[['会员账号', '期号', '彩种', '玩法', '内容', '投注方向', '投注金额']].head(10))
-
-            return df_valid
-                
-        except Exception as e:
-            st.error(f"❌ 数据处理增强失败: {str(e)}")
-            logger.error(f"数据处理增强失败: {str(e)}")
-            import traceback
-            st.code(traceback.format_exc())
-            return pd.DataFrame()
-    
     def enhance_data_processing(self, df_clean):
-        """增强的数据处理流程 - 添加详细调试信息"""
+        """增强的数据处理流程 - 修复版"""
         try:
             # 彩种识别
             if '彩种' in df_clean.columns:
                 df_clean['原始彩种'] = df_clean['彩种']
                 df_clean['彩种类型'] = df_clean['彩种'].apply(self.lottery_identifier.identify_lottery_type)
-                st.info(f"🎲 彩种识别完成，共识别 {df_clean['彩种类型'].nunique()} 种彩种类型")
             
             # 玩法分类统一
             if '玩法' in df_clean.columns:
                 df_clean['玩法分类'] = df_clean['玩法'].apply(self.play_normalizer.normalize_category)
-                st.info(f"🎯 玩法分类完成，共 {df_clean['玩法分类'].nunique()} 种玩法分类")
             
             # 计算账户统计信息
             self.calculate_account_total_periods_by_lottery(df_clean)
-            
-            # 🆕 详细调试：显示数据样本
-            st.subheader("🔍 数据样本分析")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.write("原始数据样本:")
-                st.dataframe(df_clean[['会员账号', '彩种', '期号', '玩法', '内容']].head(10))
-            
-            with col2:
-                st.write("彩种类型分布:")
-                lottery_dist = df_clean['彩种类型'].value_counts()
-                st.dataframe(lottery_dist)
             
             # 提取投注金额和方向 - 使用缓存版本
             st.info("💰 正在提取投注金额和方向...")
             progress_bar = st.progress(0)
             total_rows = len(df_clean)
-            
-            # 🆕 详细调试：显示提取过程
-            sample_extractions = []
             
             # 分批处理显示进度
             batch_size = 1000
@@ -1195,25 +812,10 @@ class WashTradeDetector:
                     lambda row: self.cached_extract_direction(
                         row['内容'], 
                         row.get('玩法', ''), 
-                        row['彩种类型'] if '彩种类型' in df_clean.columns else 'six_mark'
+                        row['彩种类型']
                     ), 
                     axis=1
                 )
-                
-                # 🆕 收集样本提取结果用于调试
-                if i == 0 and len(batch_df) > 0:
-                    for idx, row in batch_df.head(5).iterrows():
-                        sample_extractions.append({
-                            '内容': row['内容'],
-                            '玩法': row.get('玩法', ''),
-                            '彩种类型': row.get('彩种类型', 'six_mark'),
-                            '提取金额': self.cached_extract_bet_amount(str(row['金额'])),
-                            '提取方向': self.cached_extract_direction(
-                                row['内容'], 
-                                row.get('玩法', ''), 
-                                row.get('彩种类型', 'six_mark')
-                            )
-                        })
                 
                 # 更新进度
                 progress = (end_idx) / total_rows
@@ -1221,407 +823,147 @@ class WashTradeDetector:
             
             progress_bar.empty()
             
-            # 🆕 显示提取样本结果
-            st.subheader("🔍 提取结果样本")
-            if sample_extractions:
-                extraction_df = pd.DataFrame(sample_extractions)
-                st.dataframe(extraction_df)
-            
-            # 🆕 详细调试：显示提取统计
-            st.subheader("📊 提取统计信息")
-            
-            # 金额提取统计
-            amount_stats = df_clean['投注金额'].describe()
-            st.write("金额提取统计:")
-            st.write(f"- 最小值: {amount_stats['min']:.2f}")
-            st.write(f"- 最大值: {amount_stats['max']:.2f}")
-            st.write(f"- 平均值: {amount_stats['mean']:.2f}")
-            st.write(f"- 零金额记录: {len(df_clean[df_clean['投注金额'] == 0])}")
-            
-            # 方向提取统计
-            direction_stats = df_clean['投注方向'].value_counts()
-            st.write("方向提取统计:")
-            if len(direction_stats) > 0:
-                st.dataframe(direction_stats.head(10))
-            else:
-                st.write("❌ 没有提取到任何方向")
-            
             # 过滤有效记录
-            initial_count = len(df_clean)
-            
-            # 🆕 详细调试：显示过滤条件
-            st.subheader("🔍 过滤条件分析")
-            st.write(f"过滤条件:")
-            st.write(f"- 最小金额阈值: {self.config.min_amount}")
-            st.write(f"- 方向不为空")
-            
-            empty_direction_count = len(df_clean[df_clean['投注方向'] == ''])
-            low_amount_count = len(df_clean[df_clean['投注金额'] < self.config.min_amount])
-            
-            st.write(f"过滤前统计:")
-            st.write(f"- 总记录数: {initial_count}")
-            st.write(f"- 方向为空的记录: {empty_direction_count}")
-            st.write(f"- 金额小于阈值的记录: {low_amount_count}")
-            
             df_valid = df_clean[
                 (df_clean['投注方向'] != '') & 
                 (df_clean['投注金额'] >= self.config.min_amount)
             ].copy()
             
-            st.write(f"过滤后记录数: {len(df_valid)}")
-            
             if len(df_valid) == 0:
                 st.error("❌ 过滤后没有有效记录")
-                
-                # 🆕 详细诊断问题
-                st.subheader("🔍 问题诊断")
-                
-                # 检查金额提取问题
-                if amount_stats['max'] == 0:
-                    st.error("❌ 金额提取全部为0，请检查金额列格式")
-                    st.write("金额列样本:")
-                    st.dataframe(df_clean[['金额']].head(10))
-                
-                # 检查方向提取问题
-                if empty_direction_count == initial_count:
-                    st.error("❌ 方向提取全部为空，请检查内容和玩法列")
-                    st.write("内容和玩法列样本:")
-                    st.dataframe(df_clean[['内容', '玩法']].head(10))
-                    
-                    # 测试方向提取
-                    st.write("方向提取测试:")
-                    test_samples = []
-                    for idx, row in df_clean.head(5).iterrows():
-                        test_direction = self.cached_extract_direction(
-                            row['内容'], 
-                            row.get('玩法', ''), 
-                            row.get('彩种类型', 'six_mark')
-                        )
-                        test_samples.append({
-                            '内容': row['内容'],
-                            '玩法': row.get('玩法', ''),
-                            '彩种类型': row.get('彩种类型', 'six_mark'),
-                            '提取方向': test_direction
-                        })
-                    st.dataframe(pd.DataFrame(test_samples))
-                
                 return pd.DataFrame()
-    
+            
             self.data_processed = True
             self.df_valid = df_valid
-    
-            st.success(f"✅ 数据处理完成，有效记录: {len(df_valid)}")
-            
-            # 🆕 显示有效数据统计
-            st.subheader("📊 有效数据统计")
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("有效记录数", len(df_valid))
-            with col2:
-                st.metric("唯一账户数", df_valid['会员账号'].nunique())
-            with col3:
-                st.metric("唯一期号数", df_valid['期号'].nunique())
-            
-            # 显示有效数据样本
-            with st.expander("📋 有效数据样本", expanded=False):
-                st.dataframe(df_valid[['会员账号', '期号', '彩种', '玩法', '内容', '投注方向', '投注金额']].head(10))
-    
+
             return df_valid
-                
+            
         except Exception as e:
-            st.error(f"❌ 数据处理增强失败: {str(e)}")
             logger.error(f"数据处理增强失败: {str(e)}")
-            import traceback
-            st.code(traceback.format_exc())
+            st.error(f"数据处理增强失败: {str(e)}")
             return pd.DataFrame()
     
     def extract_bet_amount_safe(self, amount_text):
-        """安全提取投注金额 - 增强版处理各种格式"""
+        """安全提取投注金额 - 增强版"""
         try:
             if pd.isna(amount_text):
                 return 0
             
             text = str(amount_text).strip()
             
-            # 🆕 调试日志
-            logger.debug(f"金额提取输入: '{text}'")
-            
-            # 处理空字符串
-            if text == '':
-                return 0
-            
-            # 方法1: 直接转换（处理纯数字）
-            try:
-                # 移除所有非数字字符（除了点和负号）
-                cleaned_text = re.sub(r'[^\d.-]', '', text)
-                if cleaned_text and cleaned_text != '-' and cleaned_text != '.':
-                    amount = float(cleaned_text)
-                    if amount >= self.config.min_amount:
-                        logger.debug(f"直接转换成功: {text} -> {amount}")
-                        return amount
-            except Exception as e:
-                logger.debug(f"直接转换失败: {text}, 错误: {e}")
-                pass
-            
-            # 方法2: 处理千位分隔符格式
-            try:
-                # 移除逗号和全角逗号，然后转换
-                cleaned_text = text.replace(',', '').replace('，', '')
-                amount = float(cleaned_text)
-                if amount >= self.config.min_amount:
-                    logger.debug(f"千位分隔符转换成功: {text} -> {amount}")
-                    return amount
-            except Exception as e:
-                logger.debug(f"千位分隔符转换失败: {text}, 错误: {e}")
-                pass
-            
-            # 方法3: 处理科学计数法
+            # 处理科学计数法
             if 'E' in text or 'e' in text:
                 try:
                     amount = float(text)
                     if amount >= self.config.min_amount:
-                        logger.debug(f"科学计数法转换成功: {text} -> {amount}")
                         return amount
                 except:
                     pass
             
-            # 方法4: 使用正则表达式提取各种格式
+            # 直接转换
+            try:
+                # 移除所有非数字字符（除了小数点和负号）
+                cleaned_text = re.sub(r'[^\d.-]', '', text)
+                if cleaned_text and cleaned_text != '-':
+                    amount = float(cleaned_text)
+                    if amount >= self.config.min_amount:
+                        return amount
+            except:
+                pass
+            
+            # 模式匹配 - 增强模式
             patterns = [
-                r'投注\s*[:：]?\s*([\d,.]+)',
-                r'金额\s*[:：]?\s*([\d,.]+)',
-                r'下注金额\s*([\d,.]+)',
-                r'([\d,.]+)\s*元',
-                r'￥\s*([\d,.]+)',
-                r'¥\s*([\d,.]+)',
-                r'([\d,.]+)\s*RMB',
-                r'([\d,.]+)$'
+                r'投注[:：]?\s*([-]?\d+[,，]?\d*\.?\d*)',
+                r'下注[:：]?\s*([-]?\d+[,，]?\d*\.?\d*)',
+                r'金额[:：]?\s*([-]?\d+[,，]?\d*\.?\d*)',
+                r'总额[:：]?\s*([-]?\d+[,，]?\d*\.?\d*)',
+                r'([-]?\d+[,，]?\d*\.?\d*)\s*元',
+                r'￥\s*([-]?\d+[,，]?\d*\.?\d*)',
+                r'¥\s*([-]?\d+[,，]?\d*\.?\d*)',
+                r'[\$￥¥]?\s*([-]?\d+[,，]?\d*\.?\d+)',
+                r'([-]?\d+[,，]?\d*\.?\d+)',
             ]
             
             for pattern in patterns:
-                match = re.search(pattern, text, re.IGNORECASE)
+                match = re.search(pattern, text)
                 if match:
-                    amount_str = match.group(1).replace(',', '').replace('，', '')
+                    amount_str = match.group(1).replace(',', '').replace('，', '').replace(' ', '')
                     try:
                         amount = float(amount_str)
                         if amount >= self.config.min_amount:
-                            logger.debug(f"正则匹配成功: {text} -> {amount}")
                             return amount
                     except:
                         continue
             
-            logger.debug(f"所有提取方法失败: {text}")
             return 0
-                
+            
         except Exception as e:
-            logger.warning(f"金额提取失败: {amount_text}, 错误: {str(e)}")
+            logger.warning(f"金额提取失败: {amount_text}, 错误: {e}")
             return 0
     
     def enhanced_extract_direction_with_position(self, content, play_category, lottery_type):
-        """🎯 最终修复版方向提取"""
+        """🎯 修复版方向提取 - 保持变异形式独立性，正确提取位置"""
         try:
-            if pd.isna(content) or not content:
+            if pd.isna(content):
                 return ""
             
-            # 使用增强的方向提取
-            direction = self.content_parser.enhanced_direction_extraction(
-                content, play_category, lottery_type, self.config
-            )
+            content_str = str(content).strip()
             
-            # 如果还是空，尝试最后的手段
-            if not direction:
-                direction = self._last_resort_direction_extraction(content, play_category)
+            # 🎯 使用修复的内容解析器提取方向（保持变异形式独立性）
+            directions = self.content_parser.extract_basic_directions(content_str, self.config)
             
-            return direction
+            if not directions:
+                return ""
+            
+            # 🎯 从玩法分类中提取位置信息
+            position = self.content_parser.extract_position_from_play_category(play_category, lottery_type, self.config)
+            
+            # 🎯 选择主要方向
+            main_direction = self._select_primary_direction(directions, content_str)
+            
+            if not main_direction:
+                return ""
+            
+            # 🎯 组合位置和方向
+            if position and position != '未知位置':
+                return f"{position}-{main_direction}"
+            else:
+                return main_direction
             
         except Exception as e:
             logger.warning(f"方向提取失败: {content}, 错误: {e}")
             return ""
     
-    def _last_resort_direction_extraction(self, content, play_category):
-        """最后的手段：基于内容和玩法的启发式提取"""
-        content_str = str(content).lower()
-        play_str = str(play_category).lower()
+    def _select_primary_direction(self, directions, content):
+        """选择主要方向 - 修复版"""
+        if not directions:
+            return ""
         
-        # 检查内容中的关键词
-        direction_keywords = {
-            '大': ['大', 'da', 'big'],
-            '小': ['小', 'xiao', 'small'], 
-            '单': ['单', 'dan', 'odd'],
-            '双': ['双', 'shuang', 'even'],
-            '龙': ['龙', 'long', 'dragon'],
-            '虎': ['虎', 'hu', 'tiger']
-        }
+        if len(directions) == 1:
+            return directions[0]
         
-        for direction, keywords in direction_keywords.items():
-            for keyword in keywords:
-                if keyword in content_str:
-                    return direction
+        content_str = str(content)
         
-        # 检查玩法中的方向提示
-        if '大' in play_str:
-            return '大'
-        elif '小' in play_str:
-            return '小'
-        elif '单' in play_str:
-            return '单'
-        elif '双' in play_str:
-            return '双'
-        elif '龙' in play_str:
-            return '龙'
-        elif '虎' in play_str:
-            return '虎'
+        # 🎯 优先级规则 - 修复版
+        priority_rules = [
+            # 最高优先级：总和相关
+            lambda d: any(keyword in content_str for keyword in ['总和', '总']) and d in directions,
+            # 高优先级：特字相关
+            lambda d: '特' in content_str and d in directions,
+            # 中优先级：和值相关
+            lambda d: any(keyword in content_str for keyword in ['和值', '和']) and d in directions,
+            # 基础优先级：两面相关
+            lambda d: '两面' in content_str and d in directions,
+            # 默认优先级
+            lambda d: d in directions
+        ]
         
-        return ""
-    
-    def _extract_direction_for_dingweidan(self, content, play_category, lottery_type):
-        """处理定位胆玩法的方向提取"""
-        content_lower = content.lower()
+        for rule in priority_rules:
+            matching_directions = [d for d in directions if rule(d)]
+            if matching_directions:
+                return matching_directions[0]
         
-        # 🆕 修复：从内容中提取位置信息
-        position_keywords = {
-            '冠军': ['冠军', '第1名', '第一名', '1st', '前一'],
-            '亚军': ['亚军', '第2名', '第二名', '2nd'],
-            '季军': ['季军', '第3名', '第三名', '3rd'],
-            '第四名': ['第四名', '第4名', '4th'],
-            '第五名': ['第五名', '第5名', '5th'],
-            '第六名': ['第六名', '第6名', '6th'],
-            '第七名': ['第七名', '第7名', '7th'],
-            '第八名': ['第八名', '第8名', '8th'],
-            '第九名': ['第九名', '第9名', '9th'],
-            '第十名': ['第十名', '第10名', '10th'],
-        }
-        
-        # 查找位置
-        detected_position = None
-        for position, keywords in position_keywords.items():
-            for keyword in keywords:
-                if keyword in content_lower:
-                    detected_position = position
-                    break
-            if detected_position:
-                break
-        
-        # 🆕 修复：从号码推断方向（针对PK10/赛车）
-        if detected_position and lottery_type in ['PK10', '10_number']:
-            # 提取号码
-            numbers = self._extract_numbers_from_content(content)
-            if numbers:
-                # 根据号码推断方向（小:1-5, 大:6-10）
-                if all(1 <= num <= 5 for num in numbers):
-                    direction = '小'
-                elif all(6 <= num <= 10 for num in numbers):
-                    direction = '大'
-                else:
-                    # 混合号码，无法确定方向
-                    direction = '未知'
-                
-                if direction != '未知':
-                    return f"{detected_position}-{direction}"
-        
-        return detected_position if detected_position else ""
-    
-    def _extract_direction_for_liangmian(self, content, play_category, lottery_type):
-        """处理两面玩法的方向提取"""
-        content_lower = content.lower()
-        
-        # 直接提取方向词
-        direction_keywords = {
-            '大': ['大', 'da', 'big'],
-            '小': ['小', 'xiao', 'small'], 
-            '单': ['单', 'dan', 'odd'],
-            '双': ['双', 'shuang', 'even']
-        }
-        
-        for direction, keywords in direction_keywords.items():
-            for keyword in keywords:
-                if keyword in content_lower:
-                    return direction
-        
-        return ""
-    
-    def _extract_direction_for_hezhi(self, content, play_category, lottery_type):
-        """处理和值玩法的方向提取"""
-        content_lower = content.lower()
-        
-        # 快三和值方向
-        if lottery_type in ['K3', 'fast_three']:
-            direction_keywords = {
-                '大': ['大', 'da', 'big'],
-                '小': ['小', 'xiao', 'small'],
-                '单': ['单', 'dan', 'odd'],
-                '双': ['双', 'shuang', 'even']
-            }
-            
-            for direction, keywords in direction_keywords.items():
-                for keyword in keywords:
-                    if keyword in content_lower:
-                        return f"和值-{direction}"
-        
-        return "和值"
-    
-    def _extract_direction_for_longhu(self, content, play_category, lottery_type):
-        """处理龙虎玩法的方向提取"""
-        content_lower = content.lower()
-        
-        direction_keywords = {
-            '龙': ['龙', 'long', 'dragon'],
-            '虎': ['虎', 'hu', 'tiger']
-        }
-        
-        for direction, keywords in direction_keywords.items():
-            for keyword in keywords:
-                if keyword in content_lower:
-                    return direction
-        
-        return ""
-    
-    def _extract_direction_generic(self, content, play_category, lottery_type):
-        """通用方向提取方法"""
-        content_lower = content.lower()
-        
-        # 尝试提取所有可能的方向
-        all_directions = []
-        
-        # 检查基础方向
-        base_directions = ['大', '小', '单', '双', '龙', '虎', '质', '合']
-        for direction in base_directions:
-            if direction in content_lower:
-                all_directions.append(direction)
-        
-        # 检查特殊方向
-        special_directions = {
-            '特大': ['特大', '极大'],
-            '特小': ['特小', '极小'], 
-            '特单': ['特单'],
-            '特双': ['特双']
-        }
-        
-        for direction, keywords in special_directions.items():
-            for keyword in keywords:
-                if keyword in content_lower:
-                    all_directions.append(direction)
-        
-        if all_directions:
-            return all_directions[0]  # 返回第一个找到的方向
-        
-        return ""
-    
-    def _extract_numbers_from_content(self, content):
-        """从内容中提取号码"""
-        try:
-            content_str = str(content)
-            numbers = []
-            
-            # 提取所有1-2位数字
-            number_matches = re.findall(r'\b\d{1,2}\b', content_str)
-            for match in number_matches:
-                num = int(match)
-                if 1 <= num <= 49:  # 常见彩票号码范围
-                    numbers.append(num)
-            
-            return numbers
-        except:
-            return []
+        return directions[0]
     
     def _extract_position_from_content(self, content, lottery_type):
         """从内容中提取位置信息"""
@@ -1741,76 +1083,66 @@ class WashTradeDetector:
         return self.find_continuous_patterns_optimized(wash_records)
     
     def _get_valid_direction_combinations(self, n_accounts):
-        """🎯 完善版有效方向组合生成 - 专注于核心对立方向"""
+        """🎯 修复版有效方向组合生成 - 保持基础对立组但支持变异形式"""
         valid_combinations = []
         
-        # 🎯 只专注于2个账户的对立检测
-        if n_accounts == 2:
-            for opposites in self.config.opposite_groups:
-                if len(opposites) == 2:  # 确保只有两个对立方向
-                    dir1, dir2 = list(opposites)
+        # 🎯 基础对立组处理 - 保持4组基础对立关系
+        for opposites in self.config.opposite_groups:
+            opposite_list = list(opposites)
+            
+            if n_accounts == 2:
+                # 2个账户：标准的1v1对立
+                if len(opposite_list) == 2:
+                    dir1, dir2 = opposite_list
                     valid_combinations.append({
                         'directions': [dir1, dir2],
                         'dir1_count': 1,
                         'dir2_count': 1,
                         'opposite_type': f"{dir1}-{dir2}"
                     })
-            
-            # 🎯 完善：带位置的对立组合
-            positions = ['冠军', '亚军', '季军', '第四名', '第五名', '第六名', 
-                        '第七名', '第八名', '第九名', '第十名',
-                        '百位', '十位', '个位', '第1球', '第2球', '第3球', '第4球', '第5球']
-            
-            for position in positions:
-                for opposites in self.config.opposite_groups:
-                    if len(opposites) == 2:
-                        dir1, dir2 = list(opposites)
+            else:
+                # 3个及以上账户：多种分布
+                for i in range(1, n_accounts):
+                    j = n_accounts - i
+                    if len(opposite_list) == 2:
+                        dir1, dir2 = opposite_list
+                        valid_combinations.append({
+                            'directions': [dir1] * i + [dir2] * j,
+                            'dir1_count': i,
+                            'dir2_count': j,
+                            'opposite_type': f"{dir1}-{dir2}"
+                        })
+        
+        # 🎯 带位置的对立组 - 动态生成（支持变异形式）
+        positions = ['冠军', '亚军', '第三名', '第四名', '第五名', 
+                    '第六名', '第七名', '第八名', '第九名', '第十名',
+                    '百位', '十位', '个位', '第1球', '第2球', '第3球', '第4球', '第5球']
+        
+        for position in positions:
+            for opposites in self.config.opposite_groups:
+                if len(opposites) == 2:
+                    dir1, dir2 = list(opposites)
+                    if n_accounts == 2:
                         valid_combinations.append({
                             'directions': [f"{position}-{dir1}", f"{position}-{dir2}"],
                             'dir1_count': 1,
                             'dir2_count': 1,
                             'opposite_type': f"{position}-{dir1} vs {position}-{dir2}"
                         })
+                    else:
+                        for i in range(1, n_accounts):
+                            j = n_accounts - i
+                            valid_combinations.append({
+                                'directions': [f"{position}-{dir1}"] * i + [f"{position}-{dir2}"] * j,
+                                'dir1_count': i,
+                                'dir2_count': j,
+                                'opposite_type': f"{position}-{dir1} vs {position}-{dir2}"
+                            })
         
         return valid_combinations
-
-    def _identify_opposite_type(self, direction1, direction2):
-        """🎯 新增：智能识别对立类型 - 完善版"""
-        # 检查是否是基础对立
-        for opposites in self.config.opposite_groups:
-            if direction1 in opposites and direction2 in opposites:
-                return f"{direction1}-{direction2}"
-        
-        # 检查是否是带位置的对立
-        if '-' in direction1 and '-' in direction2:
-            try:
-                pos1, dir1 = direction1.split('-', 1)
-                pos2, dir2 = direction2.split('-', 1)
-                
-                if pos1 == pos2:  # 同一位置
-                    for opposites in self.config.opposite_groups:
-                        if dir1 in opposites and dir2 in opposites:
-                            return f"{pos1}-{dir1} vs {pos2}-{dir2}"
-            except ValueError:
-                pass
-        
-        # 智能识别相似对立
-        direction_pairs = [
-            ('大', '小'), ('单', '双'), ('龙', '虎'), ('质', '合'),
-            ('家', '野'), ('特大', '特小'), ('特单', '特双'), 
-            ('总和大', '总和小'), ('总和单', '总和双'),
-            ('三军大', '三军小'), ('三军单', '三军双')
-        ]
-        
-        for pair1, pair2 in direction_pairs:
-            if (direction1 == pair1 and direction2 == pair2) or (direction1 == pair2 and direction2 == pair1):
-                return f"{pair1}-{pair2}"
-        
-        # 如果都不是已知对立，返回基础格式
-        return f"{direction1}-{direction2}"
     
     def _detect_combinations_for_period(self, period_data, period_accounts, n_accounts, valid_combinations):
-        """为单个期号检测组合 - 完善版"""
+        """为单个期号检测组合 - 修复版"""
         patterns = []
         
         # 获取当前彩种
@@ -1849,7 +1181,6 @@ class WashTradeDetector:
                 continue
             
             # 🎯 检查是否匹配任何有效的方向组合
-            matched_combo = None
             for combo in valid_combinations:
                 target_directions = combo['directions']
                 
@@ -1857,90 +1188,67 @@ class WashTradeDetector:
                 target_directions_sorted = sorted(target_directions)
                 
                 if actual_directions_sorted == target_directions_sorted:
-                    matched_combo = combo
-                    break
-            
-            # 🎯 新增：如果没有匹配预定义组合，尝试智能识别
-            if not matched_combo and n_accounts == 2:
-                # 尝试智能识别对立类型
-                dir1, dir2 = group_directions
-                opposite_type = self._identify_opposite_type(dir1, dir2)
-                
-                # 如果识别出有效的对立类型
-                if '-' in opposite_type and 'vs' not in opposite_type:  # 基础对立格式
-                    matched_combo = {
-                        'directions': [dir1, dir2],
-                        'dir1_count': 1,
-                        'dir2_count': 1,
-                        'opposite_type': opposite_type
-                    }
-            
-            if matched_combo:
-                # 计算两个方向的总金额
-                dir1_total = 0
-                dir2_total = 0
-                dir1 = matched_combo['directions'][0]  # 取第一个方向作为参考
-                
-                for direction, amount in zip(group_directions, group_amounts):
-                    if direction == dir1:
-                        dir1_total += amount
-                    else:
-                        dir2_total += amount
-                
-                # 检查金额相似度
-                similarity_threshold = self.config.account_count_similarity_thresholds.get(
-                    n_accounts, self.config.amount_similarity_threshold
-                )
-                
-                if dir1_total > 0 and dir2_total > 0:
-                    similarity = min(dir1_total, dir2_total) / max(dir1_total, dir2_total)
+                    # 计算两个方向的总金额
+                    dir1_total = 0
+                    dir2_total = 0
+                    dir1 = combo['directions'][0]  # 取第一个方向作为参考
                     
-                    if similarity >= similarity_threshold:
-                        lottery_type = period_data['彩种类型'].iloc[0] if '彩种类型' in period_data.columns else '未知'
+                    for direction, amount in zip(group_directions, group_amounts):
+                        if direction == dir1:
+                            dir1_total += amount
+                        else:
+                            dir2_total += amount
+                    
+                    # 检查金额相似度
+                    similarity_threshold = self.config.account_count_similarity_thresholds.get(
+                        n_accounts, self.config.amount_similarity_threshold
+                    )
+                    
+                    if dir1_total > 0 and dir2_total > 0:
+                        similarity = min(dir1_total, dir2_total) / max(dir1_total, dir2_total)
                         
-                        # 🎯 使用智能识别的对立类型
-                        pattern_str = self._format_pattern_string(matched_combo['opposite_type'], matched_combo['dir1_count'], matched_combo['dir2_count'])
-                        
-                        record = {
-                            '期号': period_data['期号'].iloc[0],
-                            '彩种': lottery,
-                            '彩种类型': lottery_type,
-                            '账户组': list(account_group),
-                            '方向组': group_directions,
-                            '金额组': group_amounts,
-                            '总金额': dir1_total + dir2_total,
-                            '相似度': similarity,
-                            '账户数量': n_accounts,
-                            '模式': pattern_str,
-                            '对立类型': matched_combo['opposite_type']
-                        }
-                        
-                        patterns.append(record)
+                        if similarity >= similarity_threshold:
+                            lottery_type = period_data['彩种类型'].iloc[0] if '彩种类型' in period_data.columns else '未知'
+                            
+                            # 🎯 修复模式字符串生成
+                            if ' vs ' in combo['opposite_type']:
+                                # 带位置的对立类型，如 "第3球-小 vs 第3球-大"
+                                pattern_parts = combo['opposite_type'].split(' vs ')
+                                if len(pattern_parts) == 2:
+                                    dir1_part = pattern_parts[0].split('-')
+                                    dir2_part = pattern_parts[1].split('-')
+                                    if len(dir1_part) == 2 and len(dir2_part) == 2:
+                                        # 格式：位置-方向(数量个) vs 位置-方向(数量个)
+                                        pattern_str = f"{dir1_part[0]}-{dir1_part[1]}({combo['dir1_count']}个) vs {dir2_part[0]}-{dir2_part[1]}({combo['dir2_count']}个)"
+                                    else:
+                                        pattern_str = f"{pattern_parts[0]}({combo['dir1_count']}个) vs {pattern_parts[1]}({combo['dir2_count']}个)"
+                                else:
+                                    pattern_str = combo['opposite_type']
+                            else:
+                                # 基础对立类型，如 "大-小"
+                                opposite_parts = combo['opposite_type'].split('-')
+                                if len(opposite_parts) == 2:
+                                    pattern_str = f"{opposite_parts[0]}({combo['dir1_count']}个) vs {opposite_parts[1]}({combo['dir2_count']}个)"
+                                else:
+                                    pattern_str = combo['opposite_type']
+                            
+                            record = {
+                                '期号': period_data['期号'].iloc[0],
+                                '彩种': lottery,
+                                '彩种类型': lottery_type,
+                                '账户组': list(account_group),
+                                '方向组': group_directions,
+                                '金额组': group_amounts,
+                                '总金额': dir1_total + dir2_total,
+                                '相似度': similarity,
+                                '账户数量': n_accounts,
+                                '模式': pattern_str,  # 🎯 使用修复后的模式字符串
+                                '对立类型': combo['opposite_type']
+                            }
+                            
+                            patterns.append(record)
         
         return patterns
-    
-    def _format_pattern_string(self, opposite_type, dir1_count, dir2_count):
-        """格式化模式字符串"""
-        if ' vs ' in opposite_type:
-            # 带位置的对立类型，如 "第3球-小 vs 第3球-大"
-            pattern_parts = opposite_type.split(' vs ')
-            if len(pattern_parts) == 2:
-                dir1_part = pattern_parts[0].split('-')
-                dir2_part = pattern_parts[1].split('-')
-                if len(dir1_part) == 2 and len(dir2_part) == 2:
-                    # 格式：位置-方向(数量个) vs 位置-方向(数量个)
-                    return f"{dir1_part[0]}-{dir1_part[1]}({dir1_count}个) vs {dir2_part[0]}-{dir2_part[1]}({dir2_count}个)"
-                else:
-                    return f"{pattern_parts[0]}({dir1_count}个) vs {pattern_parts[1]}({dir2_count}个)"
-            else:
-                return opposite_type
-        else:
-            # 基础对立类型，如 "大-小"
-            opposite_parts = opposite_type.split('-')
-            if len(opposite_parts) == 2:
-                return f"{opposite_parts[0]}({dir1_count}个) vs {opposite_parts[1]}({dir2_count}个)"
-            else:
-                return opposite_type
     
     def _check_account_period_difference(self, account_group, lottery):
         """检查账户组内账户的总投注期数差异是否在阈值内"""
@@ -2189,73 +1497,39 @@ class WashTradeDetector:
                 st.write(f"- 发现模式: {self.performance_stats['total_patterns']} 个")
     
     def display_detailed_results(self, patterns):
-        """显示详细检测结果 - 专注于核心对立方向"""
+        """显示详细检测结果 - 确保只有一个总体统计"""
         st.write("\n" + "="*60)
-        st.write("🎯 双账户核心对立方向对刷检测结果")
+        st.write("🎯 多账户对刷检测结果")
         st.write("="*60)
         
         if not patterns:
             st.error("❌ 未发现符合阈值条件的连续对刷模式")
             return
     
-        # ========== 总体统计 ==========
-        st.subheader("📊 总体统计")
+        # ========== 只显示一个总体统计 ==========
+        # 使用 display_summary_statistics 方法
+        self.display_summary_statistics(patterns)  # 修复这里：使用已定义的方法
         
-        total_groups = len(patterns)
-        total_accounts = sum(p['账户数量'] for p in patterns)
-        total_wash_periods = sum(p['对刷期数'] for p in patterns)
-        total_amount = sum(p['总投注金额'] for p in patterns)
+        st.write("\n" + "="*60)
         
-        # 🎯 专注于核心对立类型统计
-        opposite_type_stats = defaultdict(int)
-        for pattern in patterns:
-            for opposite_type, count in pattern['对立类型分布'].items():
-                opposite_type_stats[opposite_type] += count
+        # ========== 显示参与账户详细统计 ==========
+        st.subheader("👥 参与账户详细统计")
         
-        # 第一行：总体指标
-        col1, col2, col3, col4 = st.columns(4)
+        # 计算账户参与统计
+        account_stats = self._calculate_detailed_account_stats(patterns)
         
-        with col1:
-            st.metric("总对刷组数", total_groups)
-        with col2:
-            st.metric("涉及账户数", total_accounts)
-        with col3:
-            st.metric("总对刷期数", total_wash_periods)
-        with col4:
-            st.metric("总涉及金额", f"¥{total_amount:,.2f}")
+        if account_stats:
+            df_stats = pd.DataFrame(account_stats)
+            
+            # 使用表格形式展示
+            st.dataframe(
+                df_stats,
+                use_container_width=True,
+                hide_index=True,
+                height=min(400, len(df_stats) * 35 + 38)
+            )
         
-        # ========== 彩种类型统计 ==========
-        st.subheader("🎲 彩种类型统计")
-        
-        lottery_stats = defaultdict(int)
-        for pattern in patterns:
-            lottery_stats[pattern['彩种']] += 1
-        
-        lottery_cols = st.columns(min(5, len(lottery_stats)))
-        
-        for i, (lottery, count) in enumerate(lottery_stats.items()):
-            if i < len(lottery_cols):
-                with lottery_cols[i]:
-                    st.metric(
-                        label=lottery,
-                        value=f"{count}组"
-                    )
-        
-        # ========== 核心对立类型分布 ==========
-        st.subheader("🎯 核心对立类型分布")
-        
-        # 显示前5个主要对立类型
-        top_opposites = sorted(opposite_type_stats.items(), key=lambda x: x[1], reverse=True)[:5]
-        
-        for opposite_type, count in top_opposites:
-            # 简化对立类型显示
-            if ' vs ' in opposite_type:
-                display_type = opposite_type.replace(' vs ', '-')
-            else:
-                display_type = opposite_type
-            st.write(f"- **{display_type}**: {count}期")
-        
-        # ========== 详细对刷组分析 ==========
+        # ========== 按彩种分组显示详细对刷组 ==========
         st.write("\n" + "="*60)
         st.subheader("🔍 详细对刷组分析")
         
@@ -2286,6 +1560,8 @@ class WashTradeDetector:
                     
                     if i < len(lottery_patterns):
                         st.markdown("---")
+        
+        # 🚫 删除这一行：self.display_summary_statistics(patterns)
     
     def display_summary_statistics(self, patterns):
         """显示总体统计 - 根据最新图片样式调整"""
@@ -2418,7 +1694,7 @@ class WashTradeDetector:
 
 # ==================== 主函数 ====================
 def main():
-    """主函数 - 简化版"""
+    """主函数"""
     st.title("🎯 智能多账户对刷检测系统")
     st.markdown("---")
     
@@ -2427,56 +1703,113 @@ def main():
         uploaded_file = st.file_uploader(
             "请上传数据文件", 
             type=['xlsx', 'xls', 'csv'],
-            help="支持Excel和CSV格式"
+            help="请确保文件包含必要的列：会员账号、期号、内容、金额"
         )
     
     if uploaded_file is not None:
         try:
-            # 🆕 简化配置
-            st.sidebar.header("⚙️ 基础配置")
-            min_amount = st.sidebar.number_input("最小投注金额", value=1, min_value=1)
-            base_similarity = st.sidebar.slider("金额匹配度", 0.5, 1.0, 0.8, 0.05)
+            # 配置参数
+            st.sidebar.header("⚙️ 检测参数配置")
             
+            min_amount = st.sidebar.number_input("最小投注金额", value=10, min_value=1, help="低于此金额的记录将被过滤")
+            base_similarity_threshold = st.sidebar.slider("基础金额匹配度阈值", 0.8, 1.0, 0.8, 0.01, help="2个账户的基础匹配度阈值")
+            max_accounts = st.sidebar.slider("最大检测账户数", 2, 8, 5, help="检测的最大账户组合数量")
+            
+            # 账户期数差异阈值配置
+            period_diff_threshold = st.sidebar.number_input(
+                "账户期数最大差异阈值", 
+                value=150, 
+                min_value=0, 
+                max_value=1000,
+                help="账户总投注期数最大允许差异，超过此值不进行组合检测"
+            )
+            
+            # 活跃度阈值配置
+            st.sidebar.subheader("📊 活跃度阈值配置")
+            st.sidebar.markdown("**新阈值设置:**")
+            st.sidebar.markdown("- **1-10期:** 要求≥3期连续对刷")
+            st.sidebar.markdown("- **11-50期:** 要求≥5期连续对刷")  
+            st.sidebar.markdown("- **51-100期:** 要求≥8期连续对刷")
+            st.sidebar.markdown("- **100期以上:** 要求≥11期连续对刷")
+            
+            # 多账户匹配度配置
+            st.sidebar.subheader("🎯 多账户匹配度配置")
+            st.sidebar.markdown("**账户数量 vs 匹配度要求:**")
+            st.sidebar.markdown("- **2个账户:** 80%匹配度")
+            st.sidebar.markdown("- **3个账户:** 85%匹配度")  
+            st.sidebar.markdown("- **4个账户:** 90%匹配度")
+            st.sidebar.markdown("- **5个账户:** 95%匹配度")
+            
+            # 更新配置参数
             config = Config()
             config.min_amount = min_amount
-            config.amount_similarity_threshold = base_similarity
-            config.max_accounts_in_group = 2  # 🆕 专注于2账户检测
+            config.amount_similarity_threshold = base_similarity_threshold
+            config.max_accounts_in_group = max_accounts
+            config.account_period_diff_threshold = period_diff_threshold
+            
+            # 设置多账户匹配度阈值
+            config.account_count_similarity_thresholds = {
+                2: base_similarity_threshold,
+                3: max(base_similarity_threshold + 0.05, 0.85),
+                4: max(base_similarity_threshold + 0.1, 0.9),
+                5: max(base_similarity_threshold + 0.15, 0.95)
+            }
             
             detector = WashTradeDetector(config)
             
-            # 🆕 显示文件信息
             st.success(f"✅ 已上传文件: {uploaded_file.name}")
-            st.info("🔄 开始处理数据...")
             
-            # 处理数据
-            with st.spinner("正在解析数据..."):
+            with st.spinner("🔄 正在解析数据..."):
+                # ========== 🆕 修复这里：正确的数据处理流程 ==========
+                # 直接调用 upload_and_process，它会内部处理列名识别和数据验证
                 df_enhanced, filename = detector.upload_and_process(uploaded_file)
-            
-            if df_enhanced is not None and len(df_enhanced) > 0:
-                st.success(f"✅ 数据处理完成，有效记录: {len(df_enhanced)}")
                 
-                # 显示数据预览
-                with st.expander("📊 数据预览", expanded=True):
-                    st.dataframe(df_enhanced.head(10))
-                
-                # 开始检测
-                st.info("🚀 开始检测对刷交易...")
-                with st.spinner("正在检测对刷模式..."):
-                    patterns = detector.detect_all_wash_trades()
-                
-                if patterns:
-                    st.success(f"✅ 检测完成！发现 {len(patterns)} 个对刷组")
-                    detector.display_detailed_results(patterns)
+                if df_enhanced is not None and len(df_enhanced) > 0:
+                    st.success("✅ 数据解析完成")
+                    
+                    # ========== 🆕 新增这里：显示数据质量验证结果 ==========
+                    # 在数据处理器中已经有数据验证，这里只是显示结果
+                    with st.expander("📊 数据质量验证结果", expanded=False):
+                        # 这里可以显示detector中已经进行的验证结果
+                        st.info("数据质量验证已在处理过程中完成")
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("有效记录数", f"{len(df_enhanced):,}")
+                    with col2:
+                        st.metric("唯一期号数", f"{df_enhanced['期号'].nunique():,}")
+                    with col3:
+                        st.metric("唯一账户数", f"{df_enhanced['会员账号'].nunique():,}")
+                    with col4:
+                        if '彩种类型' in df_enhanced.columns:
+                            st.metric("彩种类型数", f"{df_enhanced['彩种类型'].nunique()}")
+                    
+                    with st.expander("📊 数据详情", expanded=False):
+                        tab1, tab2 = st.tabs(["数据概览", "彩种分布"])
+                        
+                        with tab1:
+                            st.dataframe(df_enhanced.head(100), use_container_width=True)
+                            
+                        with tab2:
+                            if '彩种类型' in df_enhanced.columns:
+                                lottery_type_stats = df_enhanced['彩种类型'].value_counts()
+                                st.bar_chart(lottery_type_stats)
+                    
+                    st.info("🚀 自动开始检测对刷交易...")
+                    with st.spinner("🔍 正在检测对刷交易..."):
+                        patterns = detector.detect_all_wash_trades()
+                    
+                    if patterns:
+                        st.success(f"✅ 检测完成！发现 {len(patterns)} 个对刷组")
+                        detector.display_detailed_results(patterns)
+                    else:
+                        st.warning("⚠️ 未发现符合阈值条件的对刷行为")
                 else:
-                    st.warning("⚠️ 未发现符合条件的对刷行为")
-            else:
-                st.error("❌ 数据处理失败，请检查文件格式")
-                
+                    st.error("❌ 数据解析失败，请检查文件格式和内容")
+            
         except Exception as e:
             st.error(f"❌ 程序执行失败: {str(e)}")
-            # 显示详细错误但不中断
-            with st.expander("🔍 错误详情", expanded=False):
-                st.code(traceback.format_exc())
+            st.error(f"详细错误信息:\n{traceback.format_exc()}")
     else:
         st.info("👈 请在左侧边栏上传数据文件开始分析")
         
