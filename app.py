@@ -82,51 +82,23 @@ class Config:
             '合': ['合', '合数', 'composite', 'he', '合數'],
         }
         
-        # 🆕 增强方向模式 - 保持变异形式独立性
+        # 🎯 增强方向模式 - 保持变异形式独立性
         self.enhanced_direction_patterns = {
-            # 现有模式...
+            # 变异形式 - 保持独立
+            '特小': ['特小', '极小', '最小', '特小单', '特小双'],
+            '特大': ['特大', '极大', '最大', '特单大', '特双大'],
+            '特单': ['特单'],
+            '特双': ['特双'],
+            '总和小': ['总和小', '和小', '总和-小', '和值小'],
+            '总和大': ['总和大', '和大', '总和-大', '和值大'],
+            '总和单': ['总和单', '和单', '总和-单', '和值单'],
+            '总和双': ['总和双', '和双', '总和-双', '和值双'],
             
-            # 🆕 新增和值相关方向
-            '和值大': ['和值大', '和大', '和值-大', '和-大'],
-            '和值小': ['和值小', '和小', '和值-小', '和-小'],
-            '和值单': ['和值单', '和单', '和值-单', '和-单'],
-            '和值双': ['和值双', '和双', '和值-双', '和-双'],
-            
-            # 🆕 新增和尾相关方向
-            '和尾大': ['和尾大', '尾大', '和尾-大'],
-            '和尾小': ['和尾小', '尾小', '和尾-小'],
-            '和尾单': ['和尾单', '尾单', '和尾-单'],
-            '和尾双': ['和尾双', '尾双', '和尾-双'],
-            
-            # 🆕 新增生肖相关方向
-            '家禽': ['家禽', '禽', '家禽肖'],
-            '野兽': ['野兽', '兽', '野兽肖'],
-            '天肖': ['天肖', '天', '天生肖'],
-            '地肖': ['地肖', '地', '地生肖'],
-            '前肖': ['前肖', '前', '前生肖'],
-            '后肖': ['后肖', '后', '后生肖'],
-            '男肖': ['男肖', '男', '男生肖'],
-            '女肖': ['女肖', '女', '女生肖'],
-            
-            # 🆕 新增数字特性
-            '质数': ['质数', '质', '质数肖'],
-            '合数': ['合数', '合', '合数肖'],
-            '奇数': ['奇数', '奇', '奇数肖'],
-            '偶数': ['偶数', '偶', '偶数肖'],
-            
-            # 🆕 新增特码特性
-            '特单': ['特单', '特码单'],
-            '特双': ['特双', '特码双'],
-            '特大': ['特大', '特码大'],
-            '特小': ['特小', '特码小'],
-            
-            # 🆕 新增正码特性
-            '正码大': ['正码大', '正大', '正码-大'],
-            '正码小': ['正码小', '正小', '正码-小'],
-            
-            # 🆕 新增总和特性
-            '总和质': ['总和质', '和质', '总和-质'],
-            '总和合': ['总和合', '和合', '总和-合']
+            # 🆕 新增复合方向
+            '大单': ['大单', '单大', 'big-odd'],
+            '大双': ['大双', '双大', 'big-even'],
+            '小单': ['小单', '单小', 'small-odd'],
+            '小双': ['小双', '双小', 'small-even'],
         }
         
         # 🎯 合并方向模式 - 增强模式优先
@@ -141,23 +113,7 @@ class Config:
             {'总和大', '总和小'}, {'总和单', '总和双'},
             # 🆕 新增复合对立组
             {'大单', '小双'}, {'大双', '小单'},
-            # 🆕 新增您提到的完整对立关系
-            {'和值大', '和值小'},           # 和值大小
-            {'和值单', '和值双'},           # 和值单双
-            {'和尾大', '和尾小'},           # 和尾大小
-            {'和尾单', '和尾双'},           # 和尾单双
-            {'家禽', '野兽'},               # 家禽野兽
-            {'天肖', '地肖'},               # 天地肖
-            {'前肖', '后肖'},               # 前后肖
-            {'男肖', '女肖'},               # 男女肖
-            {'质数', '合数'},               # 质合数
-            {'奇数', '偶数'},               # 奇偶数
-            {'特单', '特双'},               # 特码特性 - 单双
-            {'特大', '特小'},               # 特码特性 - 大小
-            {'正码大', '正码小'},           # 正码特性
-            {'总和大', '总和小'},           # 总和大 vs 总和小
-            {'总和单', '总和双'},           # 总和单 vs 总和双
-            {'总和质', '总和合'}            # 总和质 vs 总和合
+            {'特大', '特小'}, {'特单', '特双'}
         ]
         
         # 位置关键词映射
@@ -185,24 +141,6 @@ class Config:
                 '第3球': ['第3球', '百位', '第三位', '定位_百位', '百位定位'],
                 '第4球': ['第4球', '十位', '第四位', '定位_十位', '十位定位'],
                 '第5球': ['第5球', '个位', '第五位', '定位_个位', '个位定位']
-            },
-            # 🆕 新增六合彩位置关键词
-            'LHC': {
-                '特码': ['特码', '特', '特肖', '特码肖', '特码生肖'],
-                '正码': ['正码', '正', '正肖', '正码肖', '正码生肖'],
-                '正一特': ['正一特', '正1特', '正码一特'],
-                '正二特': ['正二特', '正2特', '正码二特'],
-                '正三特': ['正三特', '正3特', '正码三特'],
-                '正四特': ['正四特', '正4特', '正码四特'],
-                '正五特': ['正五特', '正5特', '正码五特'],
-                '正六特': ['正六特', '正6特', '正码六特']
-            },
-            # 🆕 新增快三位置关键词
-            'K3': {
-                '和值': ['和值', '和', '总和', '点数'],
-                '三军': ['三军', '军', '独胆', '单选'],
-                '二不同号': ['二不同号', '二不同', '二不同'],
-                '三不同号': ['三不同号', '三不同', '三不同']
             }
         }
 
@@ -588,22 +526,7 @@ class PlayCategoryNormalizer:
             '冠军': '冠军', '亚军': '亚军', '季军': '第三名', '第3名': '第三名',
             '第4名': '第四名', '第5名': '第五名', '第6名': '第六名',
             '第7名': '第七名', '第8名': '第八名', '第9名': '第九名',
-            '第10名': '第十名', '双面': '两面', '冠亚和': '冠亚和',
-
-            # 🆕 新增六合彩玩法映射
-            '特码': '特码', '特码-大小': '特码', '特码-单双': '特码',
-            '正码': '正码', '正码特': '正码特',
-            '正一特': '正一特', '正二特': '正二特', '正三特': '正三特',
-            '正四特': '正四特', '正五特': '正五特', '正六特': '正六特',
-            '家禽野兽': '家禽野兽', '天肖地肖': '天肖地肖',
-            '前肖后肖': '前肖后肖', '男肖女肖': '男肖女肖',
-            '和值大小': '和值', '和值单双': '和值',
-            '和尾大小': '和尾', '和尾单双': '和尾',
-            
-            # 🆕 新增快三玩法映射
-            '和值': '和值', '和值大小': '和值', '和值单双': '和值',
-            '三军': '三军', '独胆': '独胆',
-            '二不同号': '二不同号', '三不同号': '三不同号'
+            '第10名': '第十名', '双面': '两面', '冠亚和': '冠亚和'
         }
         return mapping
     
@@ -705,22 +628,11 @@ class ContentParser:
             
             content_str = str(content).strip()
             
-            # 预处理内容
+            # 🆕 预处理内容
             content_clean = ContentParser.preprocess_content(content_str)
             
-            # 多层级方向提取
+            # 🆕 多层级方向提取
             directions = ContentParser.multi_level_direction_extraction(content_clean, config)
-            
-            # 🆕 新增：提取特殊方向（生肖、和值等）
-            special_directions = ContentParser.extract_special_directions(content_clean, config)
-            directions.extend(special_directions)
-            
-            # 去重
-            directions = list(set(directions))
-            
-            # 🆕 添加调试日志
-            if len(directions) > 0:
-                logger.debug(f"内容 '{content_str}' -> 提取方向: {directions}")
             
             return directions
                 
@@ -825,105 +737,6 @@ class ContentParser:
         
         # 返回最高分的方向
         return max(priority_scores.items(), key=lambda x: x[1])[0]
-
-    @staticmethod
-    def extract_special_directions(content, config):
-        """提取特殊方向模式（生肖、和值等）"""
-        content_str = str(content).strip().lower()
-        directions = []
-        
-        if not content_str:
-            return directions
-        
-        # 🆕 生肖相关识别
-        zodiac_patterns = {
-            '家禽': ['家禽', '禽', '家禽肖'],
-            '野兽': ['野兽', '兽', '野兽肖'],
-            '天肖': ['天肖', '天', '天生肖'],
-            '地肖': ['地肖', '地', '地生肖'],
-            '前肖': ['前肖', '前', '前生肖'],
-            '后肖': ['后肖', '后', '后生肖'],
-            '男肖': ['男肖', '男', '男生肖'],
-            '女肖': ['女肖', '女', '女生肖']
-        }
-        
-        for direction, patterns in zodiac_patterns.items():
-            for pattern in patterns:
-                if pattern in content_str:
-                    directions.append(direction)
-                    break
-        
-        # 🆕 和值相关识别
-        sum_patterns = {
-            '和值大': ['和值大', '和大', '和值-大', '和-大'],
-            '和值小': ['和值小', '和小', '和值-小', '和-小'],
-            '和值单': ['和值单', '和单', '和值-单', '和-单'],
-            '和值双': ['和值双', '和双', '和值-双', '和-双'],
-            '和尾大': ['和尾大', '尾大', '和尾-大'],
-            '和尾小': ['和尾小', '尾小', '和尾-小'],
-            '和尾单': ['和尾单', '尾单', '和尾-单'],
-            '和尾双': ['和尾双', '尾双', '和尾-双']
-        }
-        
-        for direction, patterns in sum_patterns.items():
-            for pattern in patterns:
-                if pattern in content_str:
-                    directions.append(direction)
-                    break
-        
-        # 🆕 数字特性识别
-        number_patterns = {
-            '质数': ['质数', '质', '质数肖'],
-            '合数': ['合数', '合', '合数肖'],
-            '奇数': ['奇数', '奇', '奇数肖'],
-            '偶数': ['偶数', '偶', '偶数肖']
-        }
-        
-        for direction, patterns in number_patterns.items():
-            for pattern in patterns:
-                if pattern in content_str:
-                    directions.append(direction)
-                    break
-        
-        # 🆕 特码特性识别
-        special_code_patterns = {
-            '特单': ['特单', '特码单', '特-单'],
-            '特双': ['特双', '特码双', '特-双'],
-            '特大': ['特大', '特码大', '特-大'],
-            '特小': ['特小', '特码小', '特-小']
-        }
-        
-        for direction, patterns in special_code_patterns.items():
-            for pattern in patterns:
-                if pattern in content_str:
-                    directions.append(direction)
-                    break
-        
-        # 🆕 正码特性识别
-        normal_code_patterns = {
-            '正码大': ['正码大', '正大', '正码-大'],
-            '正码小': ['正码小', '正小', '正码-小']
-        }
-        
-        for direction, patterns in normal_code_patterns.items():
-            for pattern in patterns:
-                if pattern in content_str:
-                    directions.append(direction)
-                    break
-        
-        # 🆕 总和特性识别
-        total_sum_patterns = {
-            '总和质': ['总和质', '和质', '总和-质'],
-            '总和合': ['总和合', '和合', '总和-合']
-        }
-        
-        for direction, patterns in total_sum_patterns.items():
-            for pattern in patterns:
-                if pattern in content_str:
-                    directions.append(direction)
-                    break
-        
-        return directions
 
     @staticmethod
     def extract_position_from_play_category(play_category, lottery_type, config):
@@ -1210,8 +1023,6 @@ class WashTradeDetector:
             directions = self.content_parser.enhanced_extract_directions(content_str, self.config)
             
             if not directions:
-                # 🆕 添加调试：显示无法解析的内容
-                logger.debug(f"无法解析内容: {content_str}")
                 return ""
             
             # 🎯 从玩法分类中提取位置信息
@@ -1225,14 +1036,9 @@ class WashTradeDetector:
             
             # 🎯 组合位置和方向
             if position and position != '未知位置':
-                result = f"{position}-{main_direction}"
+                return f"{position}-{main_direction}"
             else:
-                result = main_direction
-            
-            # 🆕 添加调试日志
-            logger.debug(f"最终方向: '{content_str}' -> '{result}' (位置: {position}, 候选方向: {directions})")
-            
-            return result
+                return main_direction
             
         except Exception as e:
             logger.warning(f"方向提取失败: {content}, 错误: {e}")
@@ -1318,19 +1124,6 @@ class WashTradeDetector:
             st.error("❌ 没有有效数据可用于检测")
             return []
         
-        # 🆕 添加详细的状态检查
-        st.info("🔍 检查数据状态...")
-        st.write(f"- 有效记录数: {len(self.df_valid)}")
-        st.write(f"- 唯一账户数: {self.df_valid['会员账号'].nunique()}")
-        st.write(f"- 唯一期号数: {self.df_valid['期号'].nunique()}")
-        st.write(f"- 唯一方向数: {self.df_valid['投注方向'].nunique()}")
-        
-        # 显示方向统计
-        direction_stats = self.df_valid['投注方向'].value_counts().head(10)
-        st.write("- 方向分布TOP10:")
-        for direction, count in direction_stats.items():
-            st.write(f"  - {direction}: {count}次")
-        
         self.performance_stats = {
             'start_time': datetime.now(),
             'total_records': len(self.df_valid),
@@ -1339,7 +1132,6 @@ class WashTradeDetector:
         }
         
         df_filtered = self.exclude_multi_direction_accounts(self.df_valid)
-        st.write(f"- 过滤后记录数: {len(df_filtered)}")
         
         if len(df_filtered) == 0:
             st.error("❌ 过滤后无有效数据")
@@ -1353,12 +1145,7 @@ class WashTradeDetector:
         
         for account_count in range(2, self.config.max_accounts_in_group + 1):
             status_text.text(f"🔍 检测{account_count}个账户对刷模式...")
-            
-            # 🆕 添加组合检测的详细日志
-            st.write(f"正在检查 {account_count} 账户组合...")
             patterns = self.detect_n_account_patterns_optimized(df_filtered, account_count)
-            st.write(f"发现 {len(patterns)} 个{account_count}账户模式")
-            
             all_patterns.extend(patterns)
             
             progress = (account_count - 1) / total_steps
@@ -1406,30 +1193,11 @@ class WashTradeDetector:
         return self.find_continuous_patterns_optimized(wash_records)
     
     def _get_valid_direction_combinations(self, n_accounts):
-        """🎯 有效方向组合生成 - 包含所有对立关系"""
+        """🎯 有效方向组合生成 - 使用增强的对立组"""
         valid_combinations = []
         
-        # 🆕 扩展：包含所有基础对立组
-        all_opposites = [
-            # 基础对立
-            {'大', '小'}, {'单', '双'}, {'龙', '虎'}, {'质', '合'},
-            # 和值相关
-            {'和值大', '和值小'}, {'和值单', '和值双'},
-            {'和尾大', '和尾小'}, {'和尾单', '和尾双'},
-            # 生肖相关
-            {'家禽', '野兽'}, {'天肖', '地肖'}, 
-            {'前肖', '后肖'}, {'男肖', '女肖'},
-            # 数字特性
-            {'质数', '合数'}, {'奇数', '偶数'},
-            # 特码特性
-            {'特单', '特双'}, {'特大', '特小'},
-            # 正码特性
-            {'正码大', '正码小'},
-            # 总和特性
-            {'总和大', '总和小'}, {'总和单', '总和双'}, {'总和质', '总和合'}
-        ]
-        
-        for opposites in all_opposites:
+        # 🎯 基础对立组处理 - 使用增强的对立组
+        for opposites in self.config.opposite_groups:
             opposite_list = list(opposites)
             
             if n_accounts == 2:
@@ -2141,9 +1909,6 @@ def main():
     st.markdown("---")
     
     with st.sidebar:
-        st.header("🧪 测试模式")
-        test_mode = st.checkbox("启用调试模式", value=False)
-        
         st.header("📁 数据上传")
         uploaded_file = st.file_uploader(
             "上传投注数据文件", 
@@ -2153,49 +1918,61 @@ def main():
     
     if uploaded_file is not None:
         try:
-            # 🆕 修复：先创建配置对象
-            config = Config()
-            
-            # 🆕 修复：在创建配置后设置测试模式参数
-            if test_mode:
-                st.info("调试模式已启用")
-                # 设置更宽松的参数进行测试
-                config.min_amount = 1  # 降低金额阈值
-                config.amount_similarity_threshold = 0.5  # 降低匹配度要求
-                config.min_continuous_periods = 2  # 减少连续期数要求
-            
-            # 🆕 修复：配置参数设置
+            # 配置参数
             st.sidebar.header("⚙️ 检测参数设置")
             
-            # 使用滑块设置最小投注金额，默认10
-            config.min_amount = st.sidebar.slider(
+            # 🆕 修改：使用滑块设置最小投注金额，默认10
+            min_amount = st.sidebar.slider(
                 "最小投注金额阈值", 
                 min_value=1, 
                 max_value=50, 
-                value=config.min_amount,
+                value=10,
                 help="投注金额低于此值的记录将不参与检测"
             )
             
             base_similarity_threshold = st.sidebar.slider(
                 "基础金额匹配度阈值", 
-                0.5, 1.0, config.amount_similarity_threshold, 0.01, 
+                0.8, 1.0, 0.8, 0.01, 
                 help="2个账户的基础匹配度阈值"
             )
             
-            config.max_accounts_in_group = st.sidebar.slider(
+            max_accounts = st.sidebar.slider(
                 "最大检测账户数", 
-                2, 8, config.max_accounts_in_group, 
+                2, 8, 5, 
                 help="检测的最大账户组合数量"
             )
             
-            # 账户期数差异阈值配置
-            config.account_period_diff_threshold = st.sidebar.slider(
+            # 🆕 修改：账户期数差异阈值配置，使用更直观的描述
+            period_diff_threshold = st.sidebar.slider(
                 "账户期数最大差异阈值", 
                 min_value=0, 
                 max_value=500,
-                value=config.account_period_diff_threshold,
+                value=101,
                 help="账户总投注期数最大允许差异，超过此值不进行组合检测"
             )
+            
+            # 🆕 修改：活跃度阈值配置，使用更清晰的展示方式
+            st.sidebar.subheader("📊 活跃度阈值配置")
+            st.sidebar.markdown("**连续对刷期数要求:**")
+            st.sidebar.markdown("- **1-10期:** 要求≥3期连续对刷")
+            st.sidebar.markdown("- **11-50期:** 要求≥5期连续对刷")  
+            st.sidebar.markdown("- **51-100期:** 要求≥8期连续对刷")
+            st.sidebar.markdown("- **100期以上:** 要求≥11期连续对刷")
+            
+            # 🆕 修改：多账户匹配度配置，使用更清晰的展示方式
+            st.sidebar.subheader("🎯 多账户匹配度配置")
+            st.sidebar.markdown("**账户数量 vs 匹配度要求:**")
+            st.sidebar.markdown("- **2个账户:** 80%匹配度")
+            st.sidebar.markdown("- **3个账户:** 85%匹配度")  
+            st.sidebar.markdown("- **4个账户:** 90%匹配度")
+            st.sidebar.markdown("- **5个账户:** 95%匹配度")
+            
+            # 更新配置参数
+            config = Config()
+            config.min_amount = min_amount
+            config.amount_similarity_threshold = base_similarity_threshold
+            config.max_accounts_in_group = max_accounts
+            config.account_period_diff_threshold = period_diff_threshold
             
             # 设置多账户匹配度阈值
             config.account_count_similarity_thresholds = {
@@ -2210,7 +1987,7 @@ def main():
             st.success(f"✅ 已上传文件: {uploaded_file.name}")
             
             # 🆕 修改：显示当前参数设置
-            st.info(f"📊 当前检测参数: 最小金额 ≥ {config.min_amount}, 基础匹配度 ≥ {base_similarity_threshold*100}%")
+            st.info(f"📊 当前检测参数: 最小金额 ≥ {min_amount}, 基础匹配度 ≥ {base_similarity_threshold*100}%")
             
             with st.spinner("🔄 正在解析数据..."):
                 df_enhanced, filename = detector.upload_and_process(uploaded_file)
@@ -2218,65 +1995,45 @@ def main():
                 if df_enhanced is not None and len(df_enhanced) > 0:
                     st.success("✅ 数据解析完成")
                     
-                    # 🆕 添加详细的数据验证
-                    st.subheader("📊 数据验证信息")
-                    
-                    # 检查关键列是否存在
-                    required_cols = ['会员账号', '期号', '投注方向', '投注金额']
-                    missing_cols = [col for col in required_cols if col not in df_enhanced.columns]
-                    if missing_cols:
-                        st.error(f"❌ 缺失关键列: {missing_cols}")
-                        st.info("请检查数据文件格式，确保包含必要的列")
-                        return
-                    
-                    # 显示数据统计
+                    # 🆕 修改：显示数据概览
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
-                        st.metric("总记录数", f"{len(df_enhanced):,}")
+                        st.metric("有效记录数", f"{len(df_enhanced):,}")
                     with col2:
-                        valid_direction_count = len(df_enhanced[df_enhanced['投注方向'] != ''])
-                        st.metric("有效方向记录", f"{valid_direction_count:,}")
+                        st.metric("唯一期号数", f"{df_enhanced['期号'].nunique():,}")
                     with col3:
-                        valid_amount_count = len(df_enhanced[df_enhanced['投注金额'] >= config.min_amount])
-                        st.metric("有效金额记录", f"{valid_amount_count:,}")
+                        st.metric("唯一账户数", f"{df_enhanced['会员账号'].nunique():,}")
                     with col4:
-                        final_valid_count = len(df_enhanced[
-                            (df_enhanced['投注方向'] != '') & 
-                            (df_enhanced['投注金额'] >= config.min_amount)
-                        ])
-                        st.metric("最终有效记录", f"{final_valid_count:,}")
+                        if '彩种类型' in df_enhanced.columns:
+                            st.metric("彩种类型数", f"{df_enhanced['彩种类型'].nunique()}")
                     
-                    # 🆕 显示方向提取样本
-                    with st.expander("🔍 方向提取样本", expanded=True):
-                        sample_df = df_enhanced[
-                            (df_enhanced['投注方向'] != '') & 
-                            (df_enhanced['投注金额'] >= config.min_amount)
-                        ].head(20)
+                    # 🆕 修改：显示过滤统计信息
+                    initial_count = len(df_enhanced)
+                    if hasattr(detector, 'df_valid') and detector.df_valid is not None:
+                        valid_count = len(detector.df_valid)
+                        filtered_count = initial_count - valid_count
+                        if filtered_count > 0:
+                            st.info(f"📊 过滤统计: 移除了 {filtered_count} 条金额低于{min_amount}的记录")
+                    
+                    # 🆕 修改：数据预览部分
+                    with st.expander("📊 数据预览", expanded=False):
+                        tab1, tab2, tab3 = st.tabs(["数据概览", "彩种分布", "金额统计"])
                         
-                        if len(sample_df) > 0:
-                            st.dataframe(sample_df[['会员账号', '期号', '内容', '投注方向', '投注金额']])
-                        else:
-                            st.warning("⚠️ 没有有效的方向提取样本")
-                    
-                    # 🆕 显示方向分布
-                    if '投注方向' in df_enhanced.columns:
-                        direction_stats = df_enhanced[df_enhanced['投注方向'] != '']['投注方向'].value_counts().head(20)
-                        with st.expander("📈 方向分布TOP20", expanded=False):
-                            if len(direction_stats) > 0:
-                                st.bar_chart(direction_stats)
-                            else:
-                                st.warning("⚠️ 没有有效的方向数据")
-                    
-                    # 🆕 检查是否有足够的数据进行检测
-                    if final_valid_count == 0:
-                        st.error("❌ 没有有效的投注记录（方向为空或金额不足）")
-                        return
-                    elif df_enhanced['会员账号'].nunique() < 2:
-                        st.error("❌ 账户数量不足，需要至少2个不同账户")
-                        return
-                    elif df_enhanced['期号'].nunique() < config.min_continuous_periods:
-                        st.error(f"❌ 期号数量不足，需要至少{config.min_continuous_periods}个不同期号")
-                        return
+                        with tab1:
+                            st.dataframe(df_enhanced.head(50), use_container_width=True)
+                        
+                        with tab2:
+                            if '彩种类型' in df_enhanced.columns:
+                                lottery_type_stats = df_enhanced['彩种类型'].value_counts()
+                                st.bar_chart(lottery_type_stats)
+                        
+                        with tab3:
+                            if '投注金额' in df_enhanced.columns:
+                                st.write(f"- 总投注额: {df_enhanced['投注金额'].sum():,.2f} 元")
+                                st.write(f"- 平均每注: {df_enhanced['投注金额'].mean():.2f} 元")
+                                st.write(f"- 最大单注: {df_enhanced['投注金额'].max():.2f} 元")
+                                st.write(f"- 最小单注: {df_enhanced['投注金额'].min():.2f} 元")
+                                st.write(f"- 金额≥{min_amount}的记录: {len(df_enhanced[df_enhanced['投注金额'] >= min_amount]):,} 条")
                     
                     st.info("🚀 开始检测对刷交易...")
                     with st.spinner("🔍 正在检测对刷交易..."):
@@ -2284,39 +2041,11 @@ def main():
                     
                     if patterns:
                         st.success(f"✅ 检测完成！发现 {len(patterns)} 个对刷组")
+                        
+                        # 显示分析结果
                         detector.display_detailed_results(patterns)
                     else:
                         st.warning("⚠️ 未发现符合阈值条件的对刷行为")
-                        
-                        # 🆕 提供诊断信息
-                        st.subheader("🔧 诊断信息")
-                        st.info("ℹ️ 可能的原因：")
-                        st.write("- 账户投注行为没有形成对立模式")
-                        st.write("- 金额相似度不满足阈值要求")
-                        st.write("- 连续对刷期数不足")
-                        st.write("- 尝试调整检测参数（降低匹配度阈值等）")
-                        
-                        # 🆕 显示数据导出
-                        with st.expander("💾 数据导出", expanded=False):
-                            # 导出处理后的数据
-                            csv = df_enhanced.to_csv(index=False)
-                            st.download_button(
-                                label="📥 下载处理后的数据",
-                                data=csv,
-                                file_name="processed_data.csv",
-                                mime="text/csv"
-                            )
-                            
-                            # 导出方向提取样本
-                            if '投注方向' in df_enhanced.columns:
-                                direction_sample = df_enhanced[['内容', '投注方向']].head(100)
-                                csv_direction = direction_sample.to_csv(index=False)
-                                st.download_button(
-                                    label="📥 下载方向提取样本",
-                                    data=csv_direction,
-                                    file_name="direction_samples.csv",
-                                    mime="text/csv"
-                                )
                 else:
                     st.error("❌ 数据解析失败，请检查文件格式和内容")
             
