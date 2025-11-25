@@ -99,6 +99,14 @@ class Config:
             '大双': ['大双', '双大', 'big-even'],
             '小单': ['小单', '单小', 'small-odd'],
             '小双': ['小双', '双小', 'small-even'],
+            
+            # 🆕 新增六合彩方向 - 修复：确保不会与基础方向冲突
+            '天肖': ['天肖', '天肖', '天'],
+            '地肖': ['地肖', '地肖', '地'],
+            '家肖': ['家肖', '家禽', '家肖', '家'],
+            '野肖': ['野肖', '野兽', '野肖', '野'],
+            '尾大': ['尾大', '尾大', '大尾'],
+            '尾小': ['尾小', '尾小', '小尾'],
         }
         
         # 🎯 合并方向模式 - 增强模式优先
@@ -113,7 +121,9 @@ class Config:
             {'总和大', '总和小'}, {'总和单', '总和双'},
             # 🆕 新增复合对立组
             {'大单', '小双'}, {'大双', '小单'},
-            {'特大', '特小'}, {'特单', '特双'}
+            {'特大', '特小'}, {'特单', '特双'},
+            # 🆕 新增六合彩对立组 - 修复：确保不会影响原有检测
+            {'天肖', '地肖'}, {'家肖', '野肖'}, {'尾大', '尾小'}
         ]
         
         # 位置关键词映射
@@ -141,6 +151,15 @@ class Config:
                 '第3球': ['第3球', '百位', '第三位', '定位_百位', '百位定位'],
                 '第4球': ['第4球', '十位', '第四位', '定位_十位', '十位定位'],
                 '第5球': ['第5球', '个位', '第五位', '定位_个位', '个位定位']
+            },
+            'LHC': {
+                '特码': ['特码', '特肖', '正码特', '特码A', '特码B'],
+                '正码': ['正码', '正肖', '正特', '正码1', '正码2', '正码3', '正码4', '正码5', '正码6'],
+                '平特': ['平特', '平特肖', '平码'],
+                '连肖': ['连肖', '二连肖', '三连肖', '四连肖'],
+                '连尾': ['连尾', '二连尾', '三连尾', '四连尾'],
+                '色波': ['色波', '红波', '蓝波', '绿波'],
+                '五行': ['五行', '金', '木', '水', '火', '土']
             }
         }
 
@@ -508,7 +527,8 @@ class PlayCategoryNormalizer:
             '正码特_正六特': '正6特', '正码': '正码', '正特': '正特',
             '尾数': '尾数', '特肖': '特肖', '平特': '平特', '一肖': '一肖',
             '连肖': '连肖', '连尾': '连尾', '龙虎': '龙虎', '五行': '五行',
-            '色波': '色波', '半波': '半波',
+            '色波': '色波', '半波': '半波', '天肖': '天肖', '地肖': '地肖',
+            '家肖': '家肖', '野肖': '野肖',
             
             # 3D系列玩法
             '两面': '两面', '大小单双': '两面', '百位': '百位', '十位': '十位', 
@@ -588,6 +608,16 @@ class PlayCategoryNormalizer:
         elif any(word in category_lower for word in ['第5球', '个位']):
             return '第5球'
         
+        # 六合彩智能匹配
+        elif any(word in category_lower for word in ['天肖']):
+            return '天肖'
+        elif any(word in category_lower for word in ['地肖']):
+            return '地肖'
+        elif any(word in category_lower for word in ['家肖', '家禽']):
+            return '家肖'
+        elif any(word in category_lower for word in ['野肖', '野兽']):
+            return '野肖'
+        
         return category_str
 
 # ==================== 内容解析器 ====================
@@ -658,7 +688,7 @@ class ContentParser:
 
     @staticmethod
     def multi_level_direction_extraction(content, config):
-        """🆕 多层级方向提取"""
+        """🆕 多层级方向提取 - 修复：优化方向提取逻辑"""
         directions = set()
         
         # 第一层：精确匹配
@@ -675,7 +705,7 @@ class ContentParser:
                     if pattern in content:
                         directions.add(direction)
         
-        # 第三层：关键词匹配
+        # 第三层：关键词匹配 - 修复：优化关键词匹配逻辑
         if not directions:
             content_lower = content.lower()
             direction_keywords = {
@@ -686,14 +716,48 @@ class ContentParser:
                 '龙': ['龙', 'long', 'dragon'],
                 '虎': ['虎', 'hu', 'tiger'],
                 '质': ['质', 'prime', 'zhi'],
-                '合': ['合', 'composite', 'he']
+                '合': ['合', 'composite', 'he'],
+                # 🆕 新增六合彩关键词 - 修复：提高匹配精度
+                '天肖': ['天肖', '天'],
+                '地肖': ['地肖', '地'],
+                '家肖': ['家肖', '家禽', '家'],
+                '野肖': ['野肖', '野兽', '野'],
+                '尾大': ['尾大', '大尾'],
+                '尾小': ['尾小', '小尾'],
+                '特大': ['特大'],
+                '特小': ['特小'],
+                '特单': ['特单'],
+                '特双': ['特双']
             }
             
+            # 修复：优化关键词匹配逻辑，避免过度匹配
+            matched_directions = set()
             for direction, keywords in direction_keywords.items():
                 for keyword in keywords:
-                    if keyword in content_lower:
-                        directions.add(direction)
+                    # 更精确的关键词匹配
+                    if (keyword in content_lower and 
+                        (len(keyword) > 1 or 
+                         (len(keyword) == 1 and 
+                          (content_lower == keyword or 
+                           f" {keyword} " in f" {content_lower} " or
+                           content_lower.startswith(keyword + ' ') or
+                           content_lower.endswith(' ' + keyword))))):
+                        matched_directions.add(direction)
                         break
+            
+            # 修复：避免基础方向被六合彩方向覆盖
+            # 如果同时匹配到基础方向和六合彩方向，优先保留基础方向
+            base_directions = {'大', '小', '单', '双', '龙', '虎', '质', '合'}
+            lhc_directions = {'天肖', '地肖', '家肖', '野肖', '尾大', '尾小', '特大', '特小', '特单', '特双'}
+            
+            has_base_directions = bool(matched_directions & base_directions)
+            has_lhc_directions = bool(matched_directions & lhc_directions)
+            
+            if has_base_directions and has_lhc_directions:
+                # 如果同时匹配，优先保留基础方向
+                directions = matched_directions & base_directions
+            else:
+                directions = matched_directions
         
         return list(directions)
 
@@ -1012,7 +1076,7 @@ class WashTradeDetector:
             return 0
     
     def enhanced_extract_direction_with_position(self, content, play_category, lottery_type):
-        """🎯 方向提取 - 使用增强的方向识别"""
+        """🎯 方向提取 - 使用增强的方向识别 - 修复：优化方向提取逻辑"""
         try:
             if pd.isna(content):
                 return ""
@@ -1028,15 +1092,26 @@ class WashTradeDetector:
             # 🎯 从玩法分类中提取位置信息
             position = self.content_parser.extract_position_from_play_category(play_category, lottery_type, self.config)
             
-            # 🎯 方向优先级排序和选择
+            # 🎯 方向优先级排序和选择 - 修复：优化优先级逻辑
             main_direction = self.content_parser.prioritize_directions(directions, content_str, play_category)
             
             if not main_direction:
                 return ""
             
-            # 🎯 组合位置和方向
+            # 🎯 组合位置和方向 - 修复：优化位置组合逻辑
             if position and position != '未知位置':
-                return f"{position}-{main_direction}"
+                # 修复：对于六合彩，确保位置信息正确
+                if lottery_type == 'LHC':
+                    # 六合彩的特殊位置处理
+                    if main_direction in ['天肖', '地肖', '家肖', '野肖', '尾大', '尾小']:
+                        # 这些方向通常与特码相关
+                        return f"特码-{main_direction}"
+                    elif main_direction in ['特大', '特小', '特单', '特双']:
+                        return f"特码-{main_direction}"
+                    else:
+                        return f"{position}-{main_direction}"
+                else:
+                    return f"{position}-{main_direction}"
             else:
                 return main_direction
             
@@ -1193,7 +1268,7 @@ class WashTradeDetector:
         return self.find_continuous_patterns_optimized(wash_records)
     
     def _get_valid_direction_combinations(self, n_accounts):
-        """🎯 有效方向组合生成 - 使用增强的对立组"""
+        """🎯 有效方向组合生成 - 使用增强的对立组 - 修复：优化组合生成逻辑"""
         valid_combinations = []
         
         # 🎯 基础对立组处理 - 使用增强的对立组
@@ -1228,7 +1303,8 @@ class WashTradeDetector:
         # 🎯 带位置的对立组 - 动态生成（支持变异形式）
         positions = ['冠军', '亚军', '第三名', '第四名', '第五名', 
                     '第六名', '第七名', '第七名', '第八名', '第九名', '第十名',
-                    '百位', '十位', '个位', '第1球', '第2球', '第3球', '第4球', '第5球']
+                    '百位', '十位', '个位', '第1球', '第2球', '第3球', '第4球', '第5球',
+                    '特码', '正码', '平特', '连肖', '连尾', '色波', '五行']  # 🆕 新增六合彩位置
         
         for position in positions:
             for opposites in self.config.opposite_groups:
@@ -1252,6 +1328,9 @@ class WashTradeDetector:
                                 'opposite_type': f"{position}-{dir1} vs {position}-{dir2}",
                                 'combination_type': 'positional'
                             })
+        
+        # 修复：添加调试信息，帮助诊断问题
+        logger.info(f"为{n_accounts}个账户生成{len(valid_combinations)}个有效方向组合")
         
         return valid_combinations
     
@@ -1576,7 +1655,7 @@ class WashTradeDetector:
             return 'low'        # 总投注期数1-10
         elif min_total_periods <= self.config.period_thresholds['medium_activity_high']:
             return 'medium'     # 总投注期数11-50
-        elif min_total_periods <= self.config.period_thresholds['high_activity_high']:
+        elif min_total_periods <= self.config.period_thresholds['high_activity_low']:
             return 'high'       # 总投注期数51-100
         else:
             return 'very_high'  # 总投注期数100以上
@@ -2117,6 +2196,13 @@ def main():
         **⚡ 自动检测：**
         - 数据上传后自动开始处理和分析
         - 无需手动点击开始检测按钮
+
+        **🎲 新增六合彩检测：**
+        - **天肖 vs 地肖**：天肖与地肖的对立检测
+        - **家肖 vs 野肖**：家禽肖与野兽肖的对立检测  
+        - **尾大 vs 尾小**：尾数大小的对立检测
+        - **特大 vs 特小**：特码大小的对立检测
+        - **特单 vs 特双**：特码单双的对立检测
         """)
 
 if __name__ == "__main__":
