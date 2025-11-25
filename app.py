@@ -697,7 +697,6 @@ class ContentParser:
 
     # 🆕 新增：增强方向提取方法
     @staticmethod
-    @staticmethod
     def enhanced_extract_directions(content, config):
         """🎯 增强版方向提取 - 提高识别精度"""
         try:
@@ -2145,13 +2144,6 @@ def main():
         st.header("🧪 测试模式")
         test_mode = st.checkbox("启用调试模式", value=False)
         
-        if test_mode:
-            st.info("调试模式已启用")
-            # 设置更宽松的参数进行测试
-            config.min_amount = 1  # 降低金额阈值
-            config.amount_similarity_threshold = 0.5  # 降低匹配度要求
-            config.min_continuous_periods = 2  # 减少连续期数要求
-
         st.header("📁 数据上传")
         uploaded_file = st.file_uploader(
             "上传投注数据文件", 
@@ -2161,14 +2153,64 @@ def main():
     
     if uploaded_file is not None:
         try:
-            # 配置参数
+            # 🆕 修复：先创建配置对象
+            config = Config()
+            
+            # 🆕 修复：在创建配置后设置测试模式参数
+            if test_mode:
+                st.info("调试模式已启用")
+                # 设置更宽松的参数进行测试
+                config.min_amount = 1  # 降低金额阈值
+                config.amount_similarity_threshold = 0.5  # 降低匹配度要求
+                config.min_continuous_periods = 2  # 减少连续期数要求
+            
+            # 🆕 修复：配置参数设置
             st.sidebar.header("⚙️ 检测参数设置")
             
-            # ... 参数配置代码保持不变 ...
+            # 使用滑块设置最小投注金额，默认10
+            config.min_amount = st.sidebar.slider(
+                "最小投注金额阈值", 
+                min_value=1, 
+                max_value=50, 
+                value=config.min_amount,
+                help="投注金额低于此值的记录将不参与检测"
+            )
+            
+            base_similarity_threshold = st.sidebar.slider(
+                "基础金额匹配度阈值", 
+                0.5, 1.0, config.amount_similarity_threshold, 0.01, 
+                help="2个账户的基础匹配度阈值"
+            )
+            
+            config.max_accounts_in_group = st.sidebar.slider(
+                "最大检测账户数", 
+                2, 8, config.max_accounts_in_group, 
+                help="检测的最大账户组合数量"
+            )
+            
+            # 账户期数差异阈值配置
+            config.account_period_diff_threshold = st.sidebar.slider(
+                "账户期数最大差异阈值", 
+                min_value=0, 
+                max_value=500,
+                value=config.account_period_diff_threshold,
+                help="账户总投注期数最大允许差异，超过此值不进行组合检测"
+            )
+            
+            # 设置多账户匹配度阈值
+            config.account_count_similarity_thresholds = {
+                2: base_similarity_threshold,
+                3: max(base_similarity_threshold + 0.05, 0.85),
+                4: max(base_similarity_threshold + 0.1, 0.9),
+                5: max(base_similarity_threshold + 0.15, 0.95)
+            }
             
             detector = WashTradeDetector(config)
             
             st.success(f"✅ 已上传文件: {uploaded_file.name}")
+            
+            # 🆕 修改：显示当前参数设置
+            st.info(f"📊 当前检测参数: 最小金额 ≥ {config.min_amount}, 基础匹配度 ≥ {base_similarity_threshold*100}%")
             
             with st.spinner("🔄 正在解析数据..."):
                 df_enhanced, filename = detector.upload_and_process(uploaded_file)
@@ -2184,6 +2226,7 @@ def main():
                     missing_cols = [col for col in required_cols if col not in df_enhanced.columns]
                     if missing_cols:
                         st.error(f"❌ 缺失关键列: {missing_cols}")
+                        st.info("请检查数据文件格式，确保包含必要的列")
                         return
                     
                     # 显示数据统计
@@ -2224,6 +2267,17 @@ def main():
                             else:
                                 st.warning("⚠️ 没有有效的方向数据")
                     
+                    # 🆕 检查是否有足够的数据进行检测
+                    if final_valid_count == 0:
+                        st.error("❌ 没有有效的投注记录（方向为空或金额不足）")
+                        return
+                    elif df_enhanced['会员账号'].nunique() < 2:
+                        st.error("❌ 账户数量不足，需要至少2个不同账户")
+                        return
+                    elif df_enhanced['期号'].nunique() < config.min_continuous_periods:
+                        st.error(f"❌ 期号数量不足，需要至少{config.min_continuous_periods}个不同期号")
+                        return
+                    
                     st.info("🚀 开始检测对刷交易...")
                     with st.spinner("🔍 正在检测对刷交易..."):
                         patterns = detector.detect_all_wash_trades()
@@ -2236,9 +2290,13 @@ def main():
                         
                         # 🆕 提供诊断信息
                         st.subheader("🔧 诊断信息")
-
-                   # 在 main() 函数末尾添加数据导出
-                    if uploaded_file is not None and df_enhanced is not None:
+                        st.info("ℹ️ 可能的原因：")
+                        st.write("- 账户投注行为没有形成对立模式")
+                        st.write("- 金额相似度不满足阈值要求")
+                        st.write("- 连续对刷期数不足")
+                        st.write("- 尝试调整检测参数（降低匹配度阈值等）")
+                        
+                        # 🆕 显示数据导出
                         with st.expander("💾 数据导出", expanded=False):
                             # 导出处理后的数据
                             csv = df_enhanced.to_csv(index=False)
@@ -2259,20 +2317,6 @@ def main():
                                     file_name="direction_samples.csv",
                                     mime="text/csv"
                                 )
-                        
-                        # 检查可能的原因
-                        if final_valid_count == 0:
-                            st.error("❌ 没有有效的投注记录（方向为空或金额不足）")
-                        elif df_enhanced['会员账号'].nunique() < 2:
-                            st.error("❌ 账户数量不足，需要至少2个不同账户")
-                        elif df_enhanced['期号'].nunique() < config.min_continuous_periods:
-                            st.error(f"❌ 期号数量不足，需要至少{config.min_continuous_periods}个不同期号")
-                        else:
-                            st.info("ℹ️ 可能的原因：")
-                            st.write("- 账户投注行为没有形成对立模式")
-                            st.write("- 金额相似度不满足阈值要求")
-                            st.write("- 连续对刷期数不足")
-                            st.write("- 尝试调整检测参数（降低匹配度阈值等）")
                 else:
                     st.error("❌ 数据解析失败，请检查文件格式和内容")
             
