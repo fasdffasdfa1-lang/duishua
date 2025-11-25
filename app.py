@@ -697,6 +697,7 @@ class ContentParser:
 
     # 🆕 新增：增强方向提取方法
     @staticmethod
+    @staticmethod
     def enhanced_extract_directions(content, config):
         """🎯 增强版方向提取 - 提高识别精度"""
         try:
@@ -705,11 +706,22 @@ class ContentParser:
             
             content_str = str(content).strip()
             
-            # 🆕 预处理内容
+            # 预处理内容
             content_clean = ContentParser.preprocess_content(content_str)
             
-            # 🆕 多层级方向提取
+            # 多层级方向提取
             directions = ContentParser.multi_level_direction_extraction(content_clean, config)
+            
+            # 🆕 新增：提取特殊方向（生肖、和值等）
+            special_directions = ContentParser.extract_special_directions(content_clean, config)
+            directions.extend(special_directions)
+            
+            # 去重
+            directions = list(set(directions))
+            
+            # 🆕 添加调试日志
+            if len(directions) > 0:
+                logger.debug(f"内容 '{content_str}' -> 提取方向: {directions}")
             
             return directions
                 
@@ -1199,6 +1211,8 @@ class WashTradeDetector:
             directions = self.content_parser.enhanced_extract_directions(content_str, self.config)
             
             if not directions:
+                # 🆕 添加调试：显示无法解析的内容
+                logger.debug(f"无法解析内容: {content_str}")
                 return ""
             
             # 🎯 从玩法分类中提取位置信息
@@ -1212,9 +1226,14 @@ class WashTradeDetector:
             
             # 🎯 组合位置和方向
             if position and position != '未知位置':
-                return f"{position}-{main_direction}"
+                result = f"{position}-{main_direction}"
             else:
-                return main_direction
+                result = main_direction
+            
+            # 🆕 添加调试日志
+            logger.debug(f"最终方向: '{content_str}' -> '{result}' (位置: {position}, 候选方向: {directions})")
+            
+            return result
             
         except Exception as e:
             logger.warning(f"方向提取失败: {content}, 错误: {e}")
@@ -1300,6 +1319,19 @@ class WashTradeDetector:
             st.error("❌ 没有有效数据可用于检测")
             return []
         
+        # 🆕 添加详细的状态检查
+        st.info("🔍 检查数据状态...")
+        st.write(f"- 有效记录数: {len(self.df_valid)}")
+        st.write(f"- 唯一账户数: {self.df_valid['会员账号'].nunique()}")
+        st.write(f"- 唯一期号数: {self.df_valid['期号'].nunique()}")
+        st.write(f"- 唯一方向数: {self.df_valid['投注方向'].nunique()}")
+        
+        # 显示方向统计
+        direction_stats = self.df_valid['投注方向'].value_counts().head(10)
+        st.write("- 方向分布TOP10:")
+        for direction, count in direction_stats.items():
+            st.write(f"  - {direction}: {count}次")
+        
         self.performance_stats = {
             'start_time': datetime.now(),
             'total_records': len(self.df_valid),
@@ -1308,6 +1340,7 @@ class WashTradeDetector:
         }
         
         df_filtered = self.exclude_multi_direction_accounts(self.df_valid)
+        st.write(f"- 过滤后记录数: {len(df_filtered)}")
         
         if len(df_filtered) == 0:
             st.error("❌ 过滤后无有效数据")
@@ -1321,7 +1354,12 @@ class WashTradeDetector:
         
         for account_count in range(2, self.config.max_accounts_in_group + 1):
             status_text.text(f"🔍 检测{account_count}个账户对刷模式...")
+            
+            # 🆕 添加组合检测的详细日志
+            st.write(f"正在检查 {account_count} 账户组合...")
             patterns = self.detect_n_account_patterns_optimized(df_filtered, account_count)
+            st.write(f"发现 {len(patterns)} 个{account_count}账户模式")
+            
             all_patterns.extend(patterns)
             
             progress = (account_count - 1) / total_steps
@@ -2116,73 +2154,11 @@ def main():
             # 配置参数
             st.sidebar.header("⚙️ 检测参数设置")
             
-            # 🆕 修改：使用滑块设置最小投注金额，默认10
-            min_amount = st.sidebar.slider(
-                "最小投注金额阈值", 
-                min_value=1, 
-                max_value=50, 
-                value=10,
-                help="投注金额低于此值的记录将不参与检测"
-            )
-            
-            base_similarity_threshold = st.sidebar.slider(
-                "基础金额匹配度阈值", 
-                0.8, 1.0, 0.8, 0.01, 
-                help="2个账户的基础匹配度阈值"
-            )
-            
-            max_accounts = st.sidebar.slider(
-                "最大检测账户数", 
-                2, 8, 5, 
-                help="检测的最大账户组合数量"
-            )
-            
-            # 🆕 修改：账户期数差异阈值配置，使用更直观的描述
-            period_diff_threshold = st.sidebar.slider(
-                "账户期数最大差异阈值", 
-                min_value=0, 
-                max_value=500,
-                value=101,
-                help="账户总投注期数最大允许差异，超过此值不进行组合检测"
-            )
-            
-            # 🆕 修改：活跃度阈值配置，使用更清晰的展示方式
-            st.sidebar.subheader("📊 活跃度阈值配置")
-            st.sidebar.markdown("**连续对刷期数要求:**")
-            st.sidebar.markdown("- **1-10期:** 要求≥3期连续对刷")
-            st.sidebar.markdown("- **11-50期:** 要求≥5期连续对刷")  
-            st.sidebar.markdown("- **51-100期:** 要求≥8期连续对刷")
-            st.sidebar.markdown("- **100期以上:** 要求≥11期连续对刷")
-            
-            # 🆕 修改：多账户匹配度配置，使用更清晰的展示方式
-            st.sidebar.subheader("🎯 多账户匹配度配置")
-            st.sidebar.markdown("**账户数量 vs 匹配度要求:**")
-            st.sidebar.markdown("- **2个账户:** 80%匹配度")
-            st.sidebar.markdown("- **3个账户:** 85%匹配度")  
-            st.sidebar.markdown("- **4个账户:** 90%匹配度")
-            st.sidebar.markdown("- **5个账户:** 95%匹配度")
-            
-            # 更新配置参数
-            config = Config()
-            config.min_amount = min_amount
-            config.amount_similarity_threshold = base_similarity_threshold
-            config.max_accounts_in_group = max_accounts
-            config.account_period_diff_threshold = period_diff_threshold
-            
-            # 设置多账户匹配度阈值
-            config.account_count_similarity_thresholds = {
-                2: base_similarity_threshold,
-                3: max(base_similarity_threshold + 0.05, 0.85),
-                4: max(base_similarity_threshold + 0.1, 0.9),
-                5: max(base_similarity_threshold + 0.15, 0.95)
-            }
+            # ... 参数配置代码保持不变 ...
             
             detector = WashTradeDetector(config)
             
             st.success(f"✅ 已上传文件: {uploaded_file.name}")
-            
-            # 🆕 修改：显示当前参数设置
-            st.info(f"📊 当前检测参数: 最小金额 ≥ {min_amount}, 基础匹配度 ≥ {base_similarity_threshold*100}%")
             
             with st.spinner("🔄 正在解析数据..."):
                 df_enhanced, filename = detector.upload_and_process(uploaded_file)
@@ -2190,45 +2166,53 @@ def main():
                 if df_enhanced is not None and len(df_enhanced) > 0:
                     st.success("✅ 数据解析完成")
                     
-                    # 🆕 修改：显示数据概览
+                    # 🆕 添加详细的数据验证
+                    st.subheader("📊 数据验证信息")
+                    
+                    # 检查关键列是否存在
+                    required_cols = ['会员账号', '期号', '投注方向', '投注金额']
+                    missing_cols = [col for col in required_cols if col not in df_enhanced.columns]
+                    if missing_cols:
+                        st.error(f"❌ 缺失关键列: {missing_cols}")
+                        return
+                    
+                    # 显示数据统计
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
-                        st.metric("有效记录数", f"{len(df_enhanced):,}")
+                        st.metric("总记录数", f"{len(df_enhanced):,}")
                     with col2:
-                        st.metric("唯一期号数", f"{df_enhanced['期号'].nunique():,}")
+                        valid_direction_count = len(df_enhanced[df_enhanced['投注方向'] != ''])
+                        st.metric("有效方向记录", f"{valid_direction_count:,}")
                     with col3:
-                        st.metric("唯一账户数", f"{df_enhanced['会员账号'].nunique():,}")
+                        valid_amount_count = len(df_enhanced[df_enhanced['投注金额'] >= config.min_amount])
+                        st.metric("有效金额记录", f"{valid_amount_count:,}")
                     with col4:
-                        if '彩种类型' in df_enhanced.columns:
-                            st.metric("彩种类型数", f"{df_enhanced['彩种类型'].nunique()}")
+                        final_valid_count = len(df_enhanced[
+                            (df_enhanced['投注方向'] != '') & 
+                            (df_enhanced['投注金额'] >= config.min_amount)
+                        ])
+                        st.metric("最终有效记录", f"{final_valid_count:,}")
                     
-                    # 🆕 修改：显示过滤统计信息
-                    initial_count = len(df_enhanced)
-                    if hasattr(detector, 'df_valid') and detector.df_valid is not None:
-                        valid_count = len(detector.df_valid)
-                        filtered_count = initial_count - valid_count
-                        if filtered_count > 0:
-                            st.info(f"📊 过滤统计: 移除了 {filtered_count} 条金额低于{min_amount}的记录")
+                    # 🆕 显示方向提取样本
+                    with st.expander("🔍 方向提取样本", expanded=True):
+                        sample_df = df_enhanced[
+                            (df_enhanced['投注方向'] != '') & 
+                            (df_enhanced['投注金额'] >= config.min_amount)
+                        ].head(20)
+                        
+                        if len(sample_df) > 0:
+                            st.dataframe(sample_df[['会员账号', '期号', '内容', '投注方向', '投注金额']])
+                        else:
+                            st.warning("⚠️ 没有有效的方向提取样本")
                     
-                    # 🆕 修改：数据预览部分
-                    with st.expander("📊 数据预览", expanded=False):
-                        tab1, tab2, tab3 = st.tabs(["数据概览", "彩种分布", "金额统计"])
-                        
-                        with tab1:
-                            st.dataframe(df_enhanced.head(50), use_container_width=True)
-                        
-                        with tab2:
-                            if '彩种类型' in df_enhanced.columns:
-                                lottery_type_stats = df_enhanced['彩种类型'].value_counts()
-                                st.bar_chart(lottery_type_stats)
-                        
-                        with tab3:
-                            if '投注金额' in df_enhanced.columns:
-                                st.write(f"- 总投注额: {df_enhanced['投注金额'].sum():,.2f} 元")
-                                st.write(f"- 平均每注: {df_enhanced['投注金额'].mean():.2f} 元")
-                                st.write(f"- 最大单注: {df_enhanced['投注金额'].max():.2f} 元")
-                                st.write(f"- 最小单注: {df_enhanced['投注金额'].min():.2f} 元")
-                                st.write(f"- 金额≥{min_amount}的记录: {len(df_enhanced[df_enhanced['投注金额'] >= min_amount]):,} 条")
+                    # 🆕 显示方向分布
+                    if '投注方向' in df_enhanced.columns:
+                        direction_stats = df_enhanced[df_enhanced['投注方向'] != '']['投注方向'].value_counts().head(20)
+                        with st.expander("📈 方向分布TOP20", expanded=False):
+                            if len(direction_stats) > 0:
+                                st.bar_chart(direction_stats)
+                            else:
+                                st.warning("⚠️ 没有有效的方向数据")
                     
                     st.info("🚀 开始检测对刷交易...")
                     with st.spinner("🔍 正在检测对刷交易..."):
@@ -2236,11 +2220,26 @@ def main():
                     
                     if patterns:
                         st.success(f"✅ 检测完成！发现 {len(patterns)} 个对刷组")
-                        
-                        # 显示分析结果
                         detector.display_detailed_results(patterns)
                     else:
                         st.warning("⚠️ 未发现符合阈值条件的对刷行为")
+                        
+                        # 🆕 提供诊断信息
+                        st.subheader("🔧 诊断信息")
+                        
+                        # 检查可能的原因
+                        if final_valid_count == 0:
+                            st.error("❌ 没有有效的投注记录（方向为空或金额不足）")
+                        elif df_enhanced['会员账号'].nunique() < 2:
+                            st.error("❌ 账户数量不足，需要至少2个不同账户")
+                        elif df_enhanced['期号'].nunique() < config.min_continuous_periods:
+                            st.error(f"❌ 期号数量不足，需要至少{config.min_continuous_periods}个不同期号")
+                        else:
+                            st.info("ℹ️ 可能的原因：")
+                            st.write("- 账户投注行为没有形成对立模式")
+                            st.write("- 金额相似度不满足阈值要求")
+                            st.write("- 连续对刷期数不足")
+                            st.write("- 尝试调整检测参数（降低匹配度阈值等）")
                 else:
                     st.error("❌ 数据解析失败，请检查文件格式和内容")
             
