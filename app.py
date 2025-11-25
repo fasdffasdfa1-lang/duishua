@@ -2142,6 +2142,16 @@ def main():
     st.markdown("---")
     
     with st.sidebar:
+        st.header("🧪 测试模式")
+        test_mode = st.checkbox("启用调试模式", value=False)
+        
+        if test_mode:
+            st.info("调试模式已启用")
+            # 设置更宽松的参数进行测试
+            config.min_amount = 1  # 降低金额阈值
+            config.amount_similarity_threshold = 0.5  # 降低匹配度要求
+            config.min_continuous_periods = 2  # 减少连续期数要求
+
         st.header("📁 数据上传")
         uploaded_file = st.file_uploader(
             "上传投注数据文件", 
@@ -2226,6 +2236,29 @@ def main():
                         
                         # 🆕 提供诊断信息
                         st.subheader("🔧 诊断信息")
+
+                   # 在 main() 函数末尾添加数据导出
+                    if uploaded_file is not None and df_enhanced is not None:
+                        with st.expander("💾 数据导出", expanded=False):
+                            # 导出处理后的数据
+                            csv = df_enhanced.to_csv(index=False)
+                            st.download_button(
+                                label="📥 下载处理后的数据",
+                                data=csv,
+                                file_name="processed_data.csv",
+                                mime="text/csv"
+                            )
+                            
+                            # 导出方向提取样本
+                            if '投注方向' in df_enhanced.columns:
+                                direction_sample = df_enhanced[['内容', '投注方向']].head(100)
+                                csv_direction = direction_sample.to_csv(index=False)
+                                st.download_button(
+                                    label="📥 下载方向提取样本",
+                                    data=csv_direction,
+                                    file_name="direction_samples.csv",
+                                    mime="text/csv"
+                                )
                         
                         # 检查可能的原因
                         if final_valid_count == 0:
