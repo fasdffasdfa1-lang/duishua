@@ -1946,7 +1946,7 @@ def main():
             period_diff_threshold = st.sidebar.slider(
                 "账户期数最大差异阈值", 
                 min_value=0, 
-                max_value=1000,
+                max_value=500,
                 value=101,
                 help="账户总投注期数最大允许差异，超过此值不进行组合检测"
             )
