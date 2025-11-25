@@ -66,7 +66,7 @@ class Config:
         }
         
         # 账户期数差异阈值
-        self.account_period_diff_threshold = 150
+        self.account_period_diff_threshold = 101
         
         # 🎯 关键修复：扩展方向模式，采用合并策略
         # 基础方向模式
@@ -1947,7 +1947,7 @@ def main():
                 "账户期数最大差异阈值", 
                 min_value=0, 
                 max_value=1000,
-                value=150,
+                value=101,
                 help="账户总投注期数最大允许差异，超过此值不进行组合检测"
             )
             
@@ -2112,7 +2112,7 @@ def main():
 
         **🔄 账户期数差异检查：**
         - 避免期数差异过大的账户组合
-        - 默认阈值：150期
+        - 默认阈值：101期
         - 可自定义调整阈值
 
         **⚡ 自动检测：**
