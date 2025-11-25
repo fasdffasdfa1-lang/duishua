@@ -175,7 +175,12 @@ class DataProcessor:
                     for possible_name in possible_names:
                         possible_name_lower = possible_name.lower().replace(' ', '').replace('_', '').replace('-', '')
                         
-                        similarity_score = self._calculate_string_similarity(possible_name_lower, actual_col_lower)
+                        # 🆕 修复：直接在这里计算相似度，不调用外部方法
+                        set1 = set(possible_name_lower)
+                        set2 = set(actual_col_lower)
+                        intersection = set1 & set2
+                        
+                        similarity_score = len(intersection) / len(set1) if set1 else 0
                         
                         if (possible_name_lower in actual_col_lower or 
                             actual_col_lower in possible_name_lower or
@@ -193,22 +198,6 @@ class DataProcessor:
                     st.warning(f"⚠️ 未识别到 {standard_col} 对应的列名")
         
         return identified_columns
-    
-    # ========== 🆕 新增这个方法 ==========
-    def _calculate_string_similarity(self, str1, str2):
-        """计算字符串相似度 - 整合第一套代码算法"""
-        if not str1 or not str2:
-            return 0
-        
-        # 使用集合交集计算相似度
-        set1 = set(str1)
-        set2 = set(str2)
-        intersection = set1 & set2
-        
-        if not set1:
-            return 0
-        
-        return len(intersection) / len(set1)
     
     def find_data_start(self, df):
         """智能找到数据起始位置"""
@@ -875,18 +864,8 @@ class WashTradeDetector:
         self.cached_extract_bet_amount.cache_clear()
         self.cached_extract_direction.cache_clear()
     
-    @lru_cache(maxsize=2000)  # 🔄 增大缓存容量
-    def cached_extract_bet_amount(self, amount_text):
-        """增强缓存金额提取"""
-        return self.extract_bet_amount_safe(amount_text)
-    
-    @lru_cache(maxsize=1000)  # 🔄 增大缓存容量
-    def cached_extract_direction(self, content, play_category, lottery_type):
-        """增强缓存方向提取"""
-        return self.enhanced_extract_direction_with_position(content, play_category, lottery_type)
-    
     def upload_and_process(self, uploaded_file):
-        """上传并处理文件"""
+        """上传并处理文件 - 修复版"""
         try:
             if uploaded_file is None:
                 st.error("❌ 没有上传文件")
@@ -903,9 +882,16 @@ class WashTradeDetector:
                 df_clean = self.data_processor.clean_data(uploaded_file)
             
             if df_clean is not None and len(df_clean) > 0:
+                # 🆕 修复：确保数据预处理完成
                 df_enhanced = self.enhance_data_processing(df_clean)
-                return df_enhanced, filename
+                
+                if df_enhanced is not None and len(df_enhanced) > 0:
+                    return df_enhanced, filename
+                else:
+                    st.error("❌ 数据增强处理失败")
+                    return None, None
             else:
+                st.error("❌ 数据清洗失败")
                 return None, None
             
         except Exception as e:
@@ -928,34 +914,39 @@ class WashTradeDetector:
             # 计算账户统计信息
             self.calculate_account_total_periods_by_lottery(df_clean)
             
-            # 提取投注金额和方向 - 使用缓存版本
+            # 提取投注金额和方向 - 修复缓存使用
             st.info("💰 正在提取投注金额和方向...")
             progress_bar = st.progress(0)
             total_rows = len(df_clean)
             
-            # 分批处理显示进度
+            # 🆕 修复：直接应用函数，不使用缓存（避免序列化问题）
+            df_clean['投注金额'] = df_clean['金额'].apply(
+                lambda x: self.extract_bet_amount_safe(str(x))
+            )
+            
+            # 🆕 修复：分批处理方向提取
             batch_size = 1000
+            directions_list = []
+            
             for i in range(0, total_rows, batch_size):
                 end_idx = min(i + batch_size, total_rows)
                 batch_df = df_clean.iloc[i:end_idx]
                 
-                # 处理当前批次
-                df_clean.loc[i:end_idx-1, '投注金额'] = batch_df['金额'].apply(
-                    lambda x: self.cached_extract_bet_amount(str(x))
-                )
-                df_clean.loc[i:end_idx-1, '投注方向'] = batch_df.apply(
-                    lambda row: self.cached_extract_direction(
+                batch_directions = batch_df.apply(
+                    lambda row: self.enhanced_extract_direction_with_position(
                         row['内容'], 
-                        row.get('玩法', ''), 
-                        row['彩种类型']
+                        row.get('玩法分类', ''), 
+                        row.get('彩种类型', '未知')
                     ), 
                     axis=1
                 )
+                directions_list.extend(batch_directions.tolist())
                 
                 # 更新进度
                 progress = (end_idx) / total_rows
                 progress_bar.progress(progress)
             
+            df_clean['投注方向'] = directions_list
             progress_bar.empty()
             
             # 过滤有效记录
@@ -970,12 +961,15 @@ class WashTradeDetector:
             
             self.data_processed = True
             self.df_valid = df_valid
-
+            
+            st.success(f"✅ 数据处理完成: {len(df_valid)} 条有效记录")
             return df_valid
             
         except Exception as e:
             logger.error(f"数据处理增强失败: {str(e)}")
             st.error(f"数据处理增强失败: {str(e)}")
+            import traceback
+            st.error(f"详细错误: {traceback.format_exc()}")
             return pd.DataFrame()
     
     def extract_bet_amount_safe(self, amount_text):
@@ -1037,12 +1031,15 @@ class WashTradeDetector:
             return 0
     
     def enhanced_extract_direction_with_position(self, content, play_category, lottery_type):
-        """🎯 修复版方向提取 - 使用增强的方向识别"""
+        """🎯 修复版方向提取 - 增强健壮性"""
         try:
-            if pd.isna(content):
+            if pd.isna(content) or content is None:
                 return ""
             
             content_str = str(content).strip()
+            
+            if not content_str or content_str.lower() in ['', 'null', 'none', 'nan']:
+                return ""
             
             # 🎯 使用增强的内容解析器提取方向
             directions = self.content_parser.enhanced_extract_directions(content_str, self.config)
@@ -1051,7 +1048,12 @@ class WashTradeDetector:
                 return ""
             
             # 🎯 从玩法分类中提取位置信息
-            position = self.content_parser.extract_position_from_play_category(play_category, lottery_type, self.config)
+            position = ""
+            try:
+                position = self.content_parser.extract_position_from_play_category(play_category, lottery_type, self.config)
+            except Exception as e:
+                logger.warning(f"位置提取失败: {play_category}, {lottery_type}, 错误: {e}")
+                position = "未知位置"
             
             # 🎯 方向优先级排序和选择
             main_direction = self.content_parser.prioritize_directions(directions, content_str, play_category)
@@ -1894,7 +1896,7 @@ class WashTradeDetector:
 
 # ==================== 主函数 ====================
 def main():
-    """主函数"""
+    """主函数 - 修复版"""
     st.title("🎯 智能多账户对刷检测系统")
     st.markdown("---")
     
@@ -1924,22 +1926,6 @@ def main():
                 help="账户总投注期数最大允许差异，超过此值不进行组合检测"
             )
             
-            # 活跃度阈值配置
-            st.sidebar.subheader("📊 活跃度阈值配置")
-            st.sidebar.markdown("**新阈值设置:**")
-            st.sidebar.markdown("- **1-10期:** 要求≥3期连续对刷")
-            st.sidebar.markdown("- **11-50期:** 要求≥5期连续对刷")  
-            st.sidebar.markdown("- **51-100期:** 要求≥8期连续对刷")
-            st.sidebar.markdown("- **100期以上:** 要求≥11期连续对刷")
-            
-            # 多账户匹配度配置
-            st.sidebar.subheader("🎯 多账户匹配度配置")
-            st.sidebar.markdown("**账户数量 vs 匹配度要求:**")
-            st.sidebar.markdown("- **2个账户:** 80%匹配度")
-            st.sidebar.markdown("- **3个账户:** 85%匹配度")  
-            st.sidebar.markdown("- **4个账户:** 90%匹配度")
-            st.sidebar.markdown("- **5个账户:** 95%匹配度")
-            
             # 更新配置参数
             config = Config()
             config.min_amount = min_amount
@@ -1960,19 +1946,13 @@ def main():
             st.success(f"✅ 已上传文件: {uploaded_file.name}")
             
             with st.spinner("🔄 正在解析数据..."):
-                # ========== 🆕 修复这里：正确的数据处理流程 ==========
-                # 直接调用 upload_and_process，它会内部处理列名识别和数据验证
+                # 🆕 修复：正确的数据处理流程
                 df_enhanced, filename = detector.upload_and_process(uploaded_file)
                 
                 if df_enhanced is not None and len(df_enhanced) > 0:
                     st.success("✅ 数据解析完成")
                     
-                    # ========== 🆕 新增这里：显示数据质量验证结果 ==========
-                    # 在数据处理器中已经有数据验证，这里只是显示结果
-                    with st.expander("📊 数据质量验证结果", expanded=False):
-                        # 这里可以显示detector中已经进行的验证结果
-                        st.info("数据质量验证已在处理过程中完成")
-                    
+                    # 🆕 显示数据概览
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
                         st.metric("有效记录数", f"{len(df_enhanced):,}")
@@ -1984,27 +1964,25 @@ def main():
                         if '彩种类型' in df_enhanced.columns:
                             st.metric("彩种类型数", f"{df_enhanced['彩种类型'].nunique()}")
                     
-                    with st.expander("📊 数据详情", expanded=False):
-                        tab1, tab2 = st.tabs(["数据概览", "彩种分布"])
+                    # 🆕 显示数据预览
+                    with st.expander("📊 数据预览", expanded=False):
+                        st.dataframe(df_enhanced.head(50), use_container_width=True)
                         
-                        with tab1:
-                            st.dataframe(df_enhanced.head(100), use_container_width=True)
-                            
-                        with tab2:
-                            if '彩种类型' in df_enhanced.columns:
-                                lottery_type_stats = df_enhanced['彩种类型'].value_counts()
-                                st.bar_chart(lottery_type_stats)
+                        if '投注方向' in df_enhanced.columns:
+                            direction_stats = df_enhanced['投注方向'].value_counts().head(10)
+                            st.write("🎯 投注方向分布TOP10:")
+                            for direction, count in direction_stats.items():
+                                st.write(f"  - {direction}: {count}次")
                     
-                    st.info("🚀 自动开始检测对刷交易...")
+                    st.info("🚀 开始检测对刷交易...")
                     with st.spinner("🔍 正在检测对刷交易..."):
                         patterns = detector.detect_all_wash_trades()
                     
                     if patterns:
                         st.success(f"✅ 检测完成！发现 {len(patterns)} 个对刷组")
                         
-                        # 🆕 添加增强对立模式分析
+                        # 显示分析结果
                         detector.display_enhanced_opposite_analysis(patterns)
-                        
                         detector.display_detailed_results(patterns)
                     else:
                         st.warning("⚠️ 未发现符合阈值条件的对刷行为")
@@ -2013,6 +1991,7 @@ def main():
             
         except Exception as e:
             st.error(f"❌ 程序执行失败: {str(e)}")
+            import traceback
             st.error(f"详细错误信息:\n{traceback.format_exc()}")
     else:
         st.info("👈 请在左侧边栏上传数据文件开始分析")
