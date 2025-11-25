@@ -1477,31 +1477,13 @@ class WashTradeDetector:
         return continuous_patterns
 
     def _calculate_detailed_account_stats(self, patterns):
-        """计算详细账户统计 - 调整列名以匹配第一套代码格式"""
+        """计算详细账户统计 - 调整为类似第一套代码的格式"""
         account_participation = defaultdict(lambda: {
+            'combinations': 0,
             'periods': set(),
             'lotteries': set(),
-            'positions': set(),
-            'total_combinations': 0,
-            'total_bet_amount': 0,
-            'continuous_periods': 0,
-            'actual_bet_records': []
+            'total_amount': 0
         })
-        
-        # 从原始数据中收集账户的实际投注金额
-        if self.df_valid is not None:
-            for _, row in self.df_valid.iterrows():
-                account = row['会员账号']
-                amount = row['投注金额']
-                period = row['期号']
-                lottery = row['彩种'] if '彩种' in row else '未知'
-                
-                if account in account_participation:
-                    account_participation[account]['actual_bet_records'].append({
-                        'amount': amount,
-                        'period': period,
-                        'lottery': lottery
-                    })
         
         # 收集账户参与信息
         for pattern in patterns:
@@ -1515,15 +1497,7 @@ class WashTradeDetector:
                 # 添加彩种
                 account_info['lotteries'].add(pattern['彩种'])
                 
-                # 添加位置信息
-                for record in pattern['详细记录']:
-                    for direction in record['方向组']:
-                        if '-' in direction:
-                            position = direction.split('-')[0]
-                            account_info['positions'].add(position)
-                
-                account_info['total_combinations'] += 1
-                account_info['continuous_periods'] = max(account_info['continuous_periods'], pattern['对刷期数'])
+                account_info['combinations'] += 1
                 
                 # 计算该账户在对刷模式中的实际投注金额
                 pattern_bet_amount = 0
@@ -1532,18 +1506,17 @@ class WashTradeDetector:
                         if acc == account:
                             pattern_bet_amount += amt
                 
-                account_info['total_bet_amount'] += pattern_bet_amount
+                account_info['total_amount'] += pattern_bet_amount
         
-        # 转换为显示格式 - 调整列名以匹配第一套代码
+        # 转换为显示格式 - 简化为类似第一套代码的列名
         account_stats = []
         for account, info in account_participation.items():
             stat_record = {
                 '账户': account,
-                '参与组合数': info['total_combinations'],
+                '参与组合数': info['combinations'],
                 '涉及期数': len(info['periods']),
                 '涉及彩种': len(info['lotteries']),
-                '总投注金额': f"¥{info['total_bet_amount']:,.2f}",
-                '平均每组金额': f"¥{info['total_bet_amount'] / info['total_combinations']:,.2f}" if info['total_combinations'] > 0 else "¥0.00"
+                '总投注金额': f"¥{info['total_amount']:,.0f}"
             }
             
             account_stats.append(stat_record)
@@ -1672,7 +1645,7 @@ class WashTradeDetector:
                     st.write(f"  - {opposite_type}: {count}组")
     
     def display_detailed_results(self, patterns):
-        """显示详细检测结果 - 修改为类似第一套代码的样式"""
+        """显示详细检测结果 - 调整为类似第一套代码的样式"""
         st.write("\n" + "="*60)
         st.write("🎯 多账户对刷检测结果")
         st.write("="*60)
@@ -1682,28 +1655,28 @@ class WashTradeDetector:
             return
     
         # ========== 显示总体统计 ==========
-        st.subheader("📊 总体统计")
+        st.subheader("📊 检测汇总")
         
         total_groups = len(patterns)
         total_accounts = sum(p['账户数量'] for p in patterns)
         total_wash_periods = sum(p['对刷期数'] for p in patterns)
         total_amount = sum(p['总投注金额'] for p in patterns)
         
-        # 🆕 修改：使用与第一套代码类似的指标展示
+        # 使用与第一套代码类似的指标展示
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.metric("总对刷组数", total_groups)
+            st.metric("总完美组合数", total_groups)
         
         with col2:
-            st.metric("涉及账户数", total_accounts)
+            st.metric("分析函数", total_groups)  # 与第一套代码保持一致
         
         with col3:
-            st.metric("总对刷期数", total_wash_periods)
+            st.metric("有效账户数", total_accounts)
         
         with col4:
-            st.metric("总涉及金额", f"¥{total_amount:,.2f}")
-        
+            st.metric("涉及彩种", len(set(p['彩种'] for p in patterns)))
+    
         # ========== 彩种类型统计 ==========
         st.subheader("🎲 彩种类型统计")
         
@@ -1711,19 +1684,20 @@ class WashTradeDetector:
         for pattern in patterns:
             lottery_stats[pattern['彩种']] += 1
         
-        # 🆕 修改：创建彩种统计列，类似第一套代码
+        # 创建彩种统计列，类似第一套代码
         lottery_cols = st.columns(min(5, len(lottery_stats)))
         
         for i, (lottery, count) in enumerate(lottery_stats.items()):
             if i < len(lottery_cols):
                 with lottery_cols[i]:
+                    # 简化为只显示彩种名称和组数
                     st.metric(
                         label=lottery,
                         value=f"{count}组"
                     )
-        
+    
         # ========== 参与账户详细统计 ==========
-        st.subheader("👥 参与账户详细统计")
+        st.subheader("👥 参与账户统计")
         
         # 计算账户参与统计
         account_stats = self._calculate_detailed_account_stats(patterns)
@@ -1731,48 +1705,40 @@ class WashTradeDetector:
         if account_stats:
             df_stats = pd.DataFrame(account_stats)
             
-            # 🆕 修改：使用表格形式展示，类似第一套代码
+            # 使用表格形式展示，类似第一套代码
             st.dataframe(
                 df_stats,
                 use_container_width=True,
                 hide_index=True,
                 height=min(400, len(df_stats) * 35 + 38)
             )
-        
+    
         # ========== 详细对刷组分析 ==========
-        st.subheader("🔍 详细对刷组分析")
+        st.subheader("🔍 完美覆盖组合检测结果")
         
         patterns_by_lottery = defaultdict(list)
         for pattern in patterns:
             lottery_key = pattern['彩种']
             patterns_by_lottery[lottery_key].append(pattern)
         
+        # 按照彩种分组显示
         for lottery, lottery_patterns in patterns_by_lottery.items():
-            with st.expander(f"🎲 彩种：{lottery}（发现{len(lottery_patterns)}组）", expanded=True):
+            with st.expander(f"🎲 {lottery} - {len(lottery_patterns)}组", expanded=True):
                 for i, pattern in enumerate(lottery_patterns, 1):
-                    st.markdown(f"**对刷组 {i}:** {' ↔ '.join(pattern['账户组'])}")
+                    # 简化的显示格式
+                    st.write(f"**组合{i}:** {' ↔ '.join(pattern['账户组'])}")
                     
-                    # 🆕 修改：使用更清晰的活跃度显示
-                    activity_icon = "🟢" if pattern['账户活跃度'] == 'low' else "🟡" if pattern['账户活跃度'] == 'medium' else "🟠" if pattern['账户活跃度'] == 'high' else "🔴"
-                    activity_text = {
-                        'low': '低活跃度', 
-                        'medium': '中活跃度', 
-                        'high': '高活跃度', 
-                        'very_high': '极高活跃度'
-                    }.get(pattern['账户活跃度'], pattern['账户活跃度'])
+                    # 简化的统计信息
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.write(f"**对刷期数:** {pattern['对刷期数']}期")
+                    with col2:
+                        st.write(f"**总金额:** ¥{pattern['总投注金额']:,.0f}")
+                    with col3:
+                        st.write(f"**匹配度:** {pattern['平均相似度']:.1%}")
                     
-                    st.markdown(f"**活跃度:** {activity_icon} {activity_text} | **彩种:** {pattern['彩种']} | **主要类型:** {pattern['主要对立类型']}")
-                    st.markdown(f"**账户在该彩种投注期数/记录数:** {', '.join(pattern['账户统计信息'])}")
-                    st.markdown(f"**对刷期数:** {pattern['对刷期数']}期 (要求≥{pattern['要求最小对刷期数']}期)")
-                    st.markdown(f"**总金额:** {pattern['总投注金额']:.2f}元 | **平均匹配:** {pattern['平均相似度']:.2%}")
-                    
-                    st.markdown("**详细记录:**")
-                    for j, record in enumerate(pattern['详细记录'], 1):
-                        account_directions = []
-                        for account, direction, amount in zip(record['账户组'], record['方向组'], record['金额组']):
-                            account_directions.append(f"{account}({direction}:¥{amount})")
-                        
-                        st.write(f"{j}. 期号: {record['期号']} | 方向: {' ↔ '.join(account_directions)} | 匹配度: {record['相似度']:.2%}")
+                    # 主要对立类型
+                    st.write(f"**主要类型:** {pattern['主要对立类型']}")
                     
                     if i < len(lottery_patterns):
                         st.markdown("---")
@@ -1789,28 +1755,11 @@ class WashTradeDetector:
         total_wash_periods = sum(p['对刷期数'] for p in patterns)
         total_amount = sum(p['总投注金额'] for p in patterns)
         
-        account_count_stats = defaultdict(int)
-        for pattern in patterns:
-            account_count_stats[pattern['账户数量']] += 1
-        
-        lottery_stats = defaultdict(int)
-        for pattern in patterns:
-            lottery_stats[pattern['彩种']] += 1
-        
-        activity_stats = defaultdict(int)
-        for pattern in patterns:
-            activity_stats[pattern['账户活跃度']] += 1
-        
-        opposite_type_stats = defaultdict(int)
-        for pattern in patterns:
-            for opposite_type, count in pattern['对立类型分布'].items():
-                opposite_type_stats[opposite_type] += count
-        
-        # ========== 第一行：总体指标 ==========
+        # 简化的统计展示
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.metric("总对刷组数", total_groups)
+            st.metric("总完美组合数", total_groups)
         
         with col2:
             st.metric("涉及账户数", total_accounts)
@@ -1819,19 +1768,14 @@ class WashTradeDetector:
             st.metric("总对刷期数", total_wash_periods)
         
         with col4:
-            st.metric("总涉及金额", f"¥{total_amount:,.2f}")
+            st.metric("总涉及金额", f"¥{total_amount:,.0f}")
         
-        # ========== 第二行：彩种类型统计 ==========
+        # 彩种类型统计
         st.subheader("🎲 彩种类型统计")
         
-        # 定义彩种类型显示名称
-        lottery_display_names = {
-            'PK10': 'PK10/赛车',
-            'K3': '快三',
-            'LHC': '六合彩', 
-            'SSC': '时时彩',
-            '3D': '3D系列'
-        }
+        lottery_stats = defaultdict(int)
+        for pattern in patterns:
+            lottery_stats[pattern['彩种']] += 1
         
         # 创建彩种统计列
         lottery_cols = st.columns(min(5, len(lottery_stats)))
@@ -1839,72 +1783,10 @@ class WashTradeDetector:
         for i, (lottery, count) in enumerate(lottery_stats.items()):
             if i < len(lottery_cols):
                 with lottery_cols[i]:
-                    display_name = lottery_display_names.get(lottery, lottery)
                     st.metric(
-                        label=display_name,
+                        label=lottery,
                         value=f"{count}组"
                     )
-        
-        # ========== 第三行：账户组合分布和活跃度分布 ==========
-        col_left, col_right = st.columns(2)
-        
-        with col_left:
-            st.subheader("👥 账户组合分布")
-            
-            for account_count, group_count in sorted(account_count_stats.items()):
-                # 计算该类型组合的总对刷期数
-                account_type_periods = sum(p['对刷期数'] for p in patterns if p['账户数量'] == account_count)
-                st.write(f"- **{account_count}组**: {group_count}组 ({account_type_periods}期)")
-        
-        with col_right:
-            st.subheader("📈 活跃度分布")
-            
-            activity_display_names = {
-                'low': '低活跃度',
-                'medium': '中活跃度',
-                'high': '高活跃度',
-                'very_high': '极高活跃度'
-            }
-            
-            for activity, count in activity_stats.items():
-                display_name = activity_display_names.get(activity, activity)
-                # 计算该活跃度的总对刷期数
-                activity_periods = sum(p['对刷期数'] for p in patterns if p['账户活跃度'] == activity)
-                st.write(f"- **{display_name}**: {count}组 ({activity_periods}期)")
-        
-        # ========== 第四行：关键指标 ==========
-        st.subheader("📈 关键指标")
-        
-        # 计算平均每组金额
-        avg_group_amount = total_amount / total_groups if total_groups > 0 else 0
-        
-        metric_col1, metric_col2, metric_col3 = st.columns(3)
-        
-        with metric_col1:
-            st.metric("平均每组金额", f"¥{avg_group_amount:,.2f}")
-        
-        with metric_col2:
-            # 计算业务类型总金额
-            business_total = total_amount
-            st.metric("业务类型总额", f"¥{business_total:,.2f}")
-        
-        with metric_col3:
-            # 显示总账户数
-            st.metric("参与总账户数", total_accounts)
-        
-        # ========== 第五行：主要对立类型 ==========
-        st.subheader("🎯 主要对立类型")
-        
-        # 显示前3个主要对立类型
-        top_opposites = sorted(opposite_type_stats.items(), key=lambda x: x[1], reverse=True)[:3]
-        
-        for opposite_type, count in top_opposites:
-            # 简化对立类型显示
-            if ' vs ' in opposite_type:
-                display_type = opposite_type.replace(' vs ', '-')
-            else:
-                display_type = opposite_type
-            st.write(f"- **{display_type}**: {count}期")
 
 # ==================== 主函数 ====================
 def main():
