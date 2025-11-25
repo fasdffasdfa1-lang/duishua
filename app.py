@@ -1672,11 +1672,7 @@ class WashTradeDetector:
                     st.write(f"  - {opposite_type}: {count}组")
     
     def display_detailed_results(self, patterns):
-        """显示详细检测结果 - 修改为类似第一套代码的样式"""
-        st.write("\n" + "="*60)
-        st.write("🎯 多账户对刷检测结果")
-        st.write("="*60)
-        
+        """显示详细检测结果 - 修改为类似第一套代码的样式"""   
         if not patterns:
             st.error("❌ 未发现符合阈值条件的连续对刷模式")
             return
