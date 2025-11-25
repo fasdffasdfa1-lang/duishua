@@ -19,13 +19,13 @@ logger = logging.getLogger('MultiAccountWashTrade')
 
 # Streamlit 页面配置
 st.set_page_config(
-    page_title="智能多账户对刷检测系统",
+    page_title="智能对刷检测系统",
     page_icon="🎯",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# ==================== 配置类 - 修复版 ====================
+# ==================== 配置类 ====================
 class Config:
     def __init__(self):
         self.min_amount = 10
@@ -116,7 +116,7 @@ class Config:
             {'特大', '特小'}, {'特单', '特双'}
         ]
         
-        # 位置关键词映射 - 增强版
+        # 位置关键词映射
         self.position_keywords = {
             'PK10': {
                 '冠军': ['冠军', '第1名', '第一名', '前一', '冠 军', '冠　军'],
@@ -590,9 +590,9 @@ class PlayCategoryNormalizer:
         
         return category_str
 
-# ==================== 内容解析器 - 修复版 ====================
+# ==================== 内容解析器 ====================
 class ContentParser:
-    """修复内容解析器 - 支持变异形式但映射到基础方向"""
+    """内容解析器 - 支持变异形式但映射到基础方向"""
     
     @staticmethod
     def extract_basic_directions(content, config):
@@ -839,7 +839,7 @@ class ContentParser:
             logger.warning(f"解析3D竖线格式失败: {content}, 错误: {str(e)}")
             return defaultdict(list)
 
-# ==================== 修复的对刷检测器 ====================
+# ==================== 对刷检测器 ====================
 class WashTradeDetector:
     def __init__(self, config=None):
         self.config = config or Config()
@@ -886,7 +886,7 @@ class WashTradeDetector:
             return None, None
     
     def enhance_data_processing(self, df_clean):
-        """增强的数据处理流程 - 修复版"""
+        """增强的数据处理流程"""
         try:
             # 彩种识别
             if '彩种' in df_clean.columns:
@@ -954,7 +954,7 @@ class WashTradeDetector:
             return pd.DataFrame()
     
     def extract_bet_amount_safe(self, amount_text):
-        """安全提取投注金额 - 增强版"""
+        """安全提取投注金额"""
         try:
             if pd.isna(amount_text):
                 return 0
@@ -981,7 +981,7 @@ class WashTradeDetector:
             except:
                 pass
             
-            # 模式匹配 - 增强模式
+            # 模式匹配
             patterns = [
                 r'投注[:：]?\s*([-]?\d+[,，]?\d*\.?\d*)',
                 r'下注[:：]?\s*([-]?\d+[,，]?\d*\.?\d*)',
@@ -1012,7 +1012,7 @@ class WashTradeDetector:
             return 0
     
     def enhanced_extract_direction_with_position(self, content, play_category, lottery_type):
-        """🎯 修复版方向提取 - 使用增强的方向识别"""
+        """🎯 方向提取 - 使用增强的方向识别"""
         try:
             if pd.isna(content):
                 return ""
@@ -1045,7 +1045,7 @@ class WashTradeDetector:
             return ""
     
     def _select_primary_direction(self, directions, content):
-        """选择主要方向 - 修复版"""
+        """选择主要方向"""
         if not directions:
             return ""
         
@@ -1054,7 +1054,7 @@ class WashTradeDetector:
         
         content_str = str(content)
         
-        # 🎯 优先级规则 - 修复版
+        # 🎯 优先级规则
         priority_rules = [
             # 最高优先级：总和相关
             lambda d: any(keyword in content_str for keyword in ['总和', '总']) and d in directions,
@@ -1165,7 +1165,7 @@ class WashTradeDetector:
         return all_patterns
     
     def detect_n_account_patterns_optimized(self, df_filtered, n_accounts):
-        """优化版的N个账户对刷模式检测"""
+        """N个账户对刷模式检测"""
         wash_records = []
         
         period_groups = df_filtered.groupby(['期号', '原始彩种'])
@@ -1193,7 +1193,7 @@ class WashTradeDetector:
         return self.find_continuous_patterns_optimized(wash_records)
     
     def _get_valid_direction_combinations(self, n_accounts):
-        """🎯 修复版有效方向组合生成 - 使用增强的对立组"""
+        """🎯 有效方向组合生成 - 使用增强的对立组"""
         valid_combinations = []
         
         # 🎯 基础对立组处理 - 使用增强的对立组
@@ -1256,7 +1256,7 @@ class WashTradeDetector:
         return valid_combinations
     
     def _detect_combinations_for_period(self, period_data, period_accounts, n_accounts, valid_combinations):
-        """为单个期号检测组合 - 修复版"""
+        """为单个期号检测组合"""
         patterns = []
         
         # 获取当前彩种
@@ -1397,7 +1397,7 @@ class WashTradeDetector:
         return True
     
     def find_continuous_patterns_optimized(self, wash_records):
-        """优化版的连续对刷模式检测"""
+        """连续对刷模式检测"""
         if not wash_records:
             return []
         
@@ -1477,7 +1477,7 @@ class WashTradeDetector:
         return continuous_patterns
 
     def _calculate_detailed_account_stats(self, patterns):
-        """计算详细账户统计 - 调整列名以匹配第一套代码格式"""
+        """计算详细账户统计"""
         account_participation = defaultdict(lambda: {
             'periods': set(),
             'lotteries': set(),
@@ -1534,7 +1534,7 @@ class WashTradeDetector:
                 
                 account_info['total_bet_amount'] += pattern_bet_amount
         
-        # 转换为显示格式 - 调整列名以匹配第一套代码
+        # 转换为显示格式
         account_stats = []
         for account, info in account_participation.items():
             stat_record = {
@@ -1672,7 +1672,7 @@ class WashTradeDetector:
                     st.write(f"  - {opposite_type}: {count}组")
     
     def display_detailed_results(self, patterns):
-        """显示详细检测结果 - 修改为类似第一套代码的样式"""   
+        """显示详细检测结果"""   
         if not patterns:
             st.error("❌ 未发现符合阈值条件的连续对刷模式")
             return
@@ -1707,7 +1707,7 @@ class WashTradeDetector:
         for pattern in patterns:
             lottery_stats[pattern['彩种']] += 1
         
-        # 🆕 修改：创建彩种统计列，类似第一套代码
+        # 🆕 修改：创建彩种统计列
         lottery_cols = st.columns(min(5, len(lottery_stats)))
         
         for i, (lottery, count) in enumerate(lottery_stats.items()):
@@ -1727,7 +1727,7 @@ class WashTradeDetector:
         if account_stats:
             df_stats = pd.DataFrame(account_stats)
             
-            # 🆕 修改：使用表格形式展示，类似第一套代码
+            # 🆕 修改：使用表格形式展示
             st.dataframe(
                 df_stats,
                 use_container_width=True,
@@ -1774,7 +1774,7 @@ class WashTradeDetector:
                         st.markdown("---")
     
     def display_summary_statistics(self, patterns):
-        """显示总体统计 - 根据最新图片样式调整"""
+        """显示总体统计"""
         if not patterns:
             return
             
@@ -1904,8 +1904,8 @@ class WashTradeDetector:
 
 # ==================== 主函数 ====================
 def main():
-    """主函数 - 修复版"""
-    st.title("🎯 智能多账户对刷检测系统")
+    """主函数"""
+    st.title("🎯 智能对刷检测系统")
     st.markdown("---")
     
     with st.sidebar:
@@ -1918,10 +1918,10 @@ def main():
     
     if uploaded_file is not None:
         try:
-            # 配置参数 - 修改为类似第一套代码的样式
+            # 配置参数
             st.sidebar.header("⚙️ 检测参数设置")
             
-            # 🆕 修改：使用滑块设置最小投注金额，默认10，与第一套代码一致
+            # 🆕 修改：使用滑块设置最小投注金额，默认10
             min_amount = st.sidebar.slider(
                 "最小投注金额阈值", 
                 min_value=1, 
@@ -1986,7 +1986,7 @@ def main():
             
             st.success(f"✅ 已上传文件: {uploaded_file.name}")
             
-            # 🆕 修改：显示当前参数设置，与第一套代码一致
+            # 🆕 修改：显示当前参数设置
             st.info(f"📊 当前检测参数: 最小金额 ≥ {min_amount}, 基础匹配度 ≥ {base_similarity_threshold*100}%")
             
             with st.spinner("🔄 正在解析数据..."):
@@ -1995,7 +1995,7 @@ def main():
                 if df_enhanced is not None and len(df_enhanced) > 0:
                     st.success("✅ 数据解析完成")
                     
-                    # 🆕 修改：显示数据概览，与第一套代码类似
+                    # 🆕 修改：显示数据概览
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
                         st.metric("有效记录数", f"{len(df_enhanced):,}")
@@ -2055,7 +2055,7 @@ def main():
             import traceback
             st.error(f"详细错误信息:\n{traceback.format_exc()}")
     else:
-        # 🆕 修改：未上传文件时的展示内容，与第一套代码类似
+        # 🆕 修改：未上传文件时的展示内容
         st.info("👈 请在左侧边栏上传数据文件开始分析")
         
         col1, col2, col3 = st.columns(3)
@@ -2087,7 +2087,7 @@ def main():
             - 实时性能监控
             """)
     
-    # 🆕 修改：系统使用说明，与第一套代码类似
+    # 🆕 修改：系统使用说明
     with st.expander("📖 系统使用说明", expanded=False):
         st.markdown("""
         ### 系统功能说明
