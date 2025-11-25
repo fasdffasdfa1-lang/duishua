@@ -2043,7 +2043,6 @@ def main():
                         st.success(f"✅ 检测完成！发现 {len(patterns)} 个对刷组")
                         
                         # 显示分析结果
-                        detector.display_enhanced_opposite_analysis(patterns)
                         detector.display_detailed_results(patterns)
                     else:
                         st.warning("⚠️ 未发现符合阈值条件的对刷行为")
