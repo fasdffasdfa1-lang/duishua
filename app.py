@@ -1335,8 +1335,9 @@ class WashTradeDetector:
         return valid_combinations
     
     def _detect_combinations_for_period(self, period_data, period_accounts, n_accounts, valid_combinations):
-        """为单个期号检测组合"""
+        """为单个期号检测组合 - 修复重复统计问题"""
         patterns = []
+        detected_combinations = set()  # 用于去重
         
         # 获取当前彩种
         lottery = period_data['原始彩种'].iloc[0] if '原始彩种' in period_data.columns else period_data['彩种'].iloc[0]
@@ -1373,6 +1374,16 @@ class WashTradeDetector:
             if len(group_directions) != n_accounts:
                 continue
             
+            # 🆕 增强去重逻辑：基于账户组+方向组+金额组的唯一键
+            combination_key = (
+                tuple(sorted(account_group)), 
+                tuple(sorted(group_directions)),
+                tuple(sorted(group_amounts))
+            )
+            
+            if combination_key in detected_combinations:
+                continue  # 跳过已检测的组合
+            
             # 🎯 检查是否匹配任何有效的方向组合
             for combo in valid_combinations:
                 target_directions = combo['directions']
@@ -1381,6 +1392,9 @@ class WashTradeDetector:
                 target_directions_sorted = sorted(target_directions)
                 
                 if actual_directions_sorted == target_directions_sorted:
+                    # 🆕 标记该组合为已检测
+                    detected_combinations.add(combination_key)
+                    
                     # 计算两个方向的总金额
                     dir1_total = 0
                     dir2_total = 0
@@ -1405,20 +1419,17 @@ class WashTradeDetector:
                             
                             # 🎯 修复模式字符串生成
                             if ' vs ' in combo['opposite_type']:
-                                # 带位置的对立类型，如 "第3球-小 vs 第3球-大"
                                 pattern_parts = combo['opposite_type'].split(' vs ')
                                 if len(pattern_parts) == 2:
                                     dir1_part = pattern_parts[0].split('-')
                                     dir2_part = pattern_parts[1].split('-')
                                     if len(dir1_part) == 2 and len(dir2_part) == 2:
-                                        # 格式：位置-方向(数量个) vs 位置-方向(数量个)
                                         pattern_str = f"{dir1_part[0]}-{dir1_part[1]}({combo['dir1_count']}个) vs {dir2_part[0]}-{dir2_part[1]}({combo['dir2_count']}个)"
                                     else:
                                         pattern_str = f"{pattern_parts[0]}({combo['dir1_count']}个) vs {pattern_parts[1]}({combo['dir2_count']}个)"
                                 else:
                                     pattern_str = combo['opposite_type']
                             else:
-                                # 基础对立类型，如 "大-小"
                                 opposite_parts = combo['opposite_type'].split('-')
                                 if len(opposite_parts) == 2:
                                     pattern_str = f"{opposite_parts[0]}({combo['dir1_count']}个) vs {opposite_parts[1]}({combo['dir2_count']}个)"
@@ -1435,11 +1446,12 @@ class WashTradeDetector:
                                 '总金额': dir1_total + dir2_total,
                                 '相似度': similarity,
                                 '账户数量': n_accounts,
-                                '模式': pattern_str,  # 🎯 使用修复后的模式字符串
+                                '模式': pattern_str,
                                 '对立类型': combo['opposite_type']
                             }
                             
                             patterns.append(record)
+                            break  # 🆕 找到一个匹配后跳出循环，避免重复匹配其他组合
         
         return patterns
     
@@ -1751,10 +1763,22 @@ class WashTradeDetector:
                     st.write(f"  - {opposite_type}: {count}组")
     
     def display_detailed_results(self, patterns):
-        """显示详细检测结果"""   
+        """显示详细检测结果 - 添加期号去重验证"""
         if not patterns:
             st.error("❌ 未发现符合阈值条件的连续对刷模式")
             return
+    
+        # 🆕 期号去重验证
+        period_validation = defaultdict(list)
+        for pattern in patterns:
+            for record in pattern['详细记录']:
+                key = (record['期号'], tuple(record['账户组']))
+                period_validation[key].append(record)
+        
+        # 检查重复期号
+        duplicate_periods = {k: v for k, v in period_validation.items() if len(v) > 1}
+        if duplicate_periods:
+            logger.warning(f"发现重复期号记录: {duplicate_periods}")
     
         # ========== 显示总体统计 ==========
         st.subheader("📊 总体统计")
