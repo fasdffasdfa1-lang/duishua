@@ -107,6 +107,20 @@ class Config:
             '野肖': ['野肖', '野兽', '野肖', '野', '野兽肖', '野生肖'],
             '尾大': ['尾大', '尾大', '大尾', '尾数大', '尾數大'],
             '尾小': ['尾小', '尾小', '小尾', '尾数小', '尾數小'],
+
+            # 🆕 新增六合彩特码两面专用方向
+            '尾大': ['尾大', '尾大', '大尾', '尾数大', '尾數大', '特码两面-尾大'],
+            '尾小': ['尾小', '尾小', '小尾', '尾数小', '尾數小', '特码两面-尾小'],
+            '特大': ['特大', '极大', '最大', '特单大', '特双大', '特码-大', '特码大', '特码_大', '特码两面-特大'],
+            '特小': ['特小', '极小', '最小', '特小单', '特小双', '特码-小', '特码小', '特码_小', '特码两面-特小'],
+            '特单': ['特单', '特码-单', '特码单', '特码_单', '特码两面-特单'],
+            '特双': ['特双', '特码-双', '特码双', '特码_双', '特码两面-特双'],
+            
+            # 🆕 基础方向的六合彩变体
+            '大': ['大', 'big', 'large', 'da', '特码两面-大'],
+            '小': ['小', 'small', 'xiao', '特码两面-小'], 
+            '单': ['单', 'odd', 'dan', '奇', '特码两面-单'],
+            '双': ['双', 'even', 'shuang', '偶', '特码两面-双'],
             
             # 🆕 新增六合彩正码特方向 - 精确位置
             '正1特-大': ['正1特-大', '正一特-大', '正码特_正一特-大', '正1特大', '正一特大', '正码特-正一特-大'],
@@ -201,6 +215,14 @@ class Config:
             {'正4-大', '正4-小'}, {'正4-单', '正4-双'},
             {'正5-大', '正5-小'}, {'正5-单', '正5-双'},
             {'正6-大', '正6-小'}, {'正6-单', '正6-双'},
+            
+            # 🆕 新增六合彩特码两面对立组
+            {'尾大', '尾小'},
+            {'特大', '特小'},
+            {'特单', '特双'},
+            {'特码两面-尾大', '特码两面-尾小'},
+            {'特码两面-特大', '特码两面-特小'},
+            {'特码两面-特单', '特码两面-特双'},
         ]
         
         # 位置关键词映射 - 扩展六合彩位置
@@ -461,6 +483,14 @@ class DataProcessor:
             if '期号' in df_clean.columns:
                 df_clean['期号'] = df_clean['期号'].str.replace(r'\.0$', '', regex=True)
             
+            # 🆕 新增：预处理金额列格式
+            if '金额' in df_clean.columns:
+                df_clean['金额'] = df_clean['金额'].apply(self.preprocess_amount_column)
+            
+            # 🆕 新增：预处理内容列格式  
+            if '内容' in df_clean.columns:
+                df_clean['内容'] = df_clean['内容'].apply(self.preprocess_content_column)
+            
             # ========== 🔄 修复这里：调用增强的数据验证 ==========
             self.validate_data_quality(df_clean)
             
@@ -479,6 +509,40 @@ class DataProcessor:
             st.error(f"❌ 数据清洗失败: {str(e)}")
             logger.error(f"数据清洗失败: {str(e)}")
             return None
+    
+    def preprocess_amount_column(self, amount_text):
+        """预处理金额列格式"""
+        if pd.isna(amount_text):
+            return amount_text
+        
+        text = str(amount_text).strip()
+        
+        # 🆕 标准化金额格式
+        if '投注：' in text and '抵用：' in text:
+            # 提取投注部分，移除其他信息
+            try:
+                bet_part = text.split('投注：')[1].split('抵用：')[0].strip()
+                return f"投注：{bet_part}"
+            except:
+                return text
+        
+        return text
+    
+    def preprocess_content_column(self, content_text):
+        """预处理内容列格式"""
+        if pd.isna(content_text):
+            return content_text
+        
+        text = str(content_text).strip()
+        
+        # 🆕 标准化六合彩特码两面格式
+        if '特码两面-' in text:
+            # 统一格式，去除可能的多余空格
+            text = text.replace('特码两面 - ', '特码两面-')
+            text = text.replace('特码两面- ', '特码两面-')
+            return text
+        
+        return text
 
 # ==================== 彩种识别器 ====================
 LOTTERY_CONFIGS = {
@@ -787,18 +851,44 @@ class ContentParser:
 
     # 🆕 新增：增强方向提取方法
     @staticmethod
+    @staticmethod
     def enhanced_extract_directions(content, config):
-        """🎯 增强版方向提取 - 支持六合彩精确位置"""
+        """🎯 增强版方向提取 - 特别优化六合彩特码两面"""
         try:
             if pd.isna(content):
                 return []
             
             content_str = str(content).strip()
             
-            # 🆕 预处理内容
-            content_clean = ContentParser.preprocess_content(content_str)
+            # 🆕 专门处理六合彩特码两面格式
+            if '特码两面-' in content_str:
+                direction_part = content_str.split('特码两面-')[-1].strip()
+                # 检查是否匹配已知方向
+                for direction, patterns in config.direction_patterns.items():
+                    for pattern in patterns:
+                        if direction_part == pattern or direction_part in pattern:
+                            return [direction]
             
-            # 🆕 多层级方向提取
+            # 🆕 处理其他六合彩变体格式
+            lhc_special_patterns = {
+                '特码两面-尾大': '尾大',
+                '特码两面-尾小': '尾小', 
+                '特码两面-特大': '特大',
+                '特码两面-特小': '特小',
+                '特码两面-特单': '特单',
+                '特码两面-特双': '特双',
+                '特码两面-大': '大',
+                '特码两面-小': '小',
+                '特码两面-单': '单',
+                '特码两面-双': '双'
+            }
+            
+            for pattern, direction in lhc_special_patterns.items():
+                if pattern in content_str:
+                    return [direction]
+            
+            # 原有的多层级方向提取逻辑
+            content_clean = ContentParser.preprocess_content(content_str)
             directions = ContentParser.multi_level_direction_extraction(content_clean, config)
             
             return directions
@@ -1208,13 +1298,48 @@ class WashTradeDetector:
             return pd.DataFrame()
     
     def extract_bet_amount_safe(self, amount_text):
-        """安全提取投注金额"""
+        """安全提取投注金额 - 增强版本"""
         try:
             if pd.isna(amount_text):
                 return 0
             
             text = str(amount_text).strip()
             
+            # 🆕 新增：专门处理 "投注：8.000 抵用：0 中奖：0.000" 格式
+            if '投注：' in text and '抵用：' in text:
+                try:
+                    # 提取 "投注：" 后面的数字部分
+                    bet_part = text.split('投注：')[1].split('抵用：')[0].strip()
+                    # 移除可能的千分位逗号，直接转换为浮点数
+                    amount = float(bet_part.replace(',', ''))
+                    if amount >= self.config.min_amount:
+                        return amount
+                except (ValueError, IndexError) as e:
+                    logger.debug(f"特殊格式金额提取失败: {text}, 错误: {e}")
+            
+            # 🆕 新增：处理简化的 "投注：8.000" 格式
+            if text.startswith('投注：'):
+                try:
+                    bet_part = text.replace('投注：', '').strip()
+                    # 提取第一个数字部分（可能后面有其他文字）
+                    bet_part_clean = re.split(r'[^\d.]', bet_part)[0]
+                    amount = float(bet_part_clean)
+                    if amount >= self.config.min_amount:
+                        return amount
+                except (ValueError, IndexError) as e:
+                    logger.debug(f"简化格式金额提取失败: {text}, 错误: {e}")
+            
+            # 🆕 新增：处理包含 "投注:" 的格式（中文冒号）
+            if '投注:' in text:
+                try:
+                    bet_part = text.split('投注:')[1].split()[0].strip()
+                    amount = float(bet_part.replace(',', ''))
+                    if amount >= self.config.min_amount:
+                        return amount
+                except (ValueError, IndexError) as e:
+                    logger.debug(f"中文冒号格式金额提取失败: {text}, 错误: {e}")
+            
+            # 原有的处理逻辑保持不变
             # 处理科学计数法
             if 'E' in text or 'e' in text:
                 try:
@@ -1226,7 +1351,6 @@ class WashTradeDetector:
             
             # 直接转换
             try:
-                # 移除所有非数字字符（除了小数点和负号）
                 cleaned_text = re.sub(r'[^\d.-]', '', text)
                 if cleaned_text and cleaned_text != '-':
                     amount = float(cleaned_text)
@@ -1235,7 +1359,7 @@ class WashTradeDetector:
             except:
                 pass
             
-            # 模式匹配
+            # 原有的模式匹配逻辑...
             patterns = [
                 r'投注[:：]?\s*([-]?\d+[,，]?\d*\.?\d*)',
                 r'下注[:：]?\s*([-]?\d+[,，]?\d*\.?\d*)',
