@@ -641,18 +641,22 @@ class ContentParser:
 
     # 🆕 新增：增强方向提取方法
     @staticmethod
+    @staticmethod
     def enhanced_extract_directions(content, config):
-        """🎯 增强版方向提取 - 提高识别精度"""
+        """🎯 增强版方向提取 - 确保能识别六合彩特码"""
         try:
             if pd.isna(content):
                 return []
             
             content_str = str(content).strip()
             
-            # 🆕 预处理内容
-            content_clean = ContentParser.preprocess_content(content_str)
+            # 🆕 特别优先处理六合彩特码内容
+            lhc_directions = ContentParser.special_lhc_direction_extraction(content_str, config)
+            if lhc_directions:
+                return lhc_directions
             
-            # 🆕 多层级方向提取
+            # 常规方向提取
+            content_clean = ContentParser.preprocess_content(content_str)
             directions = ContentParser.multi_level_direction_extraction(content_clean, config)
             
             return directions
@@ -660,6 +664,39 @@ class ContentParser:
         except Exception as e:
             logger.warning(f"方向提取失败: {content}, 错误: {e}")
             return []
+    
+    @staticmethod
+    def special_lhc_direction_extraction(content, config):
+        """🆕 特别处理六合彩特码方向提取 - 增强识别"""
+        content_str = str(content).strip()
+        directions = []
+        
+        # 🎯 六合彩特码特殊处理 - 增强模式
+        lhc_special_patterns = {
+            '特单': ['特单', '特码单', '特肖单', '单特', '特 单', '特　单'],
+            '特双': ['特双', '特码双', '特肖双', '双特', '特 双', '特　双'],
+            '特大': ['特大', '特码大', '大特', '特 大', '特　大'],
+            '特小': ['特小', '特码小', '小特', '特 小', '特　小'],
+            '家肖': ['家肖', '特家肖', '家禽', '家禽肖', '家肖特', '家 肖', '家　肖'],
+            '野肖': ['野肖', '特野肖', '野兽', '野兽肖', '野肖特', '野 肖', '野　肖'],
+            '天肖': ['天肖', '特天肖', '天肖特', '天 肖', '天　肖'],
+            '地肖': ['地肖', '特地肖', '地肖特', '地 肖', '地　肖'],
+        }
+        
+        content_lower = content_str.lower().replace(' ', '').replace('　', '')
+        
+        # 检查是否匹配六合彩特码模式 - 使用更宽松的匹配
+        for direction, patterns in lhc_special_patterns.items():
+            for pattern in patterns:
+                pattern_clean = pattern.lower().replace(' ', '').replace('　', '')
+                # 使用更宽松的匹配逻辑
+                if (pattern_clean == content_lower or 
+                    pattern_clean in content_lower or 
+                    content_lower in pattern_clean):
+                    if direction not in directions:
+                        directions.append(direction)
+        
+        return directions
 
     @staticmethod
     def preprocess_content(content):
