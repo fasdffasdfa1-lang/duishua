@@ -965,12 +965,14 @@ class ContentParser:
                 if keyword in play_str:
                     return position
         
-        # 🆕 特殊处理：如果玩法分类包含"正码特"但没有具体位置，默认为"特码"
+        # 🆕 特殊处理：如果玩法分类包含"两面"但没有具体位置，根据彩种类型设置默认位置
         if lottery_type == 'LHC':
-            if '正码特' in play_str or '正特' in play_str:
-                return '特码'
-            elif '正码' in play_str and '特' not in play_str:
+            if '两面' in play_str:
+                return '特码'  # 六合彩两面玩法通常指特码
+            elif '正码' in play_str:
                 return '正码'
+            elif '平特' in play_str:
+                return '平特'
         
         return '未知位置'
 
@@ -1207,13 +1209,34 @@ class WashTradeDetector:
             st.error(f"数据处理增强失败: {str(e)}")
             return pd.DataFrame()
     
-    def extract_bet_amount_safe(self, amount_text):
-        """安全提取投注金额"""
+   def extract_bet_amount_safe(self, amount_text):
+        """安全提取投注金额 - 增强版"""
         try:
             if pd.isna(amount_text):
                 return 0
             
             text = str(amount_text).strip()
+            
+            # 🆕 新增：处理"投注：8.000 抵用：0 中奖：0.000"格式
+            if '投注：' in text or '投注:' in text:
+                # 提取"投注："后面的数字
+                bet_patterns = [
+                    r'投注[：:]\s*([\d,.]+)',
+                    r'投注[：:]\s*([\d,.]+\d+)',
+                    r'下注[：:]\s*([\d,.]+)',
+                    r'金额[：:]\s*([\d,.]+)'
+                ]
+                
+                for pattern in bet_patterns:
+                    match = re.search(pattern, text)
+                    if match:
+                        amount_str = match.group(1).replace(',', '').replace('，', '')
+                        try:
+                            amount = float(amount_str)
+                            if amount >= self.config.min_amount:
+                                return amount
+                        except:
+                            continue
             
             # 处理科学计数法
             if 'E' in text or 'e' in text:
