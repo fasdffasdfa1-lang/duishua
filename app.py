@@ -253,9 +253,8 @@ class Config:
 
         # ==================== 🆕 新增：金额阈值配置 ====================
         self.amount_threshold = {
-            'min_relative_ratio': 0.1,      # 十分之一比例
-            'min_absolute_amount': 100,     # 100元绝对阈值
-            'enable_threshold_filter': True # 是否启用阈值过滤
+            'max_amount_ratio': 10,           # 最大金额差距倍数（10倍 = 十分之一）
+            'enable_threshold_filter': True   # 是否启用金额平衡过滤
         }
 
 # ==================== 数据处理器类 ====================
@@ -1076,31 +1075,41 @@ class WashTradeDetector:
         self.account_record_stats_by_lottery = defaultdict(dict)
         self.performance_stats = {}
 
-    def filter_accounts_by_amount_threshold(self, account_group, directions, amounts):
-        """根据金额阈值过滤账户"""
+    def filter_accounts_by_amount_balance(self, account_group, directions, amounts):
+        """根据组内金额平衡性过滤账户 - 确保组内金额差距不超过10倍"""
         if not self.config.amount_threshold['enable_threshold_filter']:
             return account_group, directions, amounts
         
-        if not amounts:  # 空列表检查
-            return [], [], []
+        if not amounts or len(amounts) < 2:
+            return account_group, directions, amounts
         
+        # 🆕 检查组内金额平衡性
         max_amount = max(amounts)
-        min_required = max(
-            max_amount * self.config.amount_threshold['min_relative_ratio'],
-            self.config.amount_threshold['min_absolute_amount']
-        )
+        min_amount = min(amounts)
         
-        valid_indices = [i for i, amount in enumerate(amounts) if amount >= min_required]
+        # 计算最大金额差距比例
+        amount_ratio = max_amount / min_amount if min_amount > 0 else float('inf')
         
-        if len(valid_indices) < 2:
-            return [], [], []  # 不足2个有效账户，返回空
+        # 🆕 如果金额差距超过设定倍数，过滤掉金额太小的账户
+        max_allowed_ratio = self.config.amount_threshold['max_amount_ratio']
+        if amount_ratio > max_allowed_ratio:
+            # 找出金额太小的账户（小于最大金额的1/max_allowed_ratio）
+            min_required = max_amount / max_allowed_ratio
+            valid_indices = [i for i, amount in enumerate(amounts) if amount >= min_required]
+            
+            if len(valid_indices) >= 2:
+                filtered_accounts = [account_group[i] for i in valid_indices]
+                filtered_directions = [directions[i] for i in valid_indices]
+                filtered_amounts = [amounts[i] for i in valid_indices]
+                
+                logger.info(f"金额平衡过滤: {len(account_group)} -> {len(filtered_accounts)} 个账户 (原比例: {amount_ratio:.1f}倍)")
+                return filtered_accounts, filtered_directions, filtered_amounts
+            else:
+                # 过滤后不足2个有效账户，返回空
+                return [], [], []
         
-        filtered_accounts = [account_group[i] for i in valid_indices]
-        filtered_directions = [directions[i] for i in valid_indices]
-        filtered_amounts = [amounts[i] for i in valid_indices]
-        
-        logger.debug(f"金额阈值过滤: {len(account_group)} -> {len(filtered_accounts)} 个账户")
-        return filtered_accounts, filtered_directions, filtered_amounts
+        # 金额平衡，不需要过滤
+        return account_group, directions, amounts
 
     def upload_and_process(self, uploaded_file):
         """上传并处理文件"""
@@ -1555,8 +1564,8 @@ class WashTradeDetector:
             if len(group_directions) != n_accounts:
                 continue
             
-            # 应用金额阈值过滤
-            filtered_account_group, filtered_directions, filtered_amounts = self.filter_accounts_by_amount_threshold(
+            # 应用金额平衡过滤
+            filtered_account_group, filtered_directions, filtered_amounts = self.filter_accounts_by_amount_balance(
                 account_group, group_directions, group_amounts
             )
             
@@ -2253,35 +2262,25 @@ def main():
                 help="账户总投注期数最大允许差异，超过此值不进行组合检测"
             )
             
-            # ==================== 🆕 新增：金额阈值配置控件 ====================
-            st.sidebar.subheader("💰 金额阈值设置")
+            # ==================== 🆕 修改：金额平衡配置控件 ====================
+            st.sidebar.subheader("💰 金额平衡设置")
             
-            enable_threshold = st.sidebar.checkbox("启用金额阈值过滤", value=True,
-                                                 help="过滤掉金额太小的账户，提高检测准确性")
+            enable_balance_filter = st.sidebar.checkbox("启用金额平衡过滤", value=True,
+                                                      help="确保对刷组内账户金额差距不超过设定倍数")
             
-            # 初始化默认值
-            min_ratio = 0.1
-            min_absolute = 100
-            
-            if enable_threshold:
-                min_ratio = st.sidebar.slider("最小相对比例", 
-                                             min_value=0.05, 
-                                             max_value=0.3, 
-                                             value=0.1, 
-                                             step=0.01,
-                                             help="账户金额需达到最大金额的此比例（例如：0.1表示10%）")
-                
-                min_absolute = st.sidebar.number_input("最小绝对金额", 
-                                                      min_value=10, 
-                                                      max_value=500, 
-                                                      value=100,
-                                                      help="账户金额需达到此绝对值（单位：元）")
+            max_ratio = 10  # 默认值
+            if enable_balance_filter:
+                max_ratio = st.sidebar.slider("最大金额差距倍数", 
+                                             min_value=2, 
+                                             max_value=20, 
+                                             value=10, 
+                                             step=1,
+                                             help="组内最大金额与最小金额的允许倍数（例如：10表示10倍差距）")
             
             # 更新配置
             config.amount_threshold = {
-                'min_relative_ratio': min_ratio,
-                'min_absolute_amount': min_absolute,
-                'enable_threshold_filter': enable_threshold
+                'max_amount_ratio': max_ratio,
+                'enable_threshold_filter': enable_balance_filter
             }
             
             # 🆕 修改：活跃度阈值配置，使用更清晰的展示方式
