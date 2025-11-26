@@ -2256,6 +2256,10 @@ def main():
             enable_threshold = st.sidebar.checkbox("启用金额阈值过滤", value=True,
                                                  help="过滤掉金额太小的账户，提高检测准确性")
             
+            # 初始化默认值
+            min_ratio = 0.1
+            min_absolute = 100
+            
             if enable_threshold:
                 min_ratio = st.sidebar.slider("最小相对比例", 
                                              min_value=0.05, 
@@ -2270,11 +2274,12 @@ def main():
                                                       value=100,
                                                       help="账户金额需达到此绝对值（单位：元）")
             
-            # 更新配置
+            # 更新配置 - 确保这一部分格式正确
             config.amount_threshold = {
-                'min_relative_ratio': min_ratio if enable_threshold else 0.1,
-                'min_absolute_amount': min_absolute if enable_threshold else 100,
+                'min_relative_ratio': min_ratio,
+                'min_absolute_amount': min_absolute,
                 'enable_threshold_filter': enable_threshold
+            }
             
             # 🆕 修改：活跃度阈值配置，使用更清晰的展示方式
             st.sidebar.subheader("📊 活跃度阈值配置")
