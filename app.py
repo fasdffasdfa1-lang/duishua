@@ -352,6 +352,40 @@ class DataProcessor:
                 st.info(f"手动重命名后的列: {list(df_clean.columns)}")
             
             initial_count = len(df_clean)
+            
+            # ========== 🆕 新增：关键字段去重 ==========
+            # 第一步：基于所有可用字段的完全去重
+            available_columns = [col for col in self.required_columns if col in df_clean.columns]
+            if available_columns:
+                duplicate_count_before = len(df_clean)
+                df_clean = df_clean.drop_duplicates(subset=available_columns, keep='first')
+                duplicate_count_after = len(df_clean)
+                
+                removed_duplicates = duplicate_count_before - duplicate_count_after
+                if removed_duplicates > 0:
+                    st.warning(f"⚠️ 移除了 {removed_duplicates} 条完全重复的记录")
+            
+            # 第二步：基于业务逻辑的去重（同一账户同一期号同一内容）
+            if all(col in df_clean.columns for col in ['会员账号', '期号', '内容']):
+                business_duplicate_mask = df_clean.duplicated(
+                    subset=['会员账号', '期号', '内容'], 
+                    keep='first'
+                )
+                business_duplicates = business_duplicate_mask.sum()
+                
+                if business_duplicates > 0:
+                    # 显示重复记录详情
+                    duplicate_records = df_clean[business_duplicate_mask]
+                    st.warning(f"⚠️ 发现 {business_duplicates} 条业务重复记录:")
+                    
+                    with st.expander("🔍 查看重复记录详情", expanded=False):
+                        for idx, row in duplicate_records.head(10).iterrows():
+                            st.write(f"- 账户: {row['会员账号']}, 期号: {row['期号']}, 内容: {row['内容']}, 金额: {row.get('金额', 'N/A')}")
+                    
+                    df_clean = df_clean[~business_duplicate_mask]
+                    st.success(f"✅ 已移除 {business_duplicates} 条业务重复记录")
+            
+            # 第三步：移除空值和空列
             df_clean = df_clean.dropna(subset=[col for col in self.required_columns if col in df_clean.columns])
             df_clean = df_clean.dropna(axis=1, how='all')
             
@@ -367,10 +401,11 @@ class DataProcessor:
             if '期号' in df_clean.columns:
                 df_clean['期号'] = df_clean['期号'].str.replace(r'\.0$', '', regex=True)
             
-            # ========== 🔄 修复这里：调用增强的数据验证 ==========
+            # ========== 调用增强的数据验证 ==========
             self.validate_data_quality(df_clean)
             
-            st.success(f"✅ 数据清洗完成: {initial_count} -> {len(df_clean)} 条记录")
+            final_count = len(df_clean)
+            st.success(f"✅ 数据清洗完成: {initial_count} → {final_count} 条记录 (移除了 {initial_count - final_count} 条无效/重复记录)")
             
             st.info(f"📊 唯一会员账号数: {df_clean['会员账号'].nunique()}")
             
@@ -964,7 +999,7 @@ class WashTradeDetector:
             # 计算账户统计信息
             self.calculate_account_total_periods_by_lottery(df_clean)
             
-            # 提取投注金额和方向 - 不使用缓存版本
+            # 提取投注金额和方向
             st.info("💰 正在提取投注金额和方向...")
             progress_bar = st.progress(0)
             total_rows = len(df_clean)
@@ -975,7 +1010,6 @@ class WashTradeDetector:
                 end_idx = min(i + batch_size, total_rows)
                 batch_df = df_clean.iloc[i:end_idx]
                 
-                # 🆕 直接调用方法，不使用缓存
                 # 处理金额
                 df_clean.loc[i:end_idx-1, '投注金额'] = batch_df['金额'].apply(
                     lambda x: self.extract_bet_amount_safe(str(x))
@@ -1003,13 +1037,33 @@ class WashTradeDetector:
                 (df_clean['投注金额'] >= self.config.min_amount)
             ].copy()
             
+            # ========== 🆕 新增：基于投注方向的最终去重 ==========
+            if all(col in df_valid.columns for col in ['会员账号', '期号', '投注方向']):
+                direction_duplicate_mask = df_valid.duplicated(
+                    subset=['会员账号', '期号', '投注方向'], 
+                    keep='first'
+                )
+                direction_duplicates = direction_duplicate_mask.sum()
+                
+                if direction_duplicates > 0:
+                    st.warning(f"⚠️ 移除 {direction_duplicates} 条同一账户同一期号同一方向的重复记录")
+                    
+                    # 显示重复记录详情
+                    duplicate_records = df_valid[direction_duplicate_mask]
+                    with st.expander("🔍 查看方向重复记录详情", expanded=False):
+                        for idx, row in duplicate_records.head(10).iterrows():
+                            st.write(f"- 账户: {row['会员账号']}, 期号: {row['期号']}, 方向: {row['投注方向']}, 金额: {row['投注金额']}")
+                    
+                    df_valid = df_valid[~direction_duplicate_mask]
+                    st.success(f"✅ 最终有效记录数: {len(df_valid)}")
+            
             if len(df_valid) == 0:
                 st.error("❌ 过滤后没有有效记录")
                 return pd.DataFrame()
             
             self.data_processed = True
             self.df_valid = df_valid
-
+    
             return df_valid
             
         except Exception as e:
