@@ -913,7 +913,6 @@ class ContentParser:
         return content_str
 
     @staticmethod
-    @staticmethod
     def multi_level_direction_extraction(content, config):
         """🆕 多层级方向提取 - 增强六合彩精确位置识别"""
         directions = set()
