@@ -851,7 +851,6 @@ class ContentParser:
 
     # 🆕 新增：增强方向提取方法
     @staticmethod
-    @staticmethod
     def enhanced_extract_directions(content, config):
         """🎯 增强版方向提取 - 特别优化六合彩特码两面"""
         try:
