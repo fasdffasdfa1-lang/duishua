@@ -1832,7 +1832,7 @@ class WashTradeDetector:
             self.account_record_stats_by_lottery[lottery] = record_counts
     
     def detect_all_wash_trades(self):
-        """检测所有类型的对刷交易 - 统一框架"""
+        """检测所有类型的对刷交易"""
         if not self.data_processed or self.df_valid is None or len(self.df_valid) == 0:
             st.error("❌ 没有有效数据可用于检测")
             return []
@@ -1850,23 +1850,26 @@ class WashTradeDetector:
             st.error("❌ 过滤后无有效数据")
             return []
         
+        # 🆕 添加调试：验证方向提取
+        self.debug_direction_extraction(df_filtered)
+        
         progress_bar = st.progress(0)
         status_text = st.empty()
         
         all_patterns = []
         total_steps = self.config.max_accounts_in_group + 1
         
-        # 🎯 步骤1: 检测传统对立对刷模式
+        # 🎯 步骤1: 检测常规对刷模式
         for account_count in range(2, self.config.max_accounts_in_group + 1):
-            status_text.text(f"🔍 检测{account_count}个账户对立对刷模式...")
+            status_text.text(f"🔍 检测{account_count}个账户对刷模式...")
             patterns = self.detect_n_account_patterns_optimized(df_filtered, account_count)
             all_patterns.extend(patterns)
             
             progress = (account_count - 1) / total_steps
             progress_bar.progress(progress)
         
-        # 🎯 步骤2: 检测PK10协作对刷模式
-        status_text.text(f"🔍 检测PK10协作对刷模式...")
+        # 🎯 步骤2: 检测PK10序列位置模式
+        status_text.text(f"🔍 检测PK10序列位置模式...")
         pk10_patterns = self.detect_pk10_sequence_patterns(df_filtered)
         all_patterns.extend(pk10_patterns)
         
@@ -2147,13 +2150,13 @@ class WashTradeDetector:
         return True
     
     def find_continuous_patterns_optimized(self, wash_records):
-        """连续对刷模式检测 - 支持PK10序列模式"""
+        """连续对刷模式检测 - 确保支持PK10序列模式"""
         if not wash_records:
             return []
         
         account_group_patterns = defaultdict(list)
         for record in wash_records:
-            # 🆕 修改：对于PK10序列模式，使用账户组+模式作为key
+            # 🎯 对于PK10序列模式，使用账户组+模式作为key
             if '检测类型' in record and record['检测类型'] == 'PK10序列位置':
                 account_group_key = (tuple(sorted(record['账户组'])), record['模式'])
             else:
@@ -2166,7 +2169,7 @@ class WashTradeDetector:
         for (account_group, key), records in account_group_patterns.items():
             sorted_records = sorted(records, key=lambda x: x['期号'])
             
-            # 🆕 修改：对于PK10序列模式，使用更灵活的最小期数要求
+            # 🎯 对于PK10序列模式，使用更灵活的最小期数要求
             if '检测类型' in records[0] and records[0]['检测类型'] == 'PK10序列位置':
                 required_min_periods = 3  # PK10序列模式至少3期
             else:
@@ -2222,7 +2225,7 @@ class WashTradeDetector:
         return continuous_patterns
 
     def detect_pk10_sequence_patterns(self, df_filtered):
-        """检测PK10序列位置模式 - 扩展版本，支持所有玩法类型"""
+        """检测PK10序列位置模式 - 修复版，支持所有方向"""
         try:
             # 过滤PK10数据
             df_pk10 = df_filtered[
@@ -2237,24 +2240,55 @@ class WashTradeDetector:
             if '玩法分类' not in df_pk10.columns and '玩法' in df_pk10.columns:
                 df_pk10['玩法分类'] = df_pk10['玩法'].apply(self.play_normalizer.normalize_category)
             
-            # 检测序列覆盖模式
+            # 🎯 支持的所有方向
+            supported_directions = ['大', '小', '单', '双']
+            
             sequence_patterns = []
             
             # 按期号分组检测
             for period in df_pk10['期号'].unique():
                 period_data = df_pk10[df_pk10['期号'] == period]
                 
-                # 🆕 检测三种模式：
-                # 模式1：1-5名和6-10名的组合
-                patterns_mode1 = self._detect_1_5_6_10_mode(period_data, period)
-                # 模式2：单个位置玩法组合
-                patterns_mode2 = self._detect_individual_positions_mode(period_data, period)
-                # 模式3：数字投注模式
-                patterns_mode3 = self._detect_number_bet_mode(period_data, period)
+                # 检查1-5名和6-10名的组合
+                play_1_5 = period_data[period_data['玩法分类'] == '1-5名']
+                play_6_10 = period_data[period_data['玩法分类'] == '6-10名']
                 
-                sequence_patterns.extend(patterns_mode1)
-                sequence_patterns.extend(patterns_mode2)
-                sequence_patterns.extend(patterns_mode3)
+                if len(play_1_5) == 0 or len(play_6_10) == 0:
+                    continue
+                
+                # 检查投注内容是否相同
+                bet_content_1_5 = self._extract_direction_from_data(play_1_5)
+                bet_content_6_10 = self._extract_direction_from_data(play_6_10)
+                
+                # 🎯 修复：检查方向是否在支持的方向列表中
+                if (bet_content_1_5 and bet_content_6_10 and 
+                    bet_content_1_5 == bet_content_6_10 and
+                    bet_content_1_5 in supported_directions):
+                    
+                    accounts_1_5 = play_1_5['会员账号'].tolist()
+                    accounts_6_10 = play_6_10['会员账号'].tolist()
+                    
+                    all_accounts = list(set(accounts_1_5 + accounts_6_10))
+                    
+                    if 2 <= len(all_accounts) <= 3:
+                        total_amount = play_1_5['投注金额'].sum() + play_6_10['投注金额'].sum()
+                        
+                        record = {
+                            '期号': period,
+                            '彩种': 'PK10',
+                            '彩种类型': 'PK10',
+                            '账户组': all_accounts,
+                            '方向组': [bet_content_1_5] * len(all_accounts),
+                            '金额组': [play_1_5['投注金额'].sum(), play_6_10['投注金额'].sum()],
+                            '总金额': total_amount,
+                            '相似度': 1.0,
+                            '账户数量': len(all_accounts),
+                            '模式': f'PK10十位置协作-{bet_content_1_5}',
+                            '对立类型': f'协作覆盖-{bet_content_1_5}',
+                            '检测类型': 'PK10序列位置'
+                        }
+                        
+                        sequence_patterns.append(record)
             
             # 使用现有的连续模式检测方法
             continuous_patterns = self.find_continuous_patterns_optimized(sequence_patterns)
@@ -2264,6 +2298,51 @@ class WashTradeDetector:
         except Exception as e:
             logger.error(f"PK10序列检测失败: {str(e)}")
             return []
+
+    def debug_direction_extraction(self, df_filtered):
+        """调试方向提取 - 验证所有方向是否正确提取"""
+        st.subheader("🔍 方向提取调试")
+        
+        # 过滤PK10数据
+        df_pk10 = df_filtered[
+            (df_filtered['彩种类型'] == 'PK10') & 
+            (df_filtered['投注金额'] >= self.config.min_amount)
+        ].copy()
+        
+        if len(df_pk10) == 0:
+            st.write("❌ 没有PK10数据")
+            return
+        
+        # 显示方向分布
+        st.write("📊 投注方向分布:")
+        direction_counts = df_pk10['投注方向'].value_counts()
+        st.write(direction_counts)
+        
+        # 显示每个方向的示例数据
+        for direction in ['大', '小', '单', '双']:
+            direction_data = df_pk10[df_pk10['投注方向'] == direction]
+            if len(direction_data) > 0:
+                st.write(f"🎯 '{direction}' 方向示例:")
+                st.dataframe(direction_data[['期号', '会员账号', '玩法分类', '内容', '投注方向']].head(3))
+        
+        # 检查1-5名和6-10名的组合
+        st.write("🔍 检查1-5名和6-10名组合:")
+        periods_with_both = []
+        
+        for period in df_pk10['期号'].unique():
+            period_data = df_pk10[df_pk10['期号'] == period]
+            play_1_5 = period_data[period_data['玩法分类'] == '1-5名']
+            play_6_10 = period_data[period_data['玩法分类'] == '6-10名']
+            
+            if len(play_1_5) > 0 and len(play_6_10) > 0:
+                periods_with_both.append(period)
+                
+                bet_content_1_5 = self._extract_direction_from_data(play_1_5)
+                bet_content_6_10 = self._extract_direction_from_data(play_6_10)
+                
+                st.write(f"期号 {period}: 1-5名方向='{bet_content_1_5}', 6-10名方向='{bet_content_6_10}', 是否相同={bet_content_1_5 == bet_content_6_10}")
+        
+        st.write(f"📅 同时有1-5名和6-10名的期号: {periods_with_both}")
     
     def _detect_1_5_6_10_mode(self, period_data, period):
         """检测模式1：1-5名和6-10名的组合"""
@@ -2468,7 +2547,7 @@ class WashTradeDetector:
             return None
         
         # 取第一条记录的投注方向作为代表
-        return data.iloc[0]['投注方向'] if '投注方向' in data.columns else None
+        return data.iloc[0]['投注方向'] if '投注方向' in data.columns and len(data) > 0 else None
     
     def _extract_number_from_content(self, content):
         """从内容中提取数字"""
