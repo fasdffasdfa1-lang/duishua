@@ -4,6 +4,9 @@ import streamlit as st
 import io
 import re
 import logging
+import zipfile
+import openpyxl
+from openpyxl.styles import Font, Alignment
 from collections import defaultdict
 from datetime import datetime
 from itertools import combinations
@@ -2332,6 +2335,206 @@ class WashTradeDetector:
                 display_type = opposite_type
             st.write(f"- **{display_type}**: {count}期")
 
+    def export_detection_results(self, patterns, export_format='excel'):
+        """导出检测结果"""
+        if not patterns:
+            st.warning("❌ 没有检测结果可供导出")
+            return None
+        
+        try:
+            # 创建主结果DataFrame
+            main_data = []
+            detailed_data = []
+            
+            for i, pattern in enumerate(patterns, 1):
+                # 主表数据
+                main_record = {
+                    '组ID': f"组{i}",
+                    '账户组': ' ↔ '.join(pattern['账户组']),
+                    '彩种': pattern['彩种'],
+                    '彩种类型': pattern['彩种类型'],
+                    '账户数量': pattern['账户数量'],
+                    '主要对立类型': pattern['主要对立类型'],
+                    '对刷期数': pattern['对刷期数'],
+                    '要求最小对刷期数': pattern['要求最小对刷期数'],
+                    '总投注金额': pattern['总投注金额'],
+                    '平均相似度': pattern['平均相似度'],
+                    '账户活跃度': pattern['账户活跃度'],
+                    '账户统计信息': '; '.join(pattern['账户统计信息'])
+                }
+                main_data.append(main_record)
+                
+                # 详细记录数据
+                for j, record in enumerate(pattern['详细记录'], 1):
+                    detailed_record = {
+                        '组ID': f"组{i}",
+                        '账户组': ' ↔ '.join(pattern['账户组']),
+                        '期号': record['期号'],
+                        '彩种': record['彩种'],
+                        '彩种类型': record['彩种类型'],
+                        '方向组': ' ↔ '.join([f"{acc}({dir})" for acc, dir in zip(record['账户组'], record['方向组'])]),
+                        '金额组': ' ↔ '.join([f"¥{amt}" for amt in record['金额组']]),
+                        '总金额': record['总金额'],
+                        '相似度': record['相似度'],
+                        '账户数量': record['账户数量'],
+                        '模式': record['模式'],
+                        '对立类型': record['对立类型']
+                    }
+                    detailed_data.append(detailed_record)
+            
+            # 创建DataFrame
+            df_main = pd.DataFrame(main_data)
+            df_detailed = pd.DataFrame(detailed_data)
+            
+            # 格式化数字列
+            numeric_columns = ['总投注金额', '平均相似度', '总金额', '相似度']
+            for col in numeric_columns:
+                if col in df_main.columns:
+                    df_main[col] = df_main[col].apply(lambda x: f"¥{x:,.2f}" if '金额' in col else f"{x:.2%}")
+                if col in df_detailed.columns:
+                    df_detailed[col] = df_detailed[col].apply(lambda x: f"¥{x:,.2f}" if '金额' in col else f"{x:.2%}")
+            
+            if export_format == 'excel':
+                return self._export_to_excel(df_main, df_detailed)
+            else:
+                return self._export_to_csv(df_main, df_detailed)
+                
+        except Exception as e:
+            logger.error(f"导出失败: {str(e)}")
+            st.error(f"导出失败: {str(e)}")
+            return None
+
+    def _export_to_excel(self, df_main, df_detailed):
+        """导出到Excel格式"""
+        try:
+            output = io.BytesIO()
+            
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                # 写入主表
+                df_main.to_excel(writer, sheet_name='对刷组汇总', index=False)
+                
+                # 写入详细表
+                df_detailed.to_excel(writer, sheet_name='详细记录', index=False)
+                
+                # 获取workbook和worksheets
+                workbook = writer.book
+                main_sheet = workbook['对刷组汇总']
+                detailed_sheet = workbook['详细记录']
+                
+                # 设置列宽
+                for sheet in [main_sheet, detailed_sheet]:
+                    for column in sheet.columns:
+                        max_length = 0
+                        column_letter = column[0].column_letter
+                        for cell in column:
+                            try:
+                                if len(str(cell.value)) > max_length:
+                                    max_length = len(str(cell.value))
+                            except:
+                                pass
+                        adjusted_width = min(max_length + 2, 50)
+                        sheet.column_dimensions[column_letter].width = adjusted_width
+                
+                # 添加标题和元数据
+                main_sheet.insert_rows(0, 3)
+                main_sheet['A1'] = "对刷检测结果报告"
+                main_sheet['A2'] = f"生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                main_sheet['A3'] = f"总对刷组数: {len(df_main)}"
+                
+                # 合并标题行
+                main_sheet.merge_cells('A1:L1')
+                main_sheet.merge_cells('A2:L2')
+                main_sheet.merge_cells('A3:L3')
+                
+                # 设置标题样式
+                for cell in ['A1', 'A2', 'A3']:
+                    main_sheet[cell].font = Font(bold=True, size=12)
+                    main_sheet[cell].alignment = Alignment(horizontal='center')
+            
+            output.seek(0)
+            return output
+            
+        except Exception as e:
+            logger.error(f"Excel导出失败: {str(e)}")
+            raise e
+
+    def _export_to_csv(self, df_main, df_detailed):
+        """导出到CSV格式"""
+        try:
+            # 创建ZIP文件包含两个CSV
+            zip_buffer = io.BytesIO()
+            
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                # 主表CSV
+                main_csv = df_main.to_csv(index=False, encoding='utf-8-sig')
+                zip_file.writestr('对刷组汇总.csv', main_csv)
+                
+                # 详细表CSV
+                detailed_csv = df_detailed.to_csv(index=False, encoding='utf-8-sig')
+                zip_file.writestr('详细记录.csv', detailed_csv)
+                
+                # 添加说明文件
+                readme_content = f"""对刷检测结果导出文件
+生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+总对刷组数: {len(df_main)}
+
+文件说明:
+1. 对刷组汇总.csv - 包含所有对刷组的汇总信息
+2. 详细记录.csv - 包含每个对刷组的详细期号记录
+
+检测参数:
+- 最小投注金额: {self.config.min_amount}元
+- 基础匹配度阈值: {self.config.amount_similarity_threshold:.0%}
+- 最大检测账户数: {self.config.max_accounts_in_group}
+"""
+                zip_file.writestr('说明.txt', readme_content)
+            
+            zip_buffer.seek(0)
+            return zip_buffer
+            
+        except Exception as e:
+            logger.error(f"CSV导出失败: {str(e)}")
+            raise e
+
+    def display_export_buttons(self, patterns):
+        """显示导出按钮"""
+        if not patterns:
+            return
+        
+        st.markdown("---")
+        st.subheader("📤 导出检测结果")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("📊 导出Excel报告", use_container_width=True):
+                with st.spinner("正在生成Excel报告..."):
+                    excel_data = self.export_detection_results(patterns, 'excel')
+                    if excel_data:
+                        st.download_button(
+                            label="⬇️ 下载Excel文件",
+                            data=excel_data,
+                            file_name=f"对刷检测报告_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
+                        )
+        
+        with col2:
+            if st.button("📄 导出CSV文件", use_container_width=True):
+                with st.spinner("正在生成CSV文件..."):
+                    csv_data = self.export_detection_results(patterns, 'csv')
+                    if csv_data:
+                        st.download_button(
+                            label="⬇️ 下载CSV压缩包",
+                            data=csv_data,
+                            file_name=f"对刷检测报告_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+                            mime="application/zip",
+                            use_container_width=True
+                        )
+        
+        # 显示导出统计
+        st.info(f"📊 导出内容: {len(patterns)}个对刷组, 共{sum(len(p['详细记录']) for p in patterns)}条详细记录")
+
 # ==================== 主函数 ====================
 def main():
     """主函数"""
@@ -2498,6 +2701,9 @@ def main():
                         
                         # 显示分析结果
                         detector.display_detailed_results(patterns)
+                        
+                        # 🆕 添加导出按钮
+                        detector.display_export_buttons(patterns)
                     else:
                         st.warning("⚠️ 未发现符合阈值条件的对刷行为")
                 else:
