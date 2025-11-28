@@ -2415,8 +2415,7 @@ class WashTradeDetector:
                 # 确定主要对立类型
                 main_opposite_type = max(opposite_type_counts.items(), key=lambda x: x[1])[0] if opposite_type_counts else '协作模式'
                 
-                # 账户统计信息
-                account_stats_info = []
+           account_stats_info = []
                 total_periods_stats = self.account_total_periods_by_lottery.get(lottery, {})
                 record_stats = self.account_record_stats_by_lottery.get(lottery, {})
                 
@@ -2424,7 +2423,7 @@ class WashTradeDetector:
                     total_periods = total_periods_stats.get(account, 0)
                     records_count = record_stats.get(account, 0)
                     
-                    # 🆕 如果找不到统计信息，尝试从原始数据中计算
+                    # 🆕 修复：如果找不到统计信息，尝试从原始数据中计算
                     if total_periods == 0 and hasattr(self, 'df_valid') and self.df_valid is not None:
                         # 从有效数据中计算该账户在该彩种的期数和记录数
                         account_data = self.df_valid[
