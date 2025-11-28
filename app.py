@@ -1011,7 +1011,7 @@ class PK10SequenceDetector:
         return sequence_patterns
     
     def _find_sequence_coverage_patterns(self, position_account_content, period):
-        """查找序列覆盖模式"""
+        """查找序列覆盖模式 - 专门支持2-3个账户"""
         patterns = []
         
         # 🎯 步骤1: 找出所有账户及其投注内容
@@ -1031,21 +1031,35 @@ class PK10SequenceDetector:
             for content in contents:
                 common_content_groups[content].append(account)
         
-        # 🎯 步骤3: 对每个共同内容，检查是否覆盖了十个位置
+        # 🎯 步骤3: 专门检查2个和3个账户的组合
         for bet_content, accounts in common_content_groups.items():
+            # 只处理2个和3个账户的情况
             if len(accounts) < 2:
                 continue
             
-            # 检查这些账户是否共同覆盖了十个位置
-            coverage_result = self._check_position_coverage(
-                position_account_content, accounts, bet_content
-            )
+            # 🆕 专门处理2个账户组合
+            if len(accounts) >= 2:
+                for account_group in combinations(accounts, 2):
+                    coverage_result = self._check_position_coverage(
+                        position_account_content, list(account_group), bet_content
+                    )
+                    if coverage_result['covered']:
+                        pattern = self._create_sequence_pattern(
+                            period, list(account_group), bet_content, coverage_result
+                        )
+                        patterns.append(pattern)
             
-            if coverage_result['covered']:
-                pattern = self._create_sequence_pattern(
-                    period, accounts, bet_content, coverage_result
-                )
-                patterns.append(pattern)
+            # 🆕 专门处理3个账户组合
+            if len(accounts) >= 3:
+                for account_group in combinations(accounts, 3):
+                    coverage_result = self._check_position_coverage(
+                        position_account_content, list(account_group), bet_content
+                    )
+                    if coverage_result['covered']:
+                        pattern = self._create_sequence_pattern(
+                            period, list(account_group), bet_content, coverage_result
+                        )
+                        patterns.append(pattern)
         
         return patterns
     
@@ -1090,7 +1104,7 @@ class PK10SequenceDetector:
         }
     
     def _create_sequence_pattern(self, period, accounts, bet_content, coverage_result):
-        """创建序列覆盖模式记录"""
+        """创建序列覆盖模式记录 - 专门支持2-3个账户"""
         # 计算覆盖度
         coverage_ratio = len(coverage_result['covered_positions']) / len(self.pk10_positions)
         
@@ -1107,11 +1121,21 @@ class PK10SequenceDetector:
                 }
                 detailed_records.append(record)
         
+        # 🆕 根据账户数量生成模式描述
+        account_count = len(accounts)
+        if account_count == 2:
+            pattern_desc = f'PK10十位置全覆盖-{bet_content}(2账户协作)'
+        elif account_count == 3:
+            pattern_desc = f'PK10十位置全覆盖-{bet_content}(3账户协作)'
+        else:
+            pattern_desc = f'PK10十位置全覆盖-{bet_content}({account_count}账户协作)'
+        
         return {
             '期号': period,
             '彩种': 'PK10',
             '彩种类型': 'PK10',
             '账户组': accounts,
+            '账户数量': account_count,
             '投注内容': bet_content,
             '覆盖位置数': len(coverage_result['covered_positions']),
             '总位置数': len(self.pk10_positions),
@@ -1119,7 +1143,7 @@ class PK10SequenceDetector:
             '总投注金额': coverage_result['total_amount'],
             '位置详情': detailed_records,
             '模式类型': '序列覆盖',
-            '模式描述': f'PK10十位置全覆盖-{bet_content}'
+            '模式描述': pattern_desc
         }
 
 # ==================== 内容解析器 ====================
@@ -2204,7 +2228,7 @@ class WashTradeDetector:
         return continuous_patterns
 
     def detect_pk10_sequence_patterns(self, df_filtered):
-        """检测PK10序列位置模式 - 增强调试版本"""
+        """检测PK10序列位置模式 - 正式版本"""
         try:
             # 过滤PK10数据
             df_pk10 = df_filtered[
@@ -2213,52 +2237,26 @@ class WashTradeDetector:
             ].copy()
             
             if len(df_pk10) == 0:
-                st.warning("❌ 没有PK10数据可用于序列检测")
                 return []
-            
-            st.info(f"🔍 检测PK10序列位置模式，数据量: {len(df_pk10)} 条")
-            
-            # 🆕 调试：显示数据概览
-            st.write("📊 PK10数据概览:")
-            st.write(f"- 唯一期号: {df_pk10['期号'].nunique()}")
-            st.write(f"- 唯一账户: {df_pk10['会员账号'].unique().tolist()}")
-            st.write(f"- 玩法分类分布: {df_pk10['玩法分类'].value_counts().to_dict()}")
-            
-            # 🆕 调试：显示内容解析示例
-            sample_data = df_pk10.head(5)[['会员账号', '玩法分类', '内容', '投注方向']]
-            st.write("🔍 内容解析示例:")
-            st.dataframe(sample_data)
             
             # 确保有玩法分类列
             if '玩法分类' not in df_pk10.columns and '玩法' in df_pk10.columns:
                 df_pk10['玩法分类'] = df_pk10['玩法'].apply(self.play_normalizer.normalize_category)
-                st.info("✅ 已从玩法列生成玩法分类")
             
             # 检测序列覆盖模式
             sequence_patterns = self.pk10_sequence_detector.detect_sequence_coverage(df_pk10)
             
-            # 🆕 调试：显示检测到的模式
-            st.write(f"🔍 检测到 {len(sequence_patterns)} 个单期序列模式")
-            if sequence_patterns:
-                for i, pattern in enumerate(sequence_patterns[:3]):  # 显示前3个
-                    st.write(f"模式 {i+1}: 期号 {pattern['期号']}, 账户 {pattern['账户组']}, 内容 {pattern['投注内容']}, 覆盖度 {pattern['覆盖度']:.1%}")
-            
             # 查找连续模式
             continuous_sequence_patterns = self.find_continuous_sequence_patterns(sequence_patterns)
-            
-            st.write(f"✅ 找到 {len(continuous_sequence_patterns)} 个连续序列模式")
             
             return continuous_sequence_patterns
             
         except Exception as e:
             logger.error(f"PK10序列检测失败: {str(e)}")
-            import traceback
-            st.error(f"PK10序列检测错误: {str(e)}")
-            st.error(f"详细错误: {traceback.format_exc()}")
             return []
 
     def find_continuous_sequence_patterns(self, sequence_patterns):
-        """查找连续的序列模式"""
+        """查找连续的序列模式 - 专门支持2-3个账户"""
         if not sequence_patterns:
             return []
         
@@ -2282,24 +2280,28 @@ class WashTradeDetector:
                 
                 # 只有完全覆盖（100%）才认为是有效的序列模式
                 if avg_coverage >= 1.0:
-                    continuous_patterns.append({
-                        '账户组': list(account_group),
-                        '投注内容': bet_content,
-                        '彩种': 'PK10',
-                        '彩种类型': 'PK10',
-                        '连续期数': len(sorted_records),
-                        '总投注金额': total_investment,
-                        '平均覆盖度': avg_coverage,
-                        '详细记录': sorted_records,
-                        '模式类型': '序列覆盖',
-                        '模式描述': f'PK10十位置全覆盖-{bet_content}',
-                        '检测类型': 'PK10序列位置'
-                    })
+                    account_count = len(account_group)
+                    # 🆕 只保留2个和3个账户的模式
+                    if account_count in [2, 3]:
+                        continuous_patterns.append({
+                            '账户组': list(account_group),
+                            '账户数量': account_count,
+                            '投注内容': bet_content,
+                            '彩种': 'PK10',
+                            '彩种类型': 'PK10',
+                            '连续期数': len(sorted_records),
+                            '总投注金额': total_investment,
+                            '平均覆盖度': avg_coverage,
+                            '详细记录': sorted_records,
+                            '模式类型': '序列覆盖',
+                            '模式描述': f'PK10十位置全覆盖-{bet_content}({account_count}账户协作)',
+                            '检测类型': 'PK10序列位置'
+                        })
         
         return continuous_patterns
 
     def display_pk10_sequence_results(self, patterns):
-        """显示PK10序列检测结果 - 增强版"""
+        """显示PK10序列检测结果 - 支持2-3个账户"""
         if not patterns:
             return
         
@@ -2309,13 +2311,23 @@ class WashTradeDetector:
         total_periods = sum(p['连续期数'] for p in patterns)
         total_amount = sum(p['总投注金额'] for p in patterns)
         
-        col1, col2, col3 = st.columns(3)
+        # 🆕 按账户数量统计
+        account_count_stats = defaultdict(int)
+        for pattern in patterns:
+            account_count_stats[pattern['账户数量']] += 1
+        
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("序列对刷组数", total_groups)
         with col2:
             st.metric("总对刷期数", total_periods)
         with col3:
             st.metric("总涉及金额", f"¥{total_amount:,.2f}")
+        with col4:
+            # 显示2账户和3账户的分布
+            two_account = account_count_stats.get(2, 0)
+            three_account = account_count_stats.get(3, 0)
+            st.metric("账户组合", f"2账户:{two_account}组 3账户:{three_account}组")
         
         # 按投注内容分组统计
         content_stats = defaultdict(int)
@@ -2329,31 +2341,34 @@ class WashTradeDetector:
                 with content_cols[i]:
                     st.metric(f"{content}模式", f"{count}组")
         
-        # 🆕 增强：显示检测到的模式说明
+        # 🆕 显示检测模式说明
         st.info("""
         **检测模式说明：**
-        - **1-5名 + 6-10名组合**：检测两个账户分别投注1-5名和6-10名，且投注内容相同
+        - **2账户协作**：两个账户共同覆盖PK10十个位置，投注相同内容
+        - **3账户协作**：三个账户共同覆盖PK10十个位置，投注相同内容
         - **十个位置全覆盖**：确保PK10的十个位置都被相同内容覆盖
         - **连续多期出现**：要求至少连续3期出现相同模式
         """)
         
         # 详细结果
         for i, pattern in enumerate(patterns, 1):
-            with st.expander(f"序列对刷组 {i}: {' ↔ '.join(pattern['账户组'])} - {pattern['投注内容']}", expanded=False):
-                st.write(f"**投注内容:** {pattern['投注内容']}")
-                st.write(f"**连续期数:** {pattern['连续期数']}期")
-                st.write(f"**总投注金额:** ¥{pattern['总投注金额']:,.2f}")
-                st.write(f"**平均覆盖度:** {pattern['平均覆盖度']:.1%}")
+            st.markdown(f"**对刷组 {i}:** {' ↔ '.join(pattern['账户组'])}")
+            account_type = "2账户协作" if pattern['账户数量'] == 2 else "3账户协作"
+            st.markdown(f"**模式类型:** {account_type} | **投注内容:** {pattern['投注内容']} | **连续期数:** {pattern['连续期数']}期")
+            st.markdown(f"**总金额:** ¥{pattern['总投注金额']:,.2f} | **平均覆盖度:** {pattern['平均覆盖度']:.1%}")
+            
+            st.markdown("**详细记录:**")
+            for j, record in enumerate(pattern['详细记录'], 1):
+                # 显示每个位置的账户分配
+                position_coverage = []
+                for pos_record in record['位置详情']:
+                    position_coverage.append(f"{pos_record['position']}({','.join(pos_record['accounts'])})")
                 
-                st.write("**详细记录:**")
-                for j, record in enumerate(pattern['详细记录'], 1):
-                    # 🆕 增强：显示每个位置的账户分配
-                    position_coverage = []
-                    for pos_record in record['位置详情']:
-                        position_coverage.append(f"{pos_record['position']}({','.join(pos_record['accounts'])})")
-                    
-                    st.write(f"{j}. 期号: {record['期号']} | 覆盖位置: {record['覆盖位置数']}/{record['总位置数']} | 金额: ¥{record['总投注金额']:,.2f}")
-                    st.write(f"   位置分配: {' | '.join(position_coverage)}")
+                st.write(f"{j}. 期号: {record['期号']} | 覆盖位置: {record['覆盖位置数']}/{record['总位置数']} | 金额: ¥{record['总投注金额']:,.2f}")
+                st.write(f"   位置分配: {' | '.join(position_coverage)}")
+            
+            if i < len(patterns):
+                st.markdown("---")
 
     def _calculate_detailed_account_stats(self, patterns):
         """计算详细账户统计"""
@@ -2560,15 +2575,15 @@ class WashTradeDetector:
         # 先显示PK10序列检测结果
         if pk10_sequence_patterns:
             self.display_pk10_sequence_results(pk10_sequence_patterns)
-            st.markdown("---")  # 添加分隔线
+            if other_patterns:  # 如果还有其他模式，添加分隔线
+                st.markdown("---")
         
         # 使用其他模式继续原有显示逻辑
         patterns = other_patterns
         
-        # 🆕 修改：如果只有PK10序列模式，显示友好提示
+        # 如果只有PK10序列模式，显示友好提示
         if not patterns and pk10_sequence_patterns:
-            st.success("🎯 检测完成！已发现PK10序列位置对刷模式（见上方结果）")
-            st.info("💡 提示：传统对立对刷模式未发现，但检测到PK10位置协作对刷模式")
+            st.success("✅ 检测完成！已发现PK10序列位置对刷模式")
             return
         
         if not patterns:
