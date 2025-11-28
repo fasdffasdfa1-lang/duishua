@@ -2548,136 +2548,132 @@ def main():
             type=['xlsx', 'xls', 'csv'],
             help="请上传包含彩票投注数据的Excel或CSV文件"
         )
+        
+        # ==================== 检测参数设置 ====================
+        st.header("⚙️ 检测参数设置")
+        
+        # 基础检测参数
+        min_amount = st.slider(
+            "最小投注金额阈值", 
+            min_value=1, 
+            max_value=50, 
+            value=10,
+            help="投注金额低于此值的记录将不参与检测"
+        )
+        
+        base_similarity_threshold = st.slider(
+            "基础金额匹配度阈值", 
+            0.5, 1.0, 0.8, 0.01, 
+            help="2个账户的基础匹配度阈值"
+        )
+        
+        max_accounts = st.slider(
+            "最大检测账户数", 
+            2, 8, 5, 
+            help="检测的最大账户组合数量"
+        )
+        
+        period_diff_threshold = st.slider(
+            "账户期数最大差异阈值", 
+            min_value=0, 
+            max_value=500,
+            value=101,
+            help="账户总投注期数最大允许差异，超过此值不进行组合检测"
+        )
+        
+        # 金额平衡设置
+        st.subheader("💰 金额平衡设置")
+        
+        enable_balance_filter = st.checkbox("启用金额平衡过滤", value=True,
+                                          help="确保对刷组内账户金额差距不超过设定倍数")
+        
+        max_ratio = 10  # 默认值
+        if enable_balance_filter:
+            max_ratio = st.slider("最大金额差距倍数", 
+                                 min_value=2, 
+                                 max_value=20, 
+                                 value=10, 
+                                 step=1,
+                                 help="组内最大金额与最小金额的允许倍数（例如：10表示10倍差距）")
+        
+        # 连续对刷阈值配置
+        st.subheader("🛠️ 连续对刷阈值配置")
+        
+        st.markdown("**低活跃度(1-10期):**")
+        min_periods_low = st.slider(
+            "低活跃度最小连续对刷期数", 
+            min_value=1, max_value=10, value=3,
+            help="总投注期数1-10期的账户，要求的最小连续对刷期数"
+        )
+        
+        st.markdown("**中活跃度(11-50期):**")
+        min_periods_medium = st.slider(
+            "中活跃度最小连续对刷期数", 
+            min_value=3, max_value=15, value=5,
+            help="总投注期数11-50期的账户，要求的最小连续对刷期数"
+        )
+        
+        st.markdown("**高活跃度(51-100期):**")
+        min_periods_high = st.slider(
+            "高活跃度最小连续对刷期数", 
+            min_value=5, max_value=20, value=8,
+            help="总投注期数51-100期的账户，要求的最小连续对刷期数"
+        )
+        
+        st.markdown("**极高活跃度(100期以上):**")
+        min_periods_very_high = st.slider(
+            "极高活跃度最小连续对刷期数", 
+            min_value=8, max_value=30, value=11,
+            help="总投注期数100期以上的账户，要求的最小连续对刷期数"
+        )
+        
+        # 多账户匹配度配置
+        st.subheader("🎯 多账户匹配度配置")
+        
+        st.markdown("**2个账户:**")
+        similarity_2_accounts = st.slider(
+            "2个账户匹配度阈值", 
+            min_value=0.5, max_value=1.0, value=0.8, step=0.01,
+            help="2个账户对刷的金额匹配度阈值"
+        )
+        
+        st.markdown("**3个账户:**")
+        similarity_3_accounts = st.slider(
+            "3个账户匹配度阈值", 
+            min_value=0.5, max_value=1.0, value=0.85, step=0.01,
+            help="3个账户对刷的金额匹配度阈值"
+        )
+        
+        st.markdown("**4个账户:**")
+        similarity_4_accounts = st.slider(
+            "4个账户匹配度阈值", 
+            min_value=0.5, max_value=1.0, value=0.9, step=0.01,
+            help="4个账户对刷的金额匹配度阈值"
+        )
+        
+        st.markdown("**5个账户:**")
+        similarity_5_accounts = st.slider(
+            "5个账户匹配度阈值", 
+            min_value=0.5, max_value=1.0, value=0.95, step=0.01,
+            help="5个账户对刷的金额匹配度阈值"
+        )
     
     if uploaded_file is not None:
         try:
-            # 🆕 首先创建 Config 对象
-            config = Config()
-            
-            # 配置参数
-            st.sidebar.header("⚙️ 检测参数设置")
-            
-            # 🆕 修改：使用滑块设置最小投注金额，默认10
-            min_amount = st.sidebar.slider(
-                "最小投注金额阈值", 
-                min_value=1, 
-                max_value=50, 
-                value=10,
-                help="投注金额低于此值的记录将不参与检测"
-            )
-            
-            base_similarity_threshold = st.sidebar.slider(
-                "基础金额匹配度阈值", 
-                0.8, 1.0, 0.8, 0.01, 
-                help="2个账户的基础匹配度阈值"
-            )
-            
-            max_accounts = st.sidebar.slider(
-                "最大检测账户数", 
-                2, 8, 5, 
-                help="检测的最大账户组合数量"
-            )
-            
-            # 🆕 修改：账户期数差异阈值配置，使用更直观的描述
-            period_diff_threshold = st.sidebar.slider(
-                "账户期数最大差异阈值", 
-                min_value=0, 
-                max_value=500,
-                value=101,
-                help="账户总投注期数最大允许差异，超过此值不进行组合检测"
-            )
-            
-            # ==================== 🆕 修改：金额平衡配置控件 ====================
-            st.sidebar.subheader("💰 金额平衡设置")
-            
-            enable_balance_filter = st.sidebar.checkbox("启用金额平衡过滤", value=True,
-                                                      help="确保对刷组内账户金额差距不超过设定倍数")
-            
-            max_ratio = 10  # 默认值
-            if enable_balance_filter:
-                max_ratio = st.sidebar.slider("最大金额差距倍数", 
-                                             min_value=2, 
-                                             max_value=20, 
-                                             value=10, 
-                                             step=1,
-                                             help="组内最大金额与最小金额的允许倍数（例如：10表示10倍差距）")
-            
-            # 更新配置
-            config.amount_threshold = {
-                'max_amount_ratio': max_ratio,
-                'enable_threshold_filter': enable_balance_filter
-            }
-            
-            # 🆕 修改：可调整的活跃度阈值配置
-            st.sidebar.subheader("🛠️ 连续对刷阈值配置")
-            
-            st.sidebar.markdown("**低活跃度(1-10期):**")
-            min_periods_low = st.sidebar.slider(
-                "低活跃度最小连续对刷期数", 
-                min_value=1, max_value=10, value=3,
-                help="总投注期数1-10期的账户，要求的最小连续对刷期数"
-            )
-            
-            st.sidebar.markdown("**中活跃度(11-50期):**")
-            min_periods_medium = st.sidebar.slider(
-                "中活跃度最小连续对刷期数", 
-                min_value=3, max_value=15, value=5,
-                help="总投注期数11-50期的账户，要求的最小连续对刷期数"
-            )
-            
-            st.sidebar.markdown("**高活跃度(51-100期):**")
-            min_periods_high = st.sidebar.slider(
-                "高活跃度最小连续对刷期数", 
-                min_value=5, max_value=20, value=8,
-                help="总投注期数51-100期的账户，要求的最小连续对刷期数"
-            )
-            
-            st.sidebar.markdown("**极高活跃度(100期以上):**")
-            min_periods_very_high = st.sidebar.slider(
-                "极高活跃度最小连续对刷期数", 
-                min_value=8, max_value=30, value=11,
-                help="总投注期数100期以上的账户，要求的最小连续对刷期数"
-            )
-            
-            # 🆕 修改：可调整的多账户匹配度配置
-            st.sidebar.subheader("🎯 多账户匹配度配置")
-            
-            st.sidebar.markdown("**2个账户:**")
-            similarity_2_accounts = st.sidebar.slider(
-                "2个账户匹配度阈值", 
-                min_value=0.5, max_value=1.0, value=0.8, step=0.01,
-                help="2个账户对刷的金额匹配度阈值"
-            )
-            
-            st.sidebar.markdown("**3个账户:**")
-            similarity_3_accounts = st.sidebar.slider(
-                "3个账户匹配度阈值", 
-                min_value=0.5, max_value=1.0, value=0.85, step=0.01,
-                help="3个账户对刷的金额匹配度阈值"
-            )
-            
-            st.sidebar.markdown("**4个账户:**")
-            similarity_4_accounts = st.sidebar.slider(
-                "4个账户匹配度阈值", 
-                min_value=0.5, max_value=1.0, value=0.9, step=0.01,
-                help="4个账户对刷的金额匹配度阈值"
-            )
-            
-            st.sidebar.markdown("**5个账户:**")
-            similarity_5_accounts = st.sidebar.slider(
-                "5个账户匹配度阈值", 
-                min_value=0.5, max_value=1.0, value=0.95, step=0.01,
-                help="5个账户对刷的金额匹配度阈值"
-            )
-            
-            # 更新配置参数
+            # 创建配置对象并更新参数
             config = Config()
             config.min_amount = min_amount
             config.amount_similarity_threshold = base_similarity_threshold
             config.max_accounts_in_group = max_accounts
             config.account_period_diff_threshold = period_diff_threshold
             
-            # 🆕 更新活跃度阈值配置
+            # 更新金额平衡配置
+            config.amount_threshold = {
+                'max_amount_ratio': max_ratio,
+                'enable_threshold_filter': enable_balance_filter
+            }
+            
+            # 更新活跃度阈值配置
             config.period_thresholds.update({
                 'min_periods_low': min_periods_low,
                 'min_periods_medium': min_periods_medium,
@@ -2685,7 +2681,7 @@ def main():
                 'min_periods_very_high': min_periods_very_high
             })
             
-            # 🆕 更新多账户匹配度阈值
+            # 更新多账户匹配度阈值
             config.account_count_similarity_thresholds = {
                 2: similarity_2_accounts,
                 3: similarity_3_accounts,
@@ -2697,7 +2693,7 @@ def main():
             
             st.success(f"✅ 已上传文件: {uploaded_file.name}")
             
-            # 🆕 修改：显示当前参数设置
+            # 显示当前参数设置
             st.info(f"📊 当前检测参数: 最小金额 ≥ {min_amount}, 基础匹配度 ≥ {base_similarity_threshold*100}%")
             
             with st.spinner("🔄 正在解析数据..."):
@@ -2706,7 +2702,7 @@ def main():
                 if df_enhanced is not None and len(df_enhanced) > 0:
                     st.success("✅ 数据解析完成")
                     
-                    # 🆕 修改：显示数据概览
+                    # 显示数据概览
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
                         st.metric("有效记录数", f"{len(df_enhanced):,}")
@@ -2718,7 +2714,7 @@ def main():
                         if '彩种类型' in df_enhanced.columns:
                             st.metric("彩种类型数", f"{df_enhanced['彩种类型'].nunique()}")
                     
-                    # 🆕 修改：显示过滤统计信息
+                    # 显示过滤统计信息
                     initial_count = len(df_enhanced)
                     if hasattr(detector, 'df_valid') and detector.df_valid is not None:
                         valid_count = len(detector.df_valid)
@@ -2726,7 +2722,7 @@ def main():
                         if filtered_count > 0:
                             st.info(f"📊 过滤统计: 移除了 {filtered_count} 条金额低于{min_amount}的记录")
                     
-                    # 🆕 修改：数据预览部分
+                    # 数据预览部分
                     with st.expander("📊 数据预览", expanded=False):
                         tab1, tab2, tab3 = st.tabs(["数据概览", "彩种分布", "金额统计"])
                         
@@ -2756,7 +2752,7 @@ def main():
                         # 显示分析结果
                         detector.display_detailed_results(patterns)
                         
-                        # 🆕 添加导出按钮
+                        # 添加导出按钮
                         detector.display_export_buttons(patterns)
                     else:
                         st.warning("⚠️ 未发现符合阈值条件的对刷行为")
@@ -2768,7 +2764,7 @@ def main():
             import traceback
             st.error(f"详细错误信息:\n{traceback.format_exc()}")
     else:
-        # 🆕 修改：未上传文件时的展示内容
+        # 未上传文件时的展示内容
         st.info("👈 请在左侧边栏上传数据文件开始分析")
         
         col1, col2, col3 = st.columns(3)
@@ -2800,7 +2796,7 @@ def main():
             - 实时性能监控
             """)
     
-    # 🆕 修改：系统使用说明
+    # 系统使用说明
     with st.expander("📖 系统使用说明", expanded=False):
         st.markdown("""
         ### 系统功能说明
