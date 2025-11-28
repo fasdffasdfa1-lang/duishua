@@ -2373,7 +2373,7 @@ class WashTradeDetector:
         return continuous_patterns
 
     def detect_pk10_sequence_patterns(self, df_filtered):
-        """检测PK10序列位置模式 - 全面增强版"""
+        """检测PK10序列位置模式 - 增强单个位置全覆盖检测"""
         try:
             # 过滤PK10数据
             df_pk10 = df_filtered[
@@ -2390,13 +2390,17 @@ class WashTradeDetector:
             
             sequence_patterns = []
             
-            # 🆕 按期号分组检测
+            # 🆕 按期号分组检测多种模式
             for period in df_pk10['期号'].unique():
                 period_data = df_pk10[df_pk10['期号'] == period]
                 
-                # 🆕 使用增强的检测方法
-                patterns = self._detect_pk10_collaboration_enhanced(period_data, period)
-                sequence_patterns.extend(patterns)
+                # 检测1-5名和6-10名协作模式
+                patterns_1 = self._detect_1_5_6_10_collaboration(period_data, period)
+                sequence_patterns.extend(patterns_1)
+                
+                # 🆕 检测单个位置全覆盖模式
+                patterns_2 = self._detect_single_position_full_coverage(period_data, period)
+                sequence_patterns.extend(patterns_2)
             
             st.write(f"🎯 PK10序列检测: 共生成 {len(sequence_patterns)} 个单期记录")
             
@@ -2410,6 +2414,87 @@ class WashTradeDetector:
             import traceback
             st.error(f"PK10序列检测错误详情:\n{traceback.format_exc()}")
             return []
+    
+    def _detect_single_position_full_coverage(self, period_data, period):
+        """检测单个位置全覆盖协作模式"""
+        patterns = []
+        
+        # PK10十个位置
+        pk10_positions = ['冠军', '亚军', '第三名', '第四名', '第五名', 
+                         '第六名', '第七名', '第八名', '第九名', '第十名']
+        
+        # 收集每个位置的投注信息
+        position_bets = {pos: [] for pos in pk10_positions}
+        accounts_involved = set()
+        
+        for _, row in period_data.iterrows():
+            play_category = row.get('玩法分类', '')
+            if play_category in pk10_positions:
+                account = row['会员账号']
+                content = row['内容']
+                amount = row['投注金额']
+                
+                # 解析内容
+                parsed_content = self.content_parser.parse_complex_content(content, play_category)
+                main_value = self._get_main_value_from_parsed(parsed_content)
+                
+                position_bets[play_category].append({
+                    'account': account,
+                    'content': main_value,
+                    'amount': amount
+                })
+                accounts_involved.add(account)
+        
+        # 检查是否所有10个位置都有投注
+        all_positions_covered = all(len(bets) > 0 for bets in position_bets.values())
+        if not all_positions_covered:
+            return patterns
+        
+        # 检查所有位置的投注内容是否相同
+        all_contents = []
+        for pos, bets in position_bets.items():
+            if bets:
+                all_contents.append(bets[0]['content'])
+        
+        # 如果所有位置的内容都相同
+        if len(set(all_contents)) == 1:
+            common_content = all_contents[0]
+            all_accounts = list(accounts_involved)
+            
+            if 2 <= len(all_accounts) <= 3:
+                # 计算总金额
+                total_amount = sum(sum(bet['amount'] for bet in bets) for bets in position_bets.values())
+                
+                # 计算每个账户的金额
+                account_amounts = {}
+                for account in all_accounts:
+                    account_amount = 0
+                    for pos, bets in position_bets.items():
+                        for bet in bets:
+                            if bet['account'] == account:
+                                account_amount += bet['amount']
+                    account_amounts[account] = account_amount
+                
+                record = {
+                    '期号': period,
+                    '彩种': 'PK10',
+                    '彩种类型': 'PK10',
+                    '账户组': all_accounts,
+                    '方向组': [common_content] * len(all_accounts),
+                    '金额组': [account_amounts[account] for account in all_accounts],
+                    '总金额': total_amount,
+                    '相似度': 1.0,
+                    '账户数量': len(all_accounts),
+                    '模式': f'PK10十位置全覆盖-{common_content}',
+                    '对立类型': f'全覆盖协作-{common_content}',
+                    '检测类型': 'PK10序列位置',
+                    '位置分配': position_bets  # 记录详细的位置分配
+                }
+                
+                patterns.append(record)
+                st.write(f"✅ 期号 {period}: 发现单个位置全覆盖协作模式 - {common_content}")
+        
+        return patterns
     
     def _detect_pk10_collaboration_enhanced(self, period_data, period):
         """增强版PK10协作检测 - 支持数字投注"""
