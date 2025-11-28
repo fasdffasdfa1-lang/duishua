@@ -2415,7 +2415,8 @@ class WashTradeDetector:
                 # 确定主要对立类型
                 main_opposite_type = max(opposite_type_counts.items(), key=lambda x: x[1])[0] if opposite_type_counts else '协作模式'
                 
-           account_stats_info = []
+                # 账户统计信息
+                account_stats_info = []
                 total_periods_stats = self.account_total_periods_by_lottery.get(lottery, {})
                 record_stats = self.account_record_stats_by_lottery.get(lottery, {})
                 
