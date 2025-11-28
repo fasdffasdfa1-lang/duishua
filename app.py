@@ -1554,7 +1554,7 @@ class WashTradeDetector:
             return None, None
     
     def enhance_data_processing(self, df_clean):
-        """增强的数据处理流程"""
+        """增强的数据处理流程 - 添加调试信息"""
         try:
             # 彩种识别
             if '彩种' in df_clean.columns:
@@ -1568,10 +1568,14 @@ class WashTradeDetector:
             # 计算账户统计信息
             self.calculate_account_total_periods_by_lottery(df_clean)
             
-            # 提取投注金额和方向 - 不使用缓存版本
+            # 提取投注金额和方向
             st.info("💰 正在提取投注金额和方向...")
             progress_bar = st.progress(0)
             total_rows = len(df_clean)
+            
+            # 🆕 调试：显示数据列
+            st.write("🔍 数据列信息:")
+            st.write(f"数据列: {df_clean.columns.tolist()}")
             
             # 分批处理显示进度
             batch_size = 1000
@@ -1579,7 +1583,6 @@ class WashTradeDetector:
                 end_idx = min(i + batch_size, total_rows)
                 batch_df = df_clean.iloc[i:end_idx]
                 
-                # 🆕 直接调用方法，不使用缓存
                 # 处理金额
                 df_clean.loc[i:end_idx-1, '投注金额'] = batch_df['金额'].apply(
                     lambda x: self.extract_bet_amount_safe(str(x))
@@ -1601,6 +1604,11 @@ class WashTradeDetector:
             
             progress_bar.empty()
             
+            # 🆕 调试：显示投注方向分布
+            st.write("📊 投注方向分布:")
+            direction_counts = df_clean['投注方向'].value_counts()
+            st.write(direction_counts.head(10))  # 显示前10个方向
+            
             # 过滤有效记录
             df_valid = df_clean[
                 (df_clean['投注方向'] != '') & 
@@ -1613,9 +1621,9 @@ class WashTradeDetector:
             
             self.data_processed = True
             self.df_valid = df_valid
-
+    
             return df_valid
-            
+                
         except Exception as e:
             logger.error(f"数据处理增强失败: {str(e)}")
             st.error(f"数据处理增强失败: {str(e)}")
@@ -1714,7 +1722,7 @@ class WashTradeDetector:
             return 0
     
     def enhanced_extract_direction_with_position(self, content, play_category, lottery_type):
-        """🎯 方向提取 - 使用增强的方向识别 - 修复：优化方向提取逻辑"""
+        """🎯 方向提取 - 添加调试信息"""
         try:
             if pd.isna(content):
                 return ""
@@ -1724,34 +1732,37 @@ class WashTradeDetector:
             # 🎯 使用增强的内容解析器提取方向
             directions = self.content_parser.enhanced_extract_directions(content_str, self.config)
             
+            st.write(f"🔍 enhanced_extract_direction_with_position: 内容='{content_str}', 提取到方向={directions}")
+            
             if not directions:
                 return ""
             
             # 🎯 从玩法分类中提取位置信息
             position = self.content_parser.extract_position_from_play_category(play_category, lottery_type, self.config)
             
-            # 🎯 方向优先级排序和选择 - 修复：优化优先级逻辑
+            # 🎯 方向优先级排序和选择
             main_direction = self.content_parser.prioritize_directions(directions, content_str, play_category)
             
             if not main_direction:
                 return ""
             
-            # 🎯 组合位置和方向 - 修复：优化位置组合逻辑
+            # 🎯 组合位置和方向
             if position and position != '未知位置':
-                # 修复：对于六合彩，确保位置信息正确
                 if lottery_type == 'LHC':
-                    # 六合彩的特殊位置处理
                     if main_direction in ['天肖', '地肖', '家肖', '野肖', '尾大', '尾小']:
-                        # 这些方向通常与特码相关
-                        return f"特码-{main_direction}"
+                        result = f"特码-{main_direction}"
                     elif main_direction in ['特大', '特小', '特单', '特双']:
-                        return f"特码-{main_direction}"
+                        result = f"特码-{main_direction}"
                     else:
-                        return f"{position}-{main_direction}"
+                        result = f"{position}-{main_direction}"
                 else:
-                    return f"{position}-{main_direction}"
+                    result = f"{position}-{main_direction}"
             else:
-                return main_direction
+                result = main_direction
+            
+            st.write(f"✅ enhanced_extract_direction_with_position: 最终方向='{result}'")
+            
+            return result
             
         except Exception as e:
             logger.warning(f"方向提取失败: {content}, 错误: {e}")
@@ -2242,9 +2253,25 @@ class WashTradeDetector:
         return continuous_patterns
 
     def detect_pk10_sequence_patterns(self, df_filtered):
-        """检测PK10序列位置模式 - 修复版，支持所有方向"""
+        """检测PK10序列位置模式 - 修复变量作用域问题"""
         try:
-            # ... 前面的代码保持不变 ...
+            # 过滤PK10数据
+            df_pk10 = df_filtered[
+                (df_filtered['彩种类型'] == 'PK10') & 
+                (df_filtered['投注金额'] >= self.config.min_amount)
+            ].copy()
+            
+            if len(df_pk10) == 0:
+                st.write("❌ PK10序列检测: 没有PK10数据")
+                return []
+            
+            # 确保有玩法分类列
+            if '玩法分类' not in df_pk10.columns and '玩法' in df_pk10.columns:
+                df_pk10['玩法分类'] = df_pk10['玩法'].apply(self.play_normalizer.normalize_category)
+            
+            st.write("🔍 PK10序列检测调试:")
+            st.write(f"PK10数据量: {len(df_pk10)} 条")
+            st.write(f"期号列表: {df_pk10['期号'].unique()}")
             
             # 检测序列覆盖模式
             sequence_patterns = []
@@ -2257,12 +2284,18 @@ class WashTradeDetector:
                 play_1_5 = period_data[period_data['玩法分类'] == '1-5名']
                 play_6_10 = period_data[period_data['玩法分类'] == '6-10名']
                 
+                st.write(f"--- 检测期号 {period} ---")
+                st.write(f"1-5名数据: {len(play_1_5)} 条, 6-10名数据: {len(play_6_10)} 条")
+                
                 if len(play_1_5) == 0 or len(play_6_10) == 0:
+                    st.write(f"❌ 期号 {period}: 缺少1-5名或6-10名数据")
                     continue
                 
                 # 检查投注内容是否相同
                 bet_content_1_5 = self._extract_direction_from_data(play_1_5)
                 bet_content_6_10 = self._extract_direction_from_data(play_6_10)
+                
+                st.write(f"期号 {period}: 1-5名方向='{bet_content_1_5}', 6-10名方向='{bet_content_6_10}'")
                 
                 # 🎯 修复：检查方向是否在支持的方向列表中
                 if (bet_content_1_5 and bet_content_6_10 and 
@@ -2273,6 +2306,8 @@ class WashTradeDetector:
                     accounts_6_10 = play_6_10['会员账号'].tolist()
                     
                     all_accounts = list(set(accounts_1_5 + accounts_6_10))
+                    
+                    st.write(f"期号 {period}: 账户组合 {all_accounts}")
                     
                     if 2 <= len(all_accounts) <= 3:
                         total_amount = play_1_5['投注金额'].sum() + play_6_10['投注金额'].sum()
@@ -2293,9 +2328,13 @@ class WashTradeDetector:
                         }
                         
                         sequence_patterns.append(record)
-                        st.write(f"✅ 单期模式检测成功: 期号 {period}, 方向 {bet_content_1_5}, 账户 {all_accounts}")
+                        st.write(f"✅ 期号 {period}: 生成单期记录成功")
+                    else:
+                        st.write(f"❌ 期号 {period}: 账户数量不符合要求 ({len(all_accounts)} 个)")
+                else:
+                    st.write(f"❌ 期号 {period}: 投注方向不一致或不在支持列表")
             
-            st.write(f"🎯 单期模式检测总计: {len(sequence_patterns)} 个")
+            st.write(f"🎯 PK10序列检测: 共生成 {len(sequence_patterns)} 个单期记录")
             
             # 使用现有的连续模式检测方法
             continuous_patterns = self.find_continuous_patterns_optimized(sequence_patterns)
@@ -2551,12 +2590,26 @@ class WashTradeDetector:
         return patterns
     
     def _extract_direction_from_data(self, data):
-        """从数据中提取主要投注方向"""
-        if len(data) == 0:
+        """从数据中提取主要投注方向 - 增强版"""
+        try:
+            if len(data) == 0:
+                return None
+            
+            # 检查是否有投注方向列
+            if '投注方向' not in data.columns:
+                st.write("❌ _extract_direction_from_data: 数据中没有'投注方向'列")
+                st.write(f"数据列: {data.columns.tolist()}")
+                return None
+            
+            # 取第一条记录的投注方向作为代表
+            direction = data.iloc[0]['投注方向']
+            st.write(f"🔍 _extract_direction_from_data: 提取到方向 '{direction}'")
+            
+            return direction
+            
+        except Exception as e:
+            st.write(f"❌ _extract_direction_from_data 出错: {str(e)}")
             return None
-        
-        # 取第一条记录的投注方向作为代表
-        return data.iloc[0]['投注方向'] if '投注方向' in data.columns and len(data) > 0 else None
     
     def _extract_number_from_content(self, content):
         """从内容中提取数字"""
