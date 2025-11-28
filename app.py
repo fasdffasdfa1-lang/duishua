@@ -2330,6 +2330,17 @@ class WashTradeDetector:
                 for account in account_group:
                     total_periods = total_periods_stats.get(account, 0)
                     records_count = record_stats.get(account, 0)
+                    
+                    # 🆕 如果找不到统计信息，尝试从原始数据中计算
+                    if total_periods == 0 and hasattr(self, 'df_valid') and self.df_valid is not None:
+                        # 从有效数据中计算该账户在该彩种的期数和记录数
+                        account_data = self.df_valid[
+                            (self.df_valid['会员账号'] == account) & 
+                            (self.df_valid['彩种'] == lottery)
+                        ]
+                        total_periods = account_data['期号'].nunique()
+                        records_count = len(account_data)
+                    
                     account_stats_info.append(f"{account}({total_periods}期/{records_count}记录)")
                 
                 activity_level = self.get_account_group_activity_level(account_group, lottery)
@@ -2448,7 +2459,7 @@ class WashTradeDetector:
         return patterns
     
     def _parse_pk10_content_enhanced(self, data):
-        """增强版PK10内容解析 - 支持数字投注"""
+        """增强版PK10内容解析 - 统一数字显示格式"""
         if len(data) == 0:
             return None
         
@@ -2456,18 +2467,26 @@ class WashTradeDetector:
         sample_row = data.iloc[0]
         content = sample_row['内容']
         
-        # 🆕 使用增强的内容解析器
+        # 使用增强的内容解析器
         parsed_content = self.content_parser.parse_complex_content(content, '')
         
         # 根据解析类型返回统一格式
         content_type = parsed_content.get('type', 'unknown')
         
         if content_type == 'number':
-            return f"数字-{parsed_content['value']}"
+            return f"数字-{parsed_content['value']}"  # 统一为"数字-X"格式
         elif content_type == 'single_position':
-            return parsed_content['value']
+            value = parsed_content['value']
+            # 如果是数字，统一格式
+            if value.isdigit():
+                return f"数字-{value}"
+            return value
         elif content_type == 'multiple_positions':
-            return parsed_content['value']
+            value = parsed_content['value']
+            # 如果是数字，统一格式
+            if value.isdigit():
+                return f"数字-{value}"
+            return value
         elif content_type == 'raw':
             # 尝试从原始内容中提取方向或数字
             directions = self.content_parser.enhanced_extract_directions(content, self.config)
@@ -2476,9 +2495,9 @@ class WashTradeDetector:
             
             numbers = self.content_parser.extract_all_numbers(content)
             if numbers:
-                return f"数字-{numbers[0]}"
+                return f"数字-{numbers[0]}"  # 统一为"数字-X"格式
             
-            return content  # 返回原始内容
+            return content
         else:
             return str(content)
 
@@ -2973,24 +2992,43 @@ class WashTradeDetector:
         return df_filtered
     
     def get_account_group_activity_level(self, account_group, lottery):
-        """获取活跃度水平"""
+        """获取活跃度水平 - 增强版"""
         if lottery not in self.account_total_periods_by_lottery:
-            return 'unknown'
+            # 🆕 如果找不到彩种统计，尝试从原始数据计算
+            if hasattr(self, 'df_valid') and self.df_valid is not None:
+                min_total_periods = float('inf')
+                for account in account_group:
+                    account_data = self.df_valid[
+                        (self.df_valid['会员账号'] == account) & 
+                        (self.df_valid['彩种'] == lottery)
+                    ]
+                    periods = account_data['期号'].nunique()
+                    if periods < min_total_periods:
+                        min_total_periods = periods
+                
+                # 如果成功计算，使用计算值
+                if min_total_periods != float('inf'):
+                    return self._calculate_activity_level(min_total_periods)
+            
+            return 'unknown'  # 实在找不到返回unknown
         
         total_periods_stats = self.account_total_periods_by_lottery[lottery]
         
         # 计算账户组中在指定彩种的最小总投注期数
         min_total_periods = min(total_periods_stats.get(account, 0) for account in account_group)
         
-        # 按照新的活跃度阈值
+        return self._calculate_activity_level(min_total_periods)
+    
+    def _calculate_activity_level(self, min_total_periods):
+        """根据期数计算活跃度水平"""
         if min_total_periods <= self.config.period_thresholds['low_activity']:
-            return 'low'        # 总投注期数1-10
+            return 'low'
         elif min_total_periods <= self.config.period_thresholds['medium_activity_high']:
-            return 'medium'     # 总投注期数11-50
+            return 'medium'
         elif min_total_periods <= self.config.period_thresholds['high_activity_low']:
-            return 'high'       # 总投注期数51-100
+            return 'high'
         else:
-            return 'very_high'  # 总投注期数100以上
+            return 'very_high'
     
     def get_required_min_periods(self, account_group, lottery):
         """根据新的活跃度阈值获取所需的最小对刷期数"""
