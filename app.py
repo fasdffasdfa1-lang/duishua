@@ -1779,6 +1779,7 @@ class WashTradeDetector:
             
             self.data_processed = True
             self.df_valid = df_valid
+            self.calculate_account_total_periods_by_lottery(df_valid)
     
             return df_valid
                 
@@ -1975,15 +1976,18 @@ class WashTradeDetector:
         return '未知位置'
     
     def calculate_account_total_periods_by_lottery(self, df):
-        """修复账户期数统计方法"""
+        """修复账户期数统计方法 - 使用正确的数据源"""
         self.account_total_periods_by_lottery = defaultdict(dict)
         self.account_record_stats_by_lottery = defaultdict(dict)
+        
+        # 🆕 修复：使用有效数据而不是原始数据
+        data_source = self.df_valid if hasattr(self, 'df_valid') and self.df_valid is not None else df
         
         # 使用正确的彩种列
         lottery_col = '彩种'  # 根据实际数据使用'彩种'或'原始彩种'
         
-        for lottery in df[lottery_col].unique():
-            df_lottery = df[df[lottery_col] == lottery]
+        for lottery in data_source[lottery_col].unique():
+            df_lottery = data_source[data_source[lottery_col] == lottery]
             
             # 计算每个账户在该彩种的期数（去重期号）
             period_counts = df_lottery.groupby('会员账号')['期号'].nunique().to_dict()
@@ -2698,7 +2702,7 @@ class WashTradeDetector:
                 st.markdown("---")
 
     def _calculate_detailed_account_stats(self, patterns):
-        """计算详细账户统计"""
+        """计算详细账户统计 - 修复期数统计"""
         account_participation = defaultdict(lambda: {
             'periods': set(),
             'lotteries': set(),
@@ -2709,7 +2713,7 @@ class WashTradeDetector:
             'actual_bet_records': []
         })
         
-        # 从原始数据中收集账户的实际投注金额
+        # 🆕 修复：从有效数据中收集账户的实际投注信息
         if self.df_valid is not None:
             for _, row in self.df_valid.iterrows():
                 account = row['会员账号']
@@ -2717,12 +2721,14 @@ class WashTradeDetector:
                 period = row['期号']
                 lottery = row['彩种'] if '彩种' in row else '未知'
                 
-                if account in account_participation:
-                    account_participation[account]['actual_bet_records'].append({
-                        'amount': amount,
-                        'period': period,
-                        'lottery': lottery
-                    })
+                account_info = account_participation[account]
+                account_info['actual_bet_records'].append({
+                    'amount': amount,
+                    'period': period,
+                    'lottery': lottery
+                })
+                account_info['periods'].add(period)
+                account_info['lotteries'].add(lottery)
         
         # 收集账户参与信息
         for pattern in patterns:
@@ -2758,13 +2764,19 @@ class WashTradeDetector:
         # 转换为显示格式
         account_stats = []
         for account, info in account_participation.items():
+            # 🆕 修复：优先从有效数据中获取真实的期数统计
+            total_periods = len(info['periods'])
+            total_records = len(info['actual_bet_records'])
+            
             stat_record = {
                 '账户': account,
                 '参与组合数': info['total_combinations'],
-                '涉及期数': len(info['periods']),
+                '涉及期数': total_periods,
                 '涉及彩种': len(info['lotteries']),
                 '总投注金额': f"¥{info['total_bet_amount']:,.2f}",
-                '平均每组金额': f"¥{info['total_bet_amount'] / info['total_combinations']:,.2f}" if info['total_combinations'] > 0 else "¥0.00"
+                '平均每组金额': f"¥{info['total_bet_amount'] / info['total_combinations']:,.2f}" if info['total_combinations'] > 0 else "¥0.00",
+                '实际总期数': total_periods,
+                '实际总记录': total_records
             }
             
             account_stats.append(stat_record)
@@ -2783,32 +2795,35 @@ class WashTradeDetector:
         return df_filtered
     
     def get_account_group_activity_level(self, account_group, lottery):
-        """获取活跃度水平 - 增强版"""
-        if lottery not in self.account_total_periods_by_lottery:
-            # 🆕 如果找不到彩种统计，尝试从原始数据计算
-            if hasattr(self, 'df_valid') and self.df_valid is not None:
-                min_total_periods = float('inf')
-                for account in account_group:
-                    account_data = self.df_valid[
-                        (self.df_valid['会员账号'] == account) & 
-                        (self.df_valid['彩种'] == lottery)
-                    ]
-                    periods = account_data['期号'].nunique()
-                    if periods < min_total_periods:
-                        min_total_periods = periods
-                
-                # 如果成功计算，使用计算值
-                if min_total_periods != float('inf'):
-                    return self._calculate_activity_level(min_total_periods)
+        """获取活跃度水平 - 增强版，修复期数统计"""
+        # 🆕 修复：直接从有效数据中计算账户期数
+        if hasattr(self, 'df_valid') and self.df_valid is not None:
+            min_total_periods = float('inf')
             
-            return 'unknown'  # 实在找不到返回unknown
+            for account in account_group:
+                account_data = self.df_valid[
+                    (self.df_valid['会员账号'] == account) & 
+                    (self.df_valid['彩种'] == lottery)
+                ]
+                periods = account_data['期号'].nunique()
+                if periods < min_total_periods:
+                    min_total_periods = periods
+            
+            # 如果成功计算，使用计算值
+            if min_total_periods != float('inf'):
+                return self._calculate_activity_level(min_total_periods)
         
-        total_periods_stats = self.account_total_periods_by_lottery[lottery]
+        # 如果无法从有效数据计算，尝试从统计信息获取
+        if lottery in self.account_total_periods_by_lottery:
+            total_periods_stats = self.account_total_periods_by_lottery[lottery]
+            
+            # 计算账户组中在指定彩种的最小总投注期数
+            account_periods = [total_periods_stats.get(account, 0) for account in account_group]
+            if account_periods:
+                min_total_periods = min(account_periods)
+                return self._calculate_activity_level(min_total_periods)
         
-        # 计算账户组中在指定彩种的最小总投注期数
-        min_total_periods = min(total_periods_stats.get(account, 0) for account in account_group)
-        
-        return self._calculate_activity_level(min_total_periods)
+        return 'unknown'
     
     def _calculate_activity_level(self, min_total_periods):
         """根据期数计算活跃度水平"""
