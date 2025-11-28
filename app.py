@@ -2660,6 +2660,9 @@ def main():
             config.max_accounts_in_group = max_accounts
             config.account_period_diff_threshold = period_diff_threshold
             
+            # 设置基础匹配度阈值为2个账户的阈值
+            config.amount_similarity_threshold = similarity_2_accounts
+            
             # 更新金额平衡配置
             config.amount_threshold = {
                 'max_amount_ratio': max_ratio,
@@ -2687,7 +2690,7 @@ def main():
             st.success(f"✅ 已上传文件: {uploaded_file.name}")
             
             # 显示当前参数设置
-            st.info(f"📊 当前检测参数: 最小金额 ≥ {min_amount}, 基础匹配度 ≥ {base_similarity_threshold*100}%")
+            st.info(f"📊 当前检测参数: 最小金额 ≥ {min_amount}, 基础匹配度 ≥ {similarity_2_accounts*100}%")
             
             with st.spinner("🔄 正在解析数据..."):
                 df_enhanced, filename = detector.upload_and_process(uploaded_file)
