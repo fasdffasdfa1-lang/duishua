@@ -2150,8 +2150,9 @@ class WashTradeDetector:
         return True
     
     def find_continuous_patterns_optimized(self, wash_records):
-        """连续对刷模式检测 - 确保支持PK10序列模式"""
+        """连续对刷模式检测 - 添加调试信息"""
         if not wash_records:
+            st.write("❌ 连续模式检测: 没有单期记录")
             return []
         
         account_group_patterns = defaultdict(list)
@@ -2164,16 +2165,25 @@ class WashTradeDetector:
             
             account_group_patterns[account_group_key].append(record)
         
+        st.write("🔍 连续模式检测调试:")
+        st.write(f"检测到 {len(account_group_patterns)} 个账户组模式")
+        
         continuous_patterns = []
         
         for (account_group, key), records in account_group_patterns.items():
             sorted_records = sorted(records, key=lambda x: x['期号'])
+            
+            st.write(f"--- 检查账户组 {account_group} ---")
+            st.write(f"期号列表: {[r['期号'] for r in sorted_records]}")
+            st.write(f"记录数量: {len(sorted_records)}")
             
             # 🎯 对于PK10序列模式，使用更灵活的最小期数要求
             if '检测类型' in records[0] and records[0]['检测类型'] == 'PK10序列位置':
                 required_min_periods = 3  # PK10序列模式至少3期
             else:
                 required_min_periods = self.get_required_min_periods(account_group, records[0]['彩种'])
+            
+            st.write(f"要求最小连续期数: {required_min_periods}")
             
             if len(sorted_records) >= required_min_periods:
                 total_investment = sum(r['总金额'] for r in sorted_records)
@@ -2204,7 +2214,7 @@ class WashTradeDetector:
                 
                 activity_level = self.get_account_group_activity_level(account_group, lottery)
                 
-                continuous_patterns.append({
+                continuous_pattern = {
                     '账户组': list(account_group),
                     '彩种': lottery,
                     '彩种类型': records[0]['彩种类型'] if records else '未知',
@@ -2219,30 +2229,24 @@ class WashTradeDetector:
                     '账户活跃度': activity_level,
                     '账户统计信息': account_stats_info,
                     '要求最小对刷期数': required_min_periods,
-                    '检测类型': records[0].get('检测类型', '传统对刷')  # 🆕 添加检测类型
-                })
+                    '检测类型': records[0].get('检测类型', '传统对刷')
+                }
+                
+                continuous_patterns.append(continuous_pattern)
+                st.write(f"✅ 找到连续模式: {continuous_pattern['对刷期数']}期")
+            else:
+                st.write(f"❌ 连续期数不足: {len(sorted_records)} < {required_min_periods}")
+        
+        st.write(f"📈 连续模式检测结果: {len(continuous_patterns)} 个")
         
         return continuous_patterns
 
     def detect_pk10_sequence_patterns(self, df_filtered):
         """检测PK10序列位置模式 - 修复版，支持所有方向"""
         try:
-            # 过滤PK10数据
-            df_pk10 = df_filtered[
-                (df_filtered['彩种类型'] == 'PK10') & 
-                (df_filtered['投注金额'] >= self.config.min_amount)
-            ].copy()
+            # ... 前面的代码保持不变 ...
             
-            if len(df_pk10) == 0:
-                return []
-            
-            # 确保有玩法分类列
-            if '玩法分类' not in df_pk10.columns and '玩法' in df_pk10.columns:
-                df_pk10['玩法分类'] = df_pk10['玩法'].apply(self.play_normalizer.normalize_category)
-            
-            # 🎯 支持的所有方向
-            supported_directions = ['大', '小', '单', '双']
-            
+            # 检测序列覆盖模式
             sequence_patterns = []
             
             # 按期号分组检测
@@ -2263,7 +2267,7 @@ class WashTradeDetector:
                 # 🎯 修复：检查方向是否在支持的方向列表中
                 if (bet_content_1_5 and bet_content_6_10 and 
                     bet_content_1_5 == bet_content_6_10 and
-                    bet_content_1_5 in supported_directions):
+                    bet_content_1_5 in ['大', '小', '单', '双']):
                     
                     accounts_1_5 = play_1_5['会员账号'].tolist()
                     accounts_6_10 = play_6_10['会员账号'].tolist()
@@ -2289,6 +2293,9 @@ class WashTradeDetector:
                         }
                         
                         sequence_patterns.append(record)
+                        st.write(f"✅ 单期模式检测成功: 期号 {period}, 方向 {bet_content_1_5}, 账户 {all_accounts}")
+            
+            st.write(f"🎯 单期模式检测总计: {len(sequence_patterns)} 个")
             
             # 使用现有的连续模式检测方法
             continuous_patterns = self.find_continuous_patterns_optimized(sequence_patterns)
@@ -2297,6 +2304,8 @@ class WashTradeDetector:
             
         except Exception as e:
             logger.error(f"PK10序列检测失败: {str(e)}")
+            import traceback
+            st.error(f"PK10序列检测错误详情:\n{traceback.format_exc()}")
             return []
 
     def debug_direction_extraction(self, df_filtered):
