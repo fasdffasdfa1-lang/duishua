@@ -291,6 +291,7 @@ class DataProcessor:
             '彩种': ['彩种', '彩神', '彩票种类', '游戏类型', '彩票类型', '游戏彩种', '彩票名称', '彩系', '游戏名称'],
             '期号': ['期号', '期数', '期次', '期', '奖期', '期号信息', '期号编号', '开奖期号', '奖期号'],
             '玩法': ['玩法', '玩法分类', '投注类型', '类型', '投注玩法', '玩法类型', '分类', '玩法名称', '投注方式'],
+            '玩法分类': ['玩法分类', '玩法类别', '分类', '玩法分组', '投注分类'],  # 🆕 新增玩法分类映射
             '内容': ['内容', '投注内容', '下注内容', '注单内容', '投注号码', '号码内容', '投注信息', '号码', '选号'],
             '金额': ['金额', '下注总额', '投注金额', '总额', '下注金额', '投注额', '金额数值', '单注金额', '投注额', '钱', '元']
         }
@@ -722,7 +723,18 @@ class PlayCategoryNormalizer:
             '冠军': '冠军', '亚军': '亚军', '季军': '第三名', '第3名': '第三名',
             '第4名': '第四名', '第5名': '第五名', '第6名': '第六名',
             '第7名': '第七名', '第8名': '第八名', '第9名': '第九名',
-            '第10名': '第十名', '双面': '两面', '冠亚和': '冠亚和'
+            '第10名': '第十名', '双面': '两面', '冠亚和': '冠亚和',
+            # 🆕 新增PK10玩法分类映射
+            '1-5名': '1-5名',
+            '6-10名': '6-10名', 
+            '1-5名定位胆': '1-5名',
+            '6-10名定位胆': '6-10名',
+            '前一': '冠军',
+            '前二': '亚军', 
+            '前三': '第三名',
+            '前四': '第四名',
+            '前五': '第五名',
+            '定位胆': '定位胆'
         }
         return mapping
     
@@ -856,6 +868,56 @@ class PK10SequenceDetector:
         except Exception as e:
             logger.warning(f"PK10内容提取失败: {content}, 错误: {e}")
             return None
+
+    def _parse_comma_separated_positions(self, content):
+        """解析逗号分隔的位置-方向格式，如'第三名-单,第五名-单,亚军-单'"""
+        try:
+            items = content.split(',')
+            directions = set()
+            
+            for item in items:
+                item_clean = item.strip()
+                if '-' in item_clean:
+                    # 提取方向部分
+                    direction_part = item_clean.split('-')[-1].strip()
+                    # 使用内容解析器提取方向
+                    dirs = self.content_parser.enhanced_extract_directions(direction_part, self.config)
+                    if dirs:
+                        directions.add(dirs[0])
+            
+            # 如果所有位置的方向都相同，返回该方向
+            if len(directions) == 1:
+                return list(directions)[0]
+            
+            return None
+            
+        except Exception as e:
+            logger.debug(f"逗号分隔位置解析失败: {content}, 错误: {e}")
+            return None
+    
+    def get_positions_from_play_category(self, play_category):
+        """从玩法分类获取对应的位置列表"""
+        play_str = str(play_category).strip()
+        return self.play_category_to_positions.get(play_str, [])
+    
+    def _extract_positions_from_content(self, content):
+        """从内容中提取位置列表"""
+        try:
+            content_str = str(content).strip()
+            positions = []
+            
+            if ',' in content_str:
+                items = content_str.split(',')
+                for item in items:
+                    item_clean = item.strip()
+                    for position in self.pk10_positions:
+                        if position in item_clean:
+                            positions.append(position)
+                            break
+            
+            return list(set(positions))
+        except:
+            return []
     
     def detect_sequence_coverage(self, df_pk10):
         """检测序列覆盖模式 - 多个账户共同覆盖十个位置且投注相同"""
@@ -2097,7 +2159,7 @@ class WashTradeDetector:
         return continuous_patterns
 
     def detect_pk10_sequence_patterns(self, df_filtered):
-        """检测PK10序列位置模式"""
+        """检测PK10序列位置模式 - 增强版"""
         try:
             # 过滤PK10数据
             df_pk10 = df_filtered[
@@ -2109,6 +2171,11 @@ class WashTradeDetector:
                 return []
             
             st.info(f"🔍 检测PK10序列位置模式，数据量: {len(df_pk10)} 条")
+            
+            # 🆕 增强：检查是否有玩法分类列，如果没有则从玩法列生成
+            if '玩法分类' not in df_pk10.columns and '玩法' in df_pk10.columns:
+                df_pk10['玩法分类'] = df_pk10['玩法'].apply(self.play_normalizer.normalize_category)
+                st.info("✅ 已从玩法列生成玩法分类")
             
             # 检测序列覆盖模式
             sequence_patterns = self.pk10_sequence_detector.detect_sequence_coverage(df_pk10)
@@ -2164,7 +2231,7 @@ class WashTradeDetector:
         return continuous_patterns
 
     def display_pk10_sequence_results(self, patterns):
-        """显示PK10序列检测结果"""
+        """显示PK10序列检测结果 - 增强版"""
         if not patterns:
             return
         
@@ -2194,6 +2261,14 @@ class WashTradeDetector:
                 with content_cols[i]:
                     st.metric(f"{content}模式", f"{count}组")
         
+        # 🆕 增强：显示检测到的模式说明
+        st.info("""
+        **检测模式说明：**
+        - **1-5名 + 6-10名组合**：检测两个账户分别投注1-5名和6-10名，且投注内容相同
+        - **十个位置全覆盖**：确保PK10的十个位置都被相同内容覆盖
+        - **连续多期出现**：要求至少连续3期出现相同模式
+        """)
+        
         # 详细结果
         for i, pattern in enumerate(patterns, 1):
             with st.expander(f"序列对刷组 {i}: {' ↔ '.join(pattern['账户组'])} - {pattern['投注内容']}", expanded=False):
@@ -2204,7 +2279,13 @@ class WashTradeDetector:
                 
                 st.write("**详细记录:**")
                 for j, record in enumerate(pattern['详细记录'], 1):
+                    # 🆕 增强：显示每个位置的账户分配
+                    position_coverage = []
+                    for pos_record in record['位置详情']:
+                        position_coverage.append(f"{pos_record['position']}({','.join(pos_record['accounts'])})")
+                    
                     st.write(f"{j}. 期号: {record['期号']} | 覆盖位置: {record['覆盖位置数']}/{record['总位置数']} | 金额: ¥{record['总投注金额']:,.2f}")
+                    st.write(f"   位置分配: {' | '.join(position_coverage)}")
 
     def _calculate_detailed_account_stats(self, patterns):
         """计算详细账户统计"""
