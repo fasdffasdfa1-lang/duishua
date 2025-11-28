@@ -2608,21 +2608,67 @@ def main():
                 'enable_threshold_filter': enable_balance_filter
             }
             
-            # 🆕 修改：活跃度阈值配置，使用更清晰的展示方式
-            st.sidebar.subheader("📊 活跃度阈值配置")
-            st.sidebar.markdown("**连续对刷期数要求:**")
-            st.sidebar.markdown("- **1-10期:** 要求≥3期连续对刷")
-            st.sidebar.markdown("- **11-50期:** 要求≥5期连续对刷")  
-            st.sidebar.markdown("- **51-100期:** 要求≥8期连续对刷")
-            st.sidebar.markdown("- **100期以上:** 要求≥11期连续对刷")
+            # 🆕 修改：可调整的活跃度阈值配置
+            st.sidebar.subheader("🛠️ 连续对刷阈值配置")
             
-            # 🆕 修改：多账户匹配度配置，使用更清晰的展示方式
+            st.sidebar.markdown("**低活跃度(1-10期):**")
+            min_periods_low = st.sidebar.slider(
+                "低活跃度最小连续对刷期数", 
+                min_value=1, max_value=10, value=3,
+                help="总投注期数1-10期的账户，要求的最小连续对刷期数"
+            )
+            
+            st.sidebar.markdown("**中活跃度(11-50期):**")
+            min_periods_medium = st.sidebar.slider(
+                "中活跃度最小连续对刷期数", 
+                min_value=3, max_value=15, value=5,
+                help="总投注期数11-50期的账户，要求的最小连续对刷期数"
+            )
+            
+            st.sidebar.markdown("**高活跃度(51-100期):**")
+            min_periods_high = st.sidebar.slider(
+                "高活跃度最小连续对刷期数", 
+                min_value=5, max_value=20, value=8,
+                help="总投注期数51-100期的账户，要求的最小连续对刷期数"
+            )
+            
+            st.sidebar.markdown("**极高活跃度(100期以上):**")
+            min_periods_very_high = st.sidebar.slider(
+                "极高活跃度最小连续对刷期数", 
+                min_value=8, max_value=30, value=11,
+                help="总投注期数100期以上的账户，要求的最小连续对刷期数"
+            )
+            
+            # 🆕 修改：可调整的多账户匹配度配置
             st.sidebar.subheader("🎯 多账户匹配度配置")
-            st.sidebar.markdown("**账户数量 vs 匹配度要求:**")
-            st.sidebar.markdown("- **2个账户:** 80%匹配度")
-            st.sidebar.markdown("- **3个账户:** 85%匹配度")  
-            st.sidebar.markdown("- **4个账户:** 90%匹配度")
-            st.sidebar.markdown("- **5个账户:** 95%匹配度")
+            
+            st.sidebar.markdown("**2个账户:**")
+            similarity_2_accounts = st.sidebar.slider(
+                "2个账户匹配度阈值", 
+                min_value=0.5, max_value=1.0, value=0.8, step=0.01,
+                help="2个账户对刷的金额匹配度阈值"
+            )
+            
+            st.sidebar.markdown("**3个账户:**")
+            similarity_3_accounts = st.sidebar.slider(
+                "3个账户匹配度阈值", 
+                min_value=0.5, max_value=1.0, value=0.85, step=0.01,
+                help="3个账户对刷的金额匹配度阈值"
+            )
+            
+            st.sidebar.markdown("**4个账户:**")
+            similarity_4_accounts = st.sidebar.slider(
+                "4个账户匹配度阈值", 
+                min_value=0.5, max_value=1.0, value=0.9, step=0.01,
+                help="4个账户对刷的金额匹配度阈值"
+            )
+            
+            st.sidebar.markdown("**5个账户:**")
+            similarity_5_accounts = st.sidebar.slider(
+                "5个账户匹配度阈值", 
+                min_value=0.5, max_value=1.0, value=0.95, step=0.01,
+                help="5个账户对刷的金额匹配度阈值"
+            )
             
             # 更新配置参数
             config = Config()
@@ -2631,12 +2677,20 @@ def main():
             config.max_accounts_in_group = max_accounts
             config.account_period_diff_threshold = period_diff_threshold
             
-            # 设置多账户匹配度阈值
+            # 🆕 更新活跃度阈值配置
+            config.period_thresholds.update({
+                'min_periods_low': min_periods_low,
+                'min_periods_medium': min_periods_medium,
+                'min_periods_high': min_periods_high,
+                'min_periods_very_high': min_periods_very_high
+            })
+            
+            # 🆕 更新多账户匹配度阈值
             config.account_count_similarity_thresholds = {
-                2: base_similarity_threshold,
-                3: max(base_similarity_threshold + 0.05, 0.85),
-                4: max(base_similarity_threshold + 0.1, 0.9),
-                5: max(base_similarity_threshold + 0.15, 0.95)
+                2: similarity_2_accounts,
+                3: similarity_3_accounts,
+                4: similarity_4_accounts,
+                5: similarity_5_accounts
             }
             
             detector = WashTradeDetector(config)
