@@ -842,6 +842,34 @@ class PK10SequenceDetector:
     def __init__(self, config=None):
         self.config = config or Config()
         self.content_parser = ContentParser()
+
+        # 玩法分类到位置的映射
+        self.play_category_to_positions = {
+            '1-5名': ['冠军', '亚军', '第三名', '第四名', '第五名'],
+            '6-10名': ['第六名', '第七名', '第八名', '第九名', '第十名'],
+            '冠军': ['冠军'],
+            '亚军': ['亚军'], 
+            '第三名': ['第三名'],
+            '第四名': ['第四名'],
+            '第五名': ['第五名'],
+            '第六名': ['第六名'],
+            '第七名': ['第七名'],
+            '第八名': ['第八名'],
+            '第九名': ['第九名'],
+            '第十名': ['第十名'],
+            '定位胆': ['冠军', '亚军', '第三名', '第四名', '第五名', 
+                     '第六名', '第七名', '第八名', '第九名', '第十名']
+        }
+        
+        # 🎯 这是内容解析需要的方向映射
+        self.direction_mapping = {
+            '大': ['大', 'big', 'large', 'da'],
+            '小': ['小', 'small', 'xiao'], 
+            '单': ['单', 'odd', 'dan', '奇'],
+            '双': ['双', 'even', 'shuang', '偶'],
+            '龙': ['龙', 'long', 'dragon'],
+            '虎': ['虎', 'hu', 'tiger']
+        }
         
         # PK拾十个位置定义
         self.pk10_positions = [
@@ -850,48 +878,55 @@ class PK10SequenceDetector:
         ]
         
     def extract_pk10_bet_content(self, content, play_category):
-        """提取PK10投注内容"""
+        """提取PK10投注内容 - 专门处理逗号分隔的位置-方向格式"""
         try:
             if pd.isna(content):
                 return None
             
             content_str = str(content).strip()
             
-            # 🎯 提取方向
+            # 🎯 处理 "第三名-单,第五名-单,亚军-单,第四名-单,冠军-单" 这种格式
+            if ',' in content_str and any(pos in content_str for pos in self.pk10_positions):
+                return self._parse_comma_separated_format(content_str)
+            
+            # 🎯 原有的方向提取逻辑
             directions = self.content_parser.enhanced_extract_directions(content_str, self.config)
             if directions:
-                return directions[0]  # 返回主要方向
+                return directions[0]
             
             return None
             
         except Exception as e:
             logger.warning(f"PK10内容提取失败: {content}, 错误: {e}")
             return None
-
-    def _parse_comma_separated_positions(self, content):
-        """解析逗号分隔的位置-方向格式，如'第三名-单,第五名-单,亚军-单'"""
+    
+    def _parse_comma_separated_format(self, content):
+        """解析逗号分隔的位置-方向格式"""
         try:
             items = content.split(',')
-            directions = set()
+            directions_found = set()
             
             for item in items:
                 item_clean = item.strip()
                 if '-' in item_clean:
-                    # 提取方向部分
+                    # 提取方向部分（最后一个-后面的内容）
                     direction_part = item_clean.split('-')[-1].strip()
-                    # 使用内容解析器提取方向
-                    dirs = self.content_parser.enhanced_extract_directions(direction_part, self.config)
-                    if dirs:
-                        directions.add(dirs[0])
+                    
+                    # 检查是否匹配已知方向
+                    for direction, keywords in self.direction_mapping.items():
+                        for keyword in keywords:
+                            if direction_part == keyword or direction_part in keyword:
+                                directions_found.add(direction)
+                                break
             
             # 如果所有位置的方向都相同，返回该方向
-            if len(directions) == 1:
-                return list(directions)[0]
+            if len(directions_found) == 1:
+                return list(directions_found)[0]
             
             return None
             
         except Exception as e:
-            logger.debug(f"逗号分隔位置解析失败: {content}, 错误: {e}")
+            logger.debug(f"逗号分隔格式解析失败: {content}, 错误: {e}")
             return None
     
     def get_positions_from_play_category(self, play_category):
