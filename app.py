@@ -954,7 +954,7 @@ class PK10SequenceDetector:
             return []
     
     def detect_sequence_coverage(self, df_pk10):
-        """检测序列覆盖模式 - 多个账户共同覆盖十个位置且投注相同"""
+        """检测序列覆盖模式 - 完整实现"""
         sequence_patterns = []
         
         # 按期号分组
@@ -970,26 +970,37 @@ class PK10SequenceDetector:
                 content = row['内容']
                 amount = row.get('投注金额', 0)
                 
-                # 提取位置
-                position = self.content_parser.extract_position_from_play_category(
-                    play_category, 'PK10', self.config
-                )
+                # 🆕 从玩法分类获取位置列表
+                positions_from_play = self.get_positions_from_play_category(play_category)
                 
-                if position not in self.pk10_positions:
-                    continue
+                # 🆕 从内容中提取位置作为补充
+                positions_from_content = self._extract_positions_from_content(content)
+                
+                # 合并位置列表
+                all_positions = list(set(positions_from_play + positions_from_content))
+                if not all_positions:
+                    # 如果都没有，使用内容解析器提取位置
+                    position = self.content_parser.extract_position_from_play_category(
+                        play_category, 'PK10', self.config
+                    )
+                    if position in self.pk10_positions:
+                        all_positions = [position]
                 
                 # 提取投注内容
                 bet_content = self.extract_pk10_bet_content(content, play_category)
                 if bet_content is None:
                     continue
                 
-                # 记录账户投注信息
-                position_account_content[position][account].append({
-                    'content': bet_content,
-                    'amount': amount,
-                    'original_content': content,
-                    'play_category': play_category
-                })
+                # 为每个位置记录账户投注信息
+                for position in all_positions:
+                    if position in self.pk10_positions:
+                        position_account_content[position][account].append({
+                            'content': bet_content,
+                            'amount': amount,
+                            'original_content': content,
+                            'play_category': play_category,
+                            'positions_covered': all_positions
+                        })
             
             # 🎯 检测序列覆盖模式
             patterns = self._find_sequence_coverage_patterns(
@@ -2193,7 +2204,7 @@ class WashTradeDetector:
         return continuous_patterns
 
     def detect_pk10_sequence_patterns(self, df_filtered):
-        """检测PK10序列位置模式 - 增强版"""
+        """检测PK10序列位置模式 - 增强调试版本"""
         try:
             # 过滤PK10数据
             df_pk10 = df_filtered[
@@ -2202,11 +2213,23 @@ class WashTradeDetector:
             ].copy()
             
             if len(df_pk10) == 0:
+                st.warning("❌ 没有PK10数据可用于序列检测")
                 return []
             
             st.info(f"🔍 检测PK10序列位置模式，数据量: {len(df_pk10)} 条")
             
-            # 🆕 增强：检查是否有玩法分类列，如果没有则从玩法列生成
+            # 🆕 调试：显示数据概览
+            st.write("📊 PK10数据概览:")
+            st.write(f"- 唯一期号: {df_pk10['期号'].nunique()}")
+            st.write(f"- 唯一账户: {df_pk10['会员账号'].unique().tolist()}")
+            st.write(f"- 玩法分类分布: {df_pk10['玩法分类'].value_counts().to_dict()}")
+            
+            # 🆕 调试：显示内容解析示例
+            sample_data = df_pk10.head(5)[['会员账号', '玩法分类', '内容', '投注方向']]
+            st.write("🔍 内容解析示例:")
+            st.dataframe(sample_data)
+            
+            # 确保有玩法分类列
             if '玩法分类' not in df_pk10.columns and '玩法' in df_pk10.columns:
                 df_pk10['玩法分类'] = df_pk10['玩法'].apply(self.play_normalizer.normalize_category)
                 st.info("✅ 已从玩法列生成玩法分类")
@@ -2214,13 +2237,24 @@ class WashTradeDetector:
             # 检测序列覆盖模式
             sequence_patterns = self.pk10_sequence_detector.detect_sequence_coverage(df_pk10)
             
+            # 🆕 调试：显示检测到的模式
+            st.write(f"🔍 检测到 {len(sequence_patterns)} 个单期序列模式")
+            if sequence_patterns:
+                for i, pattern in enumerate(sequence_patterns[:3]):  # 显示前3个
+                    st.write(f"模式 {i+1}: 期号 {pattern['期号']}, 账户 {pattern['账户组']}, 内容 {pattern['投注内容']}, 覆盖度 {pattern['覆盖度']:.1%}")
+            
             # 查找连续模式
             continuous_sequence_patterns = self.find_continuous_sequence_patterns(sequence_patterns)
+            
+            st.write(f"✅ 找到 {len(continuous_sequence_patterns)} 个连续序列模式")
             
             return continuous_sequence_patterns
             
         except Exception as e:
             logger.error(f"PK10序列检测失败: {str(e)}")
+            import traceback
+            st.error(f"PK10序列检测错误: {str(e)}")
+            st.error(f"详细错误: {traceback.format_exc()}")
             return []
 
     def find_continuous_sequence_patterns(self, sequence_patterns):
