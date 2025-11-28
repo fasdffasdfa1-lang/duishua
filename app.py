@@ -2415,6 +2415,52 @@ class WashTradeDetector:
             st.error(f"PK10序列检测错误详情:\n{traceback.format_exc()}")
             return []
     
+    def _detect_1_5_6_10_collaboration(self, period_data, period):
+        """检测1-5名和6-10名协作模式"""
+        patterns = []
+        
+        play_1_5 = period_data[period_data['玩法分类'] == '1-5名']
+        play_6_10 = period_data[period_data['玩法分类'] == '6-10名']
+        
+        if len(play_1_5) == 0 or len(play_6_10) == 0:
+            return patterns
+        
+        # 使用增强的内容解析
+        content_1_5 = self._parse_pk10_content_enhanced(play_1_5)
+        content_6_10 = self._parse_pk10_content_enhanced(play_6_10)
+        
+        st.write(f"期号 {period}: 1-5名内容='{content_1_5}', 6-10名内容='{content_6_10}'")
+        
+        # 宽松的匹配条件：只要解析出的主要内容相同就认为匹配
+        if content_1_5 and content_6_10 and content_1_5 == content_6_10:
+            accounts_1_5 = play_1_5['会员账号'].tolist()
+            accounts_6_10 = play_6_10['会员账号'].tolist()
+            
+            all_accounts = list(set(accounts_1_5 + accounts_6_10))
+            
+            if 2 <= len(all_accounts) <= 3:
+                total_amount = play_1_5['投注金额'].sum() + play_6_10['投注金额'].sum()
+                
+                record = {
+                    '期号': period,
+                    '彩种': 'PK10',
+                    '彩种类型': 'PK10',
+                    '账户组': all_accounts,
+                    '方向组': [content_1_5] * len(all_accounts),
+                    '金额组': [play_1_5['投注金额'].sum(), play_6_10['投注金额'].sum()],
+                    '总金额': total_amount,
+                    '相似度': 1.0,
+                    '账户数量': len(all_accounts),
+                    '模式': f'PK10位置协作-{content_1_5}',
+                    '对立类型': f'协作覆盖-{content_1_5}',
+                    '检测类型': 'PK10序列位置'
+                }
+                
+                patterns.append(record)
+                st.write(f"✅ 期号 {period}: 发现1-5名和6-10名协作模式")
+        
+        return patterns
+    
     def _detect_single_position_full_coverage(self, period_data, period):
         """检测单个位置全覆盖协作模式"""
         patterns = []
@@ -2495,6 +2541,21 @@ class WashTradeDetector:
                 st.write(f"✅ 期号 {period}: 发现单个位置全覆盖协作模式 - {common_content}")
         
         return patterns
+    
+    def _get_main_value_from_parsed(self, parsed_content):
+        """从解析内容中提取主要值"""
+        content_type = parsed_content.get('type', 'unknown')
+        
+        if content_type == 'number':
+            return f"数字-{parsed_content['value']}"
+        elif content_type == 'single_position':
+            return parsed_content['value']
+        elif content_type == 'multiple_positions':
+            return parsed_content['value']
+        elif content_type == 'raw':
+            return parsed_content['value']
+        else:
+            return '未知'
     
     def _detect_pk10_collaboration_enhanced(self, period_data, period):
         """增强版PK10协作检测 - 支持数字投注"""
