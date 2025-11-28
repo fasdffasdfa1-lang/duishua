@@ -2561,12 +2561,6 @@ def main():
             help="投注金额低于此值的记录将不参与检测"
         )
         
-        base_similarity_threshold = st.slider(
-            "基础金额匹配度阈值", 
-            0.5, 1.0, 0.8, 0.01, 
-            help="2个账户的基础匹配度阈值"
-        )
-        
         max_accounts = st.slider(
             "最大检测账户数", 
             2, 8, 5, 
@@ -2595,37 +2589,6 @@ def main():
                                  value=10, 
                                  step=1,
                                  help="组内最大金额与最小金额的允许倍数（例如：10表示10倍差距）")
-        
-        # 连续对刷阈值配置
-        st.subheader("🛠️ 连续对刷阈值配置")
-        
-        st.markdown("**低活跃度(1-10期):**")
-        min_periods_low = st.slider(
-            "低活跃度最小连续对刷期数", 
-            min_value=1, max_value=10, value=3,
-            help="总投注期数1-10期的账户，要求的最小连续对刷期数"
-        )
-        
-        st.markdown("**中活跃度(11-50期):**")
-        min_periods_medium = st.slider(
-            "中活跃度最小连续对刷期数", 
-            min_value=3, max_value=15, value=5,
-            help="总投注期数11-50期的账户，要求的最小连续对刷期数"
-        )
-        
-        st.markdown("**高活跃度(51-100期):**")
-        min_periods_high = st.slider(
-            "高活跃度最小连续对刷期数", 
-            min_value=5, max_value=20, value=8,
-            help="总投注期数51-100期的账户，要求的最小连续对刷期数"
-        )
-        
-        st.markdown("**极高活跃度(100期以上):**")
-        min_periods_very_high = st.slider(
-            "极高活跃度最小连续对刷期数", 
-            min_value=8, max_value=30, value=11,
-            help="总投注期数100期以上的账户，要求的最小连续对刷期数"
-        )
         
         # 多账户匹配度配置
         st.subheader("🎯 多账户匹配度配置")
@@ -2657,13 +2620,43 @@ def main():
             min_value=0.5, max_value=1.0, value=0.95, step=0.01,
             help="5个账户对刷的金额匹配度阈值"
         )
+        
+        # 连续对刷阈值配置
+        st.subheader("🛠️ 连续对刷阈值配置")
+        
+        st.markdown("**低活跃度(1-10期):**")
+        min_periods_low = st.slider(
+            "低活跃度最小连续对刷期数", 
+            min_value=1, max_value=10, value=3,
+            help="总投注期数1-10期的账户，要求的最小连续对刷期数"
+        )
+        
+        st.markdown("**中活跃度(11-50期):**")
+        min_periods_medium = st.slider(
+            "中活跃度最小连续对刷期数", 
+            min_value=3, max_value=15, value=5,
+            help="总投注期数11-50期的账户，要求的最小连续对刷期数"
+        )
+        
+        st.markdown("**高活跃度(51-100期):**")
+        min_periods_high = st.slider(
+            "高活跃度最小连续对刷期数", 
+            min_value=5, max_value=20, value=8,
+            help="总投注期数51-100期的账户，要求的最小连续对刷期数"
+        )
+        
+        st.markdown("**极高活跃度(100期以上):**")
+        min_periods_very_high = st.slider(
+            "极高活跃度最小连续对刷期数", 
+            min_value=8, max_value=30, value=11,
+            help="总投注期数100期以上的账户，要求的最小连续对刷期数"
+        )
     
     if uploaded_file is not None:
         try:
             # 创建配置对象并更新参数
             config = Config()
             config.min_amount = min_amount
-            config.amount_similarity_threshold = base_similarity_threshold
             config.max_accounts_in_group = max_accounts
             config.account_period_diff_threshold = period_diff_threshold
             
@@ -2673,14 +2666,6 @@ def main():
                 'enable_threshold_filter': enable_balance_filter
             }
             
-            # 更新活跃度阈值配置
-            config.period_thresholds.update({
-                'min_periods_low': min_periods_low,
-                'min_periods_medium': min_periods_medium,
-                'min_periods_high': min_periods_high,
-                'min_periods_very_high': min_periods_very_high
-            })
-            
             # 更新多账户匹配度阈值
             config.account_count_similarity_thresholds = {
                 2: similarity_2_accounts,
@@ -2688,6 +2673,14 @@ def main():
                 4: similarity_4_accounts,
                 5: similarity_5_accounts
             }
+            
+            # 更新活跃度阈值配置
+            config.period_thresholds.update({
+                'min_periods_low': min_periods_low,
+                'min_periods_medium': min_periods_medium,
+                'min_periods_high': min_periods_high,
+                'min_periods_very_high': min_periods_very_high
+            })
             
             detector = WashTradeDetector(config)
             
