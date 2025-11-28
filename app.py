@@ -1011,7 +1011,7 @@ class PK10SequenceDetector:
         return sequence_patterns
     
     def _find_sequence_coverage_patterns(self, position_account_content, period):
-        """查找序列覆盖模式 - 清晰的账户位置框架"""
+        """查找序列覆盖模式 - 专门支持2-3个账户"""
         patterns = []
         
         # 🎯 步骤1: 找出所有账户及其投注内容
@@ -1104,20 +1104,9 @@ class PK10SequenceDetector:
         }
     
     def _create_sequence_pattern(self, period, accounts, bet_content, coverage_result):
-        """创建序列覆盖模式记录 - 确保包含所有必要字段"""
+        """创建序列覆盖模式记录 - 专门支持2-3个账户"""
         # 计算覆盖度
         coverage_ratio = len(coverage_result['covered_positions']) / len(self.pk10_positions)
-        
-        # 🆕 构建账户位置映射 - 清晰记录每个账户投注了哪些位置
-        account_position_map = defaultdict(list)
-        account_amount_map = defaultdict(float)
-        
-        for position in self.pk10_positions:
-            if position in coverage_result['position_details']:
-                details = coverage_result['position_details'][position]
-                for account, amount in zip(details['accounts'], details['amounts']):
-                    account_position_map[account].append(position)
-                    account_amount_map[account] += amount
         
         # 构建详细记录
         detailed_records = []
@@ -1132,14 +1121,15 @@ class PK10SequenceDetector:
                 }
                 detailed_records.append(record)
         
-        # 根据账户数量生成模式描述
+        # 🆕 根据账户数量生成模式描述
         account_count = len(accounts)
         if account_count == 2:
             pattern_desc = f'PK10十位置全覆盖-{bet_content}(2账户协作)'
+        elif account_count == 3:
+            pattern_desc = f'PK10十位置全覆盖-{bet_content}(3账户协作)'
         else:
-            pattern_desc = f'PK10十位置全覆盖-{betcontent}(3账户协作)'
+            pattern_desc = f'PK10十位置全覆盖-{bet_content}({account_count}账户协作)'
         
-        # 🆕 确保返回所有必要字段
         return {
             '期号': period,
             '彩种': 'PK10',
@@ -1152,11 +1142,8 @@ class PK10SequenceDetector:
             '覆盖度': coverage_ratio,
             '总投注金额': coverage_result['total_amount'],
             '位置详情': detailed_records,
-            '账户位置映射': dict(account_position_map),  # 🆕 确保有这个字段
-            '账户金额映射': dict(account_amount_map),    # 🆕 确保有这个字段
             '模式类型': '序列覆盖',
-            '模式描述': pattern_desc,
-            '检测类型': 'PK10序列位置'  # 🆕 添加检测类型标识
+            '模式描述': pattern_desc
         }
 
 # ==================== 内容解析器 ====================
@@ -2269,7 +2256,7 @@ class WashTradeDetector:
             return []
 
     def find_continuous_sequence_patterns(self, sequence_patterns):
-        """查找连续的序列模式 - 修复账户位置映射传递"""
+        """查找连续的序列模式 - 专门支持2-3个账户"""
         if not sequence_patterns:
             return []
         
@@ -2294,25 +2281,8 @@ class WashTradeDetector:
                 # 只有完全覆盖（100%）才认为是有效的序列模式
                 if avg_coverage >= 1.0:
                     account_count = len(account_group)
-                    # 只保留2个和3个账户的模式
+                    # 🆕 只保留2个和3个账户的模式
                     if account_count in [2, 3]:
-                        # 🆕 修复：从所有单期记录中合并账户位置映射信息
-                        continuous_account_position_map = defaultdict(list)
-                        continuous_account_amount_map = defaultdict(float)
-                        
-                        # 合并所有期的账户位置和金额信息
-                        for record in sorted_records:
-                            if '账户位置映射' in record:
-                                for account, positions in record['账户位置映射'].items():
-                                    continuous_account_position_map[account].extend(positions)
-                            if '账户金额映射' in record:
-                                for account, amount in record['账户金额映射'].items():
-                                    continuous_account_amount_map[account] += amount
-                        
-                        # 去重位置信息
-                        for account in continuous_account_position_map:
-                            continuous_account_position_map[account] = list(set(continuous_account_position_map[account]))
-                        
                         continuous_patterns.append({
                             '账户组': list(account_group),
                             '账户数量': account_count,
@@ -2323,8 +2293,6 @@ class WashTradeDetector:
                             '总投注金额': total_investment,
                             '平均覆盖度': avg_coverage,
                             '详细记录': sorted_records,
-                            '账户位置映射': dict(continuous_account_position_map),  # 🆕 确保有这个字段
-                            '账户金额映射': dict(continuous_account_amount_map),    # 🆕 确保有这个字段
                             '模式类型': '序列覆盖',
                             '模式描述': f'PK10十位置全覆盖-{bet_content}({account_count}账户协作)',
                             '检测类型': 'PK10序列位置'
@@ -2333,7 +2301,7 @@ class WashTradeDetector:
         return continuous_patterns
 
     def display_pk10_sequence_results(self, patterns):
-        """显示PK10序列检测结果 - 增强容错性"""
+        """显示PK10序列检测结果 - 支持2-3个账户"""
         if not patterns:
             return
         
@@ -2343,7 +2311,7 @@ class WashTradeDetector:
         total_periods = sum(p['连续期数'] for p in patterns)
         total_amount = sum(p['总投注金额'] for p in patterns)
         
-        # 按账户数量统计
+        # 🆕 按账户数量统计
         account_count_stats = defaultdict(int)
         for pattern in patterns:
             account_count_stats[pattern['账户数量']] += 1
@@ -2356,73 +2324,48 @@ class WashTradeDetector:
         with col3:
             st.metric("总涉及金额", f"¥{total_amount:,.2f}")
         with col4:
+            # 显示2账户和3账户的分布
             two_account = account_count_stats.get(2, 0)
             three_account = account_count_stats.get(3, 0)
             st.metric("账户组合", f"2账户:{two_account}组 3账户:{three_account}组")
         
-        # 详细结果 - 使用清晰的账户位置框架显示
+        # 按投注内容分组统计
+        content_stats = defaultdict(int)
+        for pattern in patterns:
+            content_stats[pattern['投注内容']] += 1
+        
+        st.write("**投注内容分布:**")
+        content_cols = st.columns(min(5, len(content_stats)))
+        for i, (content, count) in enumerate(content_stats.items()):
+            if i < len(content_cols):
+                with content_cols[i]:
+                    st.metric(f"{content}模式", f"{count}组")
+        
+        # 🆕 显示检测模式说明
+        st.info("""
+        **检测模式说明：**
+        - **2账户协作**：两个账户共同覆盖PK10十个位置，投注相同内容
+        - **3账户协作**：三个账户共同覆盖PK10十个位置，投注相同内容
+        - **十个位置全覆盖**：确保PK10的十个位置都被相同内容覆盖
+        - **连续多期出现**：要求至少连续3期出现相同模式
+        """)
+        
+        # 详细结果
         for i, pattern in enumerate(patterns, 1):
             st.markdown(f"**对刷组 {i}:** {' ↔ '.join(pattern['账户组'])}")
-            
             account_type = "2账户协作" if pattern['账户数量'] == 2 else "3账户协作"
             st.markdown(f"**模式类型:** {account_type} | **投注内容:** {pattern['投注内容']} | **连续期数:** {pattern['连续期数']}期")
             st.markdown(f"**总金额:** ¥{pattern['总投注金额']:,.2f} | **平均覆盖度:** {pattern['平均覆盖度']:.1%}")
             
-            # 🆕 增强容错性：检查字段是否存在
-            if '账户位置映射' not in pattern:
-                st.warning("⚠️ 数据格式异常：缺少账户位置映射信息")
-                continue
-                
-            # 清晰的账户位置框架显示
-            st.markdown("**账户位置分配:**")
-            
-            # 显示每个账户的位置覆盖情况
-            account_position_map = pattern['账户位置映射']
-            account_amount_map = pattern.get('账户金额映射', {})  # 🆕 使用get方法避免KeyError
-            
-            for account in pattern['账户组']:
-                positions = account_position_map.get(account, [])
-                total_amt = account_amount_map.get(account, 0)
-                position_count = len(positions)
-                
-                # 格式化位置显示
-                if position_count > 5:
-                    # 如果位置太多，分组显示
-                    position_groups = []
-                    current_group = []
-                    for pos in sorted(positions, key=lambda x: self.pk10_positions.index(x)):
-                        current_group.append(pos)
-                        if len(current_group) == 5:
-                            position_groups.append('、'.join(current_group))
-                            current_group = []
-                    if current_group:
-                        position_groups.append('、'.join(current_group))
-                    positions_display = " | ".join(position_groups)
-                else:
-                    positions_display = '、'.join(sorted(positions, key=lambda x: self.pk10_positions.index(x)))
-                
-                st.markdown(f"- **{account}**: {positions_display} ({position_count}个位置, ¥{total_amt:,.2f})")
-            
             st.markdown("**详细记录:**")
             for j, record in enumerate(pattern['详细记录'], 1):
-                # 🆕 增强容错性：检查字段是否存在
-                if '位置详情' not in record:
-                    st.write(f"{j}. 期号: {record['期号']} | 数据格式异常")
-                    continue
-                    
-                # 使用账户位置框架显示每期详情
-                period_account_position = defaultdict(list)
+                # 显示每个位置的账户分配
+                position_coverage = []
                 for pos_record in record['位置详情']:
-                    for account in pos_record['accounts']:
-                        period_account_position[account].append(pos_record['position'])
+                    position_coverage.append(f"{pos_record['position']}({','.join(pos_record['accounts'])})")
                 
                 st.write(f"{j}. 期号: {record['期号']} | 覆盖位置: {record['覆盖位置数']}/{record['总位置数']} | 金额: ¥{record['总投注金额']:,.2f}")
-                
-                # 显示该期每个账户的位置
-                for account in sorted(period_account_position.keys()):
-                    positions = sorted(period_account_position[account], key=lambda x: self.pk10_positions.index(x))
-                    positions_display = '、'.join(positions)
-                    st.write(f"   📍 {account}: {positions_display}")
+                st.write(f"   位置分配: {' | '.join(position_coverage)}")
             
             if i < len(patterns):
                 st.markdown("---")
