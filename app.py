@@ -824,6 +824,197 @@ class PlayCategoryNormalizer:
         
         return category_str
 
+# ==================== PK拾序列位置检测器 ====================
+class PK10SequenceDetector:
+    """PK拾序列位置检测器 - 专门检测十个位置投注相同内容的情况"""
+    
+    def __init__(self, config=None):
+        self.config = config or Config()
+        self.content_parser = ContentParser()
+        
+        # PK拾十个位置定义
+        self.pk10_positions = [
+            '冠军', '亚军', '第三名', '第四名', '第五名',
+            '第六名', '第七名', '第八名', '第九名', '第十名'
+        ]
+        
+    def extract_pk10_bet_content(self, content, play_category):
+        """提取PK10投注内容"""
+        try:
+            if pd.isna(content):
+                return None
+            
+            content_str = str(content).strip()
+            
+            # 🎯 提取方向
+            directions = self.content_parser.enhanced_extract_directions(content_str, self.config)
+            if directions:
+                return directions[0]  # 返回主要方向
+            
+            return None
+            
+        except Exception as e:
+            logger.warning(f"PK10内容提取失败: {content}, 错误: {e}")
+            return None
+    
+    def detect_sequence_coverage(self, df_pk10):
+        """检测序列覆盖模式 - 多个账户共同覆盖十个位置且投注相同"""
+        sequence_patterns = []
+        
+        # 按期号分组
+        period_groups = df_pk10.groupby('期号')
+        
+        for period, period_data in period_groups:
+            # 🎯 构建位置-账户-内容的映射
+            position_account_content = defaultdict(lambda: defaultdict(list))
+            
+            for _, row in period_data.iterrows():
+                account = row['会员账号']
+                play_category = row.get('玩法分类', '')
+                content = row['内容']
+                amount = row.get('投注金额', 0)
+                
+                # 提取位置
+                position = self.content_parser.extract_position_from_play_category(
+                    play_category, 'PK10', self.config
+                )
+                
+                if position not in self.pk10_positions:
+                    continue
+                
+                # 提取投注内容
+                bet_content = self.extract_pk10_bet_content(content, play_category)
+                if bet_content is None:
+                    continue
+                
+                # 记录账户投注信息
+                position_account_content[position][account].append({
+                    'content': bet_content,
+                    'amount': amount,
+                    'original_content': content,
+                    'play_category': play_category
+                })
+            
+            # 🎯 检测序列覆盖模式
+            patterns = self._find_sequence_coverage_patterns(
+                position_account_content, period
+            )
+            sequence_patterns.extend(patterns)
+        
+        return sequence_patterns
+    
+    def _find_sequence_coverage_patterns(self, position_account_content, period):
+        """查找序列覆盖模式"""
+        patterns = []
+        
+        # 🎯 步骤1: 找出所有账户及其投注内容
+        all_accounts = set()
+        account_bet_contents = defaultdict(set)
+        
+        for position, account_data in position_account_content.items():
+            for account, bets in account_data.items():
+                all_accounts.add(account)
+                for bet in bets:
+                    account_bet_contents[account].add(str(bet['content']))
+        
+        # 🎯 步骤2: 找出有共同投注内容的账户组
+        common_content_groups = defaultdict(list)
+        
+        for account, contents in account_bet_contents.items():
+            for content in contents:
+                common_content_groups[content].append(account)
+        
+        # 🎯 步骤3: 对每个共同内容，检查是否覆盖了十个位置
+        for bet_content, accounts in common_content_groups.items():
+            if len(accounts) < 2:
+                continue
+            
+            # 检查这些账户是否共同覆盖了十个位置
+            coverage_result = self._check_position_coverage(
+                position_account_content, accounts, bet_content
+            )
+            
+            if coverage_result['covered']:
+                pattern = self._create_sequence_pattern(
+                    period, accounts, bet_content, coverage_result
+                )
+                patterns.append(pattern)
+        
+        return patterns
+    
+    def _check_position_coverage(self, position_account_content, accounts, target_content):
+        """检查账户组是否覆盖了十个位置且投注内容相同"""
+        covered_positions = set()
+        position_details = {}
+        total_amount = 0
+        
+        for position in self.pk10_positions:
+            if position not in position_account_content:
+                continue
+            
+            position_covered = False
+            position_accounts = []
+            position_amounts = []
+            
+            for account in accounts:
+                if account in position_account_content[position]:
+                    account_bets = position_account_content[position][account]
+                    for bet in account_bets:
+                        bet_content_str = str(bet['content'])
+                        if bet_content_str == target_content:
+                            position_covered = True
+                            position_accounts.append(account)
+                            position_amounts.append(bet['amount'])
+                            total_amount += bet['amount']
+                            break
+            
+            if position_covered:
+                covered_positions.add(position)
+                position_details[position] = {
+                    'accounts': position_accounts,
+                    'amounts': position_amounts
+                }
+        
+        return {
+            'covered': len(covered_positions) == len(self.pk10_positions),
+            'covered_positions': covered_positions,
+            'position_details': position_details,
+            'total_amount': total_amount
+        }
+    
+    def _create_sequence_pattern(self, period, accounts, bet_content, coverage_result):
+        """创建序列覆盖模式记录"""
+        # 计算覆盖度
+        coverage_ratio = len(coverage_result['covered_positions']) / len(self.pk10_positions)
+        
+        # 构建详细记录
+        detailed_records = []
+        for position in self.pk10_positions:
+            if position in coverage_result['position_details']:
+                details = coverage_result['position_details'][position]
+                record = {
+                    'position': position,
+                    'accounts': details['accounts'],
+                    'amounts': details['amounts'],
+                    'bet_content': bet_content
+                }
+                detailed_records.append(record)
+        
+        return {
+            '期号': period,
+            '彩种': 'PK10',
+            '彩种类型': 'PK10',
+            '账户组': accounts,
+            '投注内容': bet_content,
+            '覆盖位置数': len(coverage_result['covered_positions']),
+            '总位置数': len(self.pk10_positions),
+            '覆盖度': coverage_ratio,
+            '总投注金额': coverage_result['total_amount'],
+            '位置详情': detailed_records,
+            '模式类型': '序列覆盖',
+            '模式描述': f'PK10十位置全覆盖-{bet_content}'
+        }
+
 # ==================== 内容解析器 ====================
 class ContentParser:
     """内容解析器 - 支持变异形式但映射到基础方向"""
@@ -1160,6 +1351,7 @@ class WashTradeDetector:
         self.data_processed = False
         self.df_valid = None
         self.export_data = []
+        self.pk10_sequence_detector = PK10SequenceDetector(config)
         
         # 按彩种存储账户统计
         self.account_total_periods_by_lottery = defaultdict(dict)
@@ -1531,7 +1723,7 @@ class WashTradeDetector:
         status_text = st.empty()
         
         all_patterns = []
-        total_steps = self.config.max_accounts_in_group - 1
+        total_steps = self.config.max_accounts_in_group + 1  # 增加PK10序列检测步骤
         
         for account_count in range(2, self.config.max_accounts_in_group + 1):
             status_text.text(f"🔍 检测{account_count}个账户对刷模式...")
@@ -1540,6 +1732,13 @@ class WashTradeDetector:
             
             progress = (account_count - 1) / total_steps
             progress_bar.progress(progress)
+        
+        # ==================== 在这里插入第一个代码块 ====================
+        # 🎯 步骤2: 检测PK10序列位置模式
+        status_text.text(f"🔍 检测PK10序列位置模式...")
+        pk10_patterns = self.detect_pk10_sequence_patterns(df_filtered)
+        all_patterns.extend(pk10_patterns)
+        # ==================== 插入结束 ====================
         
         progress_bar.progress(1.0)
         status_text.text("✅ 检测完成")
@@ -1897,6 +2096,116 @@ class WashTradeDetector:
         
         return continuous_patterns
 
+    def detect_pk10_sequence_patterns(self, df_filtered):
+        """检测PK10序列位置模式"""
+        try:
+            # 过滤PK10数据
+            df_pk10 = df_filtered[
+                (df_filtered['彩种类型'] == 'PK10') & 
+                (df_filtered['投注金额'] >= self.config.min_amount)
+            ].copy()
+            
+            if len(df_pk10) == 0:
+                return []
+            
+            st.info(f"🔍 检测PK10序列位置模式，数据量: {len(df_pk10)} 条")
+            
+            # 检测序列覆盖模式
+            sequence_patterns = self.pk10_sequence_detector.detect_sequence_coverage(df_pk10)
+            
+            # 查找连续模式
+            continuous_sequence_patterns = self.find_continuous_sequence_patterns(sequence_patterns)
+            
+            return continuous_sequence_patterns
+            
+        except Exception as e:
+            logger.error(f"PK10序列检测失败: {str(e)}")
+            return []
+
+    def find_continuous_sequence_patterns(self, sequence_patterns):
+        """查找连续的序列模式"""
+        if not sequence_patterns:
+            return []
+        
+        # 按账户组和投注内容分组
+        account_group_patterns = defaultdict(list)
+        for pattern in sequence_patterns:
+            key = (tuple(sorted(pattern['账户组'])), pattern['投注内容'])
+            account_group_patterns[key].append(pattern)
+        
+        continuous_patterns = []
+        
+        for (account_group, bet_content), records in account_group_patterns.items():
+            # 按期号排序
+            sorted_records = sorted(records, key=lambda x: x['期号'])
+            
+            # 检查连续期数
+            if len(sorted_records) >= 3:  # 至少连续3期
+                total_investment = sum(r['总投注金额'] for r in sorted_records)
+                coverage_ratios = [r['覆盖度'] for r in sorted_records]
+                avg_coverage = np.mean(coverage_ratios) if coverage_ratios else 0
+                
+                # 只有完全覆盖（100%）才认为是有效的序列模式
+                if avg_coverage >= 1.0:
+                    continuous_patterns.append({
+                        '账户组': list(account_group),
+                        '投注内容': bet_content,
+                        '彩种': 'PK10',
+                        '彩种类型': 'PK10',
+                        '连续期数': len(sorted_records),
+                        '总投注金额': total_investment,
+                        '平均覆盖度': avg_coverage,
+                        '详细记录': sorted_records,
+                        '模式类型': '序列覆盖',
+                        '模式描述': f'PK10十位置全覆盖-{bet_content}',
+                        '检测类型': 'PK10序列位置'
+                    })
+        
+        return continuous_patterns
+
+    def display_pk10_sequence_results(self, patterns):
+        """显示PK10序列检测结果"""
+        if not patterns:
+            return
+        
+        st.subheader("🎯 PK10序列位置检测结果")
+        
+        total_groups = len(patterns)
+        total_periods = sum(p['连续期数'] for p in patterns)
+        total_amount = sum(p['总投注金额'] for p in patterns)
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("序列对刷组数", total_groups)
+        with col2:
+            st.metric("总对刷期数", total_periods)
+        with col3:
+            st.metric("总涉及金额", f"¥{total_amount:,.2f}")
+        
+        # 按投注内容分组统计
+        content_stats = defaultdict(int)
+        for pattern in patterns:
+            content_stats[pattern['投注内容']] += 1
+        
+        st.write("**投注内容分布:**")
+        content_cols = st.columns(min(5, len(content_stats)))
+        for i, (content, count) in enumerate(content_stats.items()):
+            if i < len(content_cols):
+                with content_cols[i]:
+                    st.metric(f"{content}模式", f"{count}组")
+        
+        # 详细结果
+        for i, pattern in enumerate(patterns, 1):
+            with st.expander(f"序列对刷组 {i}: {' ↔ '.join(pattern['账户组'])} - {pattern['投注内容']}", expanded=False):
+                st.write(f"**投注内容:** {pattern['投注内容']}")
+                st.write(f"**连续期数:** {pattern['连续期数']}期")
+                st.write(f"**总投注金额:** ¥{pattern['总投注金额']:,.2f}")
+                st.write(f"**平均覆盖度:** {pattern['平均覆盖度']:.1%}")
+                
+                st.write("**详细记录:**")
+                for j, record in enumerate(pattern['详细记录'], 1):
+                    st.write(f"{j}. 期号: {record['期号']} | 覆盖位置: {record['覆盖位置数']}/{record['总位置数']} | 金额: ¥{record['总投注金额']:,.2f}")
+
     def _calculate_detailed_account_stats(self, patterns):
         """计算详细账户统计"""
         account_participation = defaultdict(lambda: {
@@ -2094,6 +2403,22 @@ class WashTradeDetector:
     
     def display_detailed_results(self, patterns):
         """显示详细检测结果 - 添加期号去重验证"""
+        
+        # ==================== 在这里插入第二个代码块 ====================
+        # 🎯 分离PK10序列模式和其他模式
+        pk10_sequence_patterns = [p for p in patterns if '检测类型' in p and p['检测类型'] == 'PK10序列位置']
+        other_patterns = [p for p in patterns if '检测类型' not in p or p['检测类型'] != 'PK10序列位置']
+        
+        # 先显示PK10序列检测结果
+        if pk10_sequence_patterns:
+            self.display_pk10_sequence_results(pk10_sequence_patterns)
+            st.markdown("---")  # 添加分隔线
+        
+        # 使用其他模式继续原有显示逻辑
+        patterns = other_patterns
+        # ==================== 插入结束 ====================
+        
+        # ... 原有的代码从这里开始保持不变 ...
         if not patterns:
             st.error("❌ 未发现符合阈值条件的连续对刷模式")
             return
