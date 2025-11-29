@@ -3255,7 +3255,7 @@ class WashTradeDetector:
                     self._display_single_pattern_by_lottery(pattern, i, lottery, total_groups_in_lottery)
     
     def _calculate_opposite_type_stats(self, patterns):
-        """🆕 重新设计对立类型统计逻辑"""
+        """🆕 重新设计对立类型统计逻辑 - 区分传统对立和协作模式"""
         opposite_type_stats = defaultdict(int)
         
         for pattern in patterns:
@@ -3271,46 +3271,61 @@ class WashTradeDetector:
                         content = record['方向组'][0]
                         content_stats[content] += 1
                 
-                # 将相似的内容合并
-                merged_stats = self._merge_similar_contents(content_stats)
-                
-                # 添加到总统计
-                for content, count in merged_stats.items():
-                    opposite_type_stats[f"协作-{content}"] += count
+                # 按照用户期望的格式合并
+                merged_content = self._format_pk10_content_stats(content_stats)
+                if merged_content:
+                    opposite_type_stats[merged_content] += sum(content_stats.values())
             else:
                 # 传统对立模式：直接统计主要对立类型
                 main_opposite = pattern['主要对立类型']
-                for record in pattern['详细记录']:
-                    opposite_type_stats[main_opposite] += 1
+                # 🆕 修复：六合彩传统对立模式不应该归类为协作
+                if '尾大' in main_opposite or '尾小' in main_opposite or '特大' in main_opposite or '特小' in main_opposite or '特单' in main_opposite or '特双' in main_opposite:
+                    # 这是六合彩的传统对立模式
+                    for record in pattern['详细记录']:
+                        opposite_type_stats[main_opposite] += 1
+                else:
+                    # 其他传统对立模式
+                    for record in pattern['详细记录']:
+                        opposite_type_stats[main_opposite] += 1
         
         return opposite_type_stats
     
-    def _merge_similar_contents(self, content_stats):
-        """🆕 合并相似的投注内容"""
-        merged_stats = defaultdict(int)
+    def _format_pk10_content_stats(self, content_stats):
+        """🆕 按照用户期望的格式格式化PK10内容统计"""
+        if not content_stats:
+            return ""
         
-        # 定义内容分组
-        content_groups = {
-            '基础方向': ['大', '小', '单', '双'],
-            '数字投注': ['数字-5', '数字-6', '数字-7', '数字-8', '数字-9', '数字-10'],
-            '龙虎': ['龙', '虎'],
-            '六合彩方向': ['尾大', '尾小', '特大', '特小', '特单', '特双']
-        }
+        # 分离数字投注和方向投注
+        number_bets = []
+        direction_bets = []
         
-        # 先统计未分组的内容
         for content, count in content_stats.items():
-            found_group = False
-            for group_name, group_contents in content_groups.items():
-                if content in group_contents:
-                    merged_stats[group_name] += count
-                    found_group = True
-                    break
-            
-            # 如果没有找到分组，单独统计
-            if not found_group:
-                merged_stats[content] += count
+            if content.startswith('数字-'):
+                number_bets.append(content.replace('数字-', ''))
+            elif content in ['大', '小', '单', '双']:
+                direction_bets.append(content)
+            # 🆕 排除六合彩相关方向
+            elif content in ['尾大', '尾小', '特大', '特小', '特单', '特双']:
+                # 这些不应该出现在PK10协作模式中
+                continue
         
-        return merged_stats
+        # 构建格式化的字符串
+        parts = []
+        
+        if direction_bets:
+            # 去重并排序
+            unique_directions = sorted(set(direction_bets))
+            parts.append('-'.join(unique_directions))
+        
+        if number_bets:
+            # 去重并排序
+            unique_numbers = sorted(set(number_bets))
+            parts.append('数字-' + '-'.join(unique_numbers))
+        
+        if parts:
+            return "协作-" + '-'.join(parts)
+        else:
+            return ""
     
     def _display_single_pattern_by_lottery(self, pattern, index, lottery, total_groups_in_lottery):
         """按照彩种显示单个对刷组详情"""
