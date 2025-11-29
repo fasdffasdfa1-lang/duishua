@@ -3216,21 +3216,14 @@ class WashTradeDetector:
         # ========== 主要对立类型 ==========
         st.subheader("🎯 主要对立类型")
         
-        opposite_type_stats = defaultdict(int)
-        for pattern in patterns:
-            for opposite_type, count in pattern['对立类型分布'].items():
-                opposite_type_stats[opposite_type] += count
+        # 🆕 修复对立类型统计逻辑
+        opposite_type_stats = self._calculate_opposite_type_stats(patterns)
         
-        # 显示前3个主要对立类型
-        top_opposites = sorted(opposite_type_stats.items(), key=lambda x: x[1], reverse=True)[:3]
+        # 显示前5个主要对立类型
+        top_opposites = sorted(opposite_type_stats.items(), key=lambda x: x[1], reverse=True)[:5]
         
         for opposite_type, count in top_opposites:
-            # 简化对立类型显示
-            if ' vs ' in opposite_type:
-                display_type = opposite_type.replace(' vs ', '-')
-            else:
-                display_type = opposite_type
-            st.write(f"- **{display_type}**: {count}期")
+            st.write(f"- **{opposite_type}**: {count}期")
         
         # ========== 按彩种分组显示详细结果 ==========
         st.subheader("🔍 详细对刷组分析")
@@ -3260,6 +3253,33 @@ class WashTradeDetector:
                 for i, pattern in enumerate(lottery_patterns, 1):
                     # 🆕 修复：传递当前彩种的总组数
                     self._display_single_pattern_by_lottery(pattern, i, lottery, total_groups_in_lottery)
+    
+    def _calculate_opposite_type_stats(self, patterns):
+        """🆕 修复对立类型统计逻辑"""
+        opposite_type_stats = defaultdict(int)
+        
+        for pattern in patterns:
+            # 对于每个对刷组，统计其详细记录中的对立类型
+            for record in pattern['详细记录']:
+                opposite_type = record.get('对立类型', '')
+                
+                # 🆕 修复：简化对立类型显示
+                if opposite_type:
+                    # 处理协作模式的对立类型
+                    if '协作' in opposite_type or '覆盖' in opposite_type:
+                        # 对于协作模式，提取主要内容
+                        if '-' in opposite_type:
+                            main_content = opposite_type.split('-')[-1]
+                            simplified_type = f"协作-{main_content}"
+                        else:
+                            simplified_type = opposite_type
+                    else:
+                        # 对于传统对立模式，保持原样
+                        simplified_type = opposite_type
+                    
+                    opposite_type_stats[simplified_type] += 1
+        
+        return opposite_type_stats
     
     def _display_single_pattern_by_lottery(self, pattern, index, lottery, total_groups_in_lottery):
         """按照彩种显示单个对刷组详情"""
