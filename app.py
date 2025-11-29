@@ -3103,7 +3103,7 @@ class WashTradeDetector:
                     st.write(f"  - {opposite_type}: {count}组")
     
     def display_detailed_results(self, patterns):
-        """显示详细检测结果 - 按照彩种分组，统计在前，详细在后"""
+        """显示详细检测结果 - 修复分类问题"""
         if not patterns:
             st.error("❌ 未发现符合阈值条件的连续对刷模式")
             return
@@ -3130,186 +3130,90 @@ class WashTradeDetector:
         with col4:
             st.metric("总涉及金额", f"¥{total_amount:,.2f}")
         
-        # ========== 彩种类型统计 ==========
-        st.subheader("🎲 彩种类型统计")
-        
-        lottery_stats = defaultdict(int)
-        for pattern in patterns:
-            lottery_stats[pattern['彩种']] += 1
-        
-        # 定义彩种类型显示名称
-        lottery_display_names = {
-            'PK10': 'PK10/赛车',
-            'K3': '快三',
-            'LHC': '六合彩', 
-            'SSC': '时时彩',
-            '3D': '3D系列'
-        }
-        
-        # 创建彩种统计列
-        lottery_cols = st.columns(min(5, len(lottery_stats)))
-        
-        for i, (lottery, count) in enumerate(lottery_stats.items()):
-            if i < len(lottery_cols):
-                with lottery_cols[i]:
-                    display_name = lottery_display_names.get(lottery, lottery)
-                    st.metric(
-                        label=display_name,
-                        value=f"{count}组"
-                    )
-        
-        # ========== 账户组合分布和活跃度分布 ==========
-        col_left, col_right = st.columns(2)
-        
-        with col_left:
-            st.subheader("👥 账户组合分布")
-            
-            account_count_stats = defaultdict(int)
-            for pattern in patterns:
-                account_count_stats[pattern['账户数量']] += 1
-            
-            for account_count, group_count in sorted(account_count_stats.items()):
-                # 计算该类型组合的总对刷期数
-                account_type_periods = sum(p['对刷期数'] for p in patterns if p['账户数量'] == account_count)
-                st.write(f"- **{account_count}组**: {group_count}组 ({account_type_periods}期)")
-        
-        with col_right:
-            st.subheader("📈 活跃度分布")
-            
-            activity_stats = defaultdict(int)
-            for pattern in patterns:
-                activity_stats[pattern['账户活跃度']] += 1
-            
-            activity_display_names = {
-                'low': '低活跃度',
-                'medium': '中活跃度',
-                'high': '高活跃度',
-                'very_high': '极高活跃度'
-            }
-            
-            for activity, count in activity_stats.items():
-                display_name = activity_display_names.get(activity, activity)
-                # 计算该活跃度的总对刷期数
-                activity_periods = sum(p['对刷期数'] for p in patterns if p['账户活跃度'] == activity)
-                st.write(f"- **{display_name}**: {count}组 ({activity_periods}期)")
-        
-        # ========== 关键指标 ==========
-        st.subheader("📈 关键指标")
-        
-        # 计算平均每组金额
-        avg_group_amount = total_amount / total_groups if total_groups > 0 else 0
-        
-        metric_col1, metric_col2, metric_col3 = st.columns(3)
-        
-        with metric_col1:
-            st.metric("平均每组金额", f"¥{avg_group_amount:,.2f}")
-        
-        with metric_col2:
-            # 计算业务类型总金额
-            business_total = total_amount
-            st.metric("业务类型总额", f"¥{business_total:,.2f}")
-        
-        with metric_col3:
-            # 显示总账户数
-            st.metric("参与总账户数", total_accounts)
-        
-        # ========== 主要对立类型 ==========
-        st.subheader("🎯 主要对立类型")
-        
-        # 🆕 修复对立类型统计逻辑
-        opposite_type_stats = self._calculate_opposite_type_stats(patterns)
-        
-        # 显示前5个主要对立类型
-        top_opposites = sorted(opposite_type_stats.items(), key=lambda x: x[1], reverse=True)[:5]
-        
-        for opposite_type, count in top_opposites:
-            st.write(f"- **{opposite_type}**: {count}期")
-        
-        # ========== 按彩种分组显示详细结果 ==========
+        # ========== 按彩种和检测类型分组 ==========
         st.subheader("🔍 详细对刷组分析")
         
-        # 🆕 按彩种分组
-        patterns_by_lottery = defaultdict(list)
+        # 🆕 修复：按彩种类型和检测模式正确分组
+        patterns_by_category = defaultdict(lambda: defaultdict(list))
+        
         for pattern in patterns:
             lottery = pattern['彩种']
-            patterns_by_lottery[lottery].append(pattern)
-        
-        # 按彩种显示
-        for lottery, lottery_patterns in patterns_by_lottery.items():
-            total_groups_in_lottery = len(lottery_patterns)
-            
-            # 彩种图标映射
-            lottery_icons = {
-                '分分快三': '🎲', '三分快三': '🎲', '五分快三': '🎲', '快三': '🎲',
-                '分分六合彩': '🎰', '三分六合彩': '🎰', '五分六合彩': '🎰', '六合彩': '🎰',
-                '分分PK拾': '🏁', '三分PK拾': '🏁', '五分PK拾': '🏁', 'PK10': '🏁',
-                '分分时时彩': '⏰', '三分时时彩': '⏰', '五分时时彩': '⏰', '时时彩': '⏰',
-                '排列三': '🔢', '排列3': '🔢', '福彩3D': '🔢', '3D': '🔢'
-            }
-            
-            lottery_icon = lottery_icons.get(lottery, '🎯')
-            
-            with st.expander(f"{lottery_icon} 彩种：{lottery}（发现{total_groups_in_lottery}组）", expanded=True):
-                for i, pattern in enumerate(lottery_patterns, 1):
-                    # 🆕 修复：传递当前彩种的总组数
-                    self._display_single_pattern_by_lottery(pattern, i, lottery, total_groups_in_lottery)
-    
-    def _calculate_opposite_type_stats(self, patterns):
-        """🆕 重新设计对立类型统计逻辑 - 按照用户要求"""
-        opposite_type_stats = defaultdict(int)
-        
-        for pattern in patterns:
-            # 检测类型判断
             detect_type = pattern.get('检测类型', '传统对刷')
             
+            # 🆕 修复：根据彩种类型和主要对立类型进一步分类
             if detect_type == 'PK10序列位置':
-                # PK10协作模式：统一统计为"协作-方向-数字"
-                direction_set = set()
-                has_number = False
-                
-                for record in pattern['详细记录']:
-                    # 提取投注内容
-                    if '方向组' in record and record['方向组']:
-                        content = record['方向组'][0]
-                        
-                        # 检查是否是数字投注
-                        if content.startswith('数字-'):
-                            has_number = True
-                        # 检查是否是基础方向
-                        elif content in ['大', '小', '单', '双']:
-                            direction_set.add(content)
-                
-                # 构建统计键
-                stat_key = "协作"
-                if direction_set:
-                    # 按固定顺序排列方向
-                    ordered_directions = []
-                    for direction in ['大', '小', '单', '双']:
-                        if direction in direction_set:
-                            ordered_directions.append(direction)
-                    stat_key += "-" + "-".join(ordered_directions)
-                
-                if has_number:
-                    stat_key += "-数字"
-                
-                # 统计期数
-                opposite_type_stats[stat_key] += pattern['对刷期数']
+                category = 'PK10协作对刷'
             else:
-                # 传统对立模式：直接统计主要对立类型
-                main_opposite = pattern['主要对立类型']
-                # 简化对立类型显示
-                if ' vs ' in main_opposite:
-                    simplified = main_opposite.replace(' vs ', '-')
+                # 传统对刷根据彩种类型分类
+                if '六合彩' in lottery or 'LHC' in pattern.get('彩种类型', ''):
+                    category = '六合彩传统对刷'
+                elif 'PK10' in pattern.get('彩种类型', ''):
+                    category = 'PK10传统对刷'
+                elif '快三' in pattern.get('彩种类型', '') or 'K3' in pattern.get('彩种类型', ''):
+                    category = '快三传统对刷'
+                elif '时时彩' in pattern.get('彩种类型', '') or 'SSC' in pattern.get('彩种类型', ''):
+                    category = '时时彩传统对刷'
+                elif '3D' in pattern.get('彩种类型', '') or '排列' in pattern.get('彩种类型', ''):
+                    category = '3D传统对刷'
                 else:
-                    simplified = main_opposite
-                
-                # 统计期数
-                opposite_type_stats[simplified] += pattern['对刷期数']
+                    category = '其他传统对刷'
+            
+            patterns_by_category[category][lottery].append(pattern)
         
-        return opposite_type_stats
+        # 🆕 按类别顺序显示
+        category_order = [
+            '六合彩传统对刷',
+            'PK10传统对刷', 
+            'PK10协作对刷',
+            '快三传统对刷',
+            '时时彩传统对刷',
+            '3D传统对刷',
+            '其他传统对刷'
+        ]
+        
+        for category in category_order:
+            if category in patterns_by_category:
+                category_patterns = patterns_by_category[category]
+                total_groups_in_category = sum(len(patterns) for patterns in category_patterns.values())
+                
+                if total_groups_in_category > 0:
+                    # 显示类别标题
+                    category_display_name = category
+                    if category == '六合彩传统对刷':
+                        category_icon = "🎰"
+                        category_desc = "六合彩大小单双、特码、正码等对立方向对刷"
+                    elif category == 'PK10传统对刷':
+                        category_icon = "🏁" 
+                        category_desc = "PK10/赛车大小单双、龙虎等对立方向对刷"
+                    elif category == 'PK10协作对刷':
+                        category_icon = "🤝"
+                        category_desc = "PK10十个位置全覆盖协作对刷"
+                    elif category == '快三传统对刷':
+                        category_icon = "🎲"
+                        category_desc = "快三和值、大小单双等对立方向对刷"
+                    elif category == '时时彩传统对刷':
+                        category_icon = "⏰"
+                        category_desc = "时时彩大小单双、定位等对立方向对刷"
+                    elif category == '3D传统对刷':
+                        category_icon = "🔢"
+                        category_desc = "3D/排列三大小单双、定位等对立方向对刷"
+                    else:
+                        category_icon = "📊"
+                        category_desc = "其他彩种对立方向对刷"
+                    
+                    with st.expander(f"{category_icon} {category_display_name}（发现{total_groups_in_category}组）", expanded=True):
+                        st.info(f"**检测模式**: {category_desc}")
+                        
+                        # 按彩种显示
+                        for lottery, lottery_patterns in category_patterns.items():
+                            if lottery_patterns:
+                                st.markdown(f"**🎯 {lottery}**")
+                                
+                                for i, pattern in enumerate(lottery_patterns, 1):
+                                    self._display_single_pattern(pattern, i, category)
     
-    def _display_single_pattern_by_lottery(self, pattern, index, lottery, total_groups_in_lottery):
-        """按照彩种显示单个对刷组详情"""
+    def _display_single_pattern(self, pattern, index, category):
+        """显示单个对刷组详情 - 修复显示逻辑"""
         st.markdown(f"**对刷组 {index}:** {' ↔ '.join(pattern['账户组'])}")
         
         # 活跃度图标
@@ -3321,17 +3225,24 @@ class WashTradeDetector:
             'very_high': '极高活跃度'
         }.get(pattern['账户活跃度'], pattern['账户活跃度'])
         
-        # 检测类型判断
-        detect_type = pattern.get('检测类型', '传统对刷')
-        
-        if detect_type == 'PK10序列位置':
+        # 🆕 根据类别显示不同的信息
+        if category == 'PK10协作对刷':
             # PK10协作模式显示
             st.markdown(f"**活跃度:** {activity_icon} {activity_text} | **彩种:** {pattern['彩种']} | **协作模式:** {pattern['主要对立类型']}")
-            st.markdown(f"**账户在该彩种投注期数/记录数:** {', '.join(pattern['账户统计信息'])}")
+            st.markdown(f"**账户统计:** {', '.join(pattern['账户统计信息'])}")
             st.markdown(f"**对刷期数:** {pattern['对刷期数']}期 (要求≥{pattern['要求最小对刷期数']}期)")
             st.markdown(f"**总金额:** {pattern['总投注金额']:.2f}元")
             
-            # 🆕 移除协作模式说明部分
+            # 协作模式说明
+            st.markdown("**协作模式说明:**")
+            if '数字' in pattern['主要对立类型']:
+                st.markdown("- 🎯 **PK10十个位置全覆盖**：多个账户协作覆盖PK10所有位置")
+                st.markdown("- 🔢 **相同数字投注**：所有位置投注相同数字")
+                st.markdown("- 🔄 **位置分工**：账户间按位置范围分工协作")
+            else:
+                st.markdown("- 🎯 **PK10十个位置全覆盖**：多个账户协作覆盖PK10所有位置")
+                st.markdown("- 🤝 **相同投注内容**：所有位置投注相同方向")
+                st.markdown("- 🔄 **位置分工**：账户间按位置范围分工协作")
             
             # 详细记录
             st.markdown("**详细记录:**")
@@ -3352,12 +3263,28 @@ class WashTradeDetector:
         
         else:
             # 传统对立对刷模式显示
-            st.markdown(f"**活跃度:** {activity_icon} {activity_text} | **彩种:** {pattern['彩种']} | **主要类型:** {pattern['主要对立类型']}")
-            st.markdown(f"**账户在该彩种投注期数/记录数:** {', '.join(pattern['账户统计信息'])}")
+            st.markdown(f"**活跃度:** {activity_icon} {activity_text} | **彩种:** {pattern['彩种']} | **对刷类型:** {pattern['主要对立类型']}")
+            st.markdown(f"**账户统计:** {', '.join(pattern['账户统计信息'])}")
             st.markdown(f"**对刷期数:** {pattern['对刷期数']}期 (要求≥{pattern['要求最小对刷期数']}期)")
             st.markdown(f"**总金额:** {pattern['总投注金额']:.2f}元 | **平均匹配:** {pattern['平均相似度']:.2%}")
             
-            # 🆕 移除传统对刷模式说明部分
+            # 🆕 根据彩种类型显示不同的对刷说明
+            lottery_type = pattern.get('彩种类型', '')
+            if '六合彩' in pattern['彩种'] or 'LHC' in lottery_type:
+                st.markdown("**对刷模式说明:**")
+                st.markdown("- 🎰 **六合彩传统对刷**：投注相反方向形成对刷")
+                st.markdown("- ⚔️ **方向对立**：如尾大vs尾小、天肖vs地肖等")
+                st.markdown("- 💰 **金额平衡**：双方投注金额相近形成对刷")
+            elif 'PK10' in lottery_type:
+                st.markdown("**对刷模式说明:**")
+                st.markdown("- 🏁 **PK10传统对刷**：投注相反方向形成对刷") 
+                st.markdown("- ⚔️ **方向对立**：如大vs小、单vs双、龙vs虎等")
+                st.markdown("- 💰 **金额平衡**：双方投注金额相近形成对刷")
+            else:
+                st.markdown("**对刷模式说明:**")
+                st.markdown("- 📊 **传统对立对刷**：投注相反方向形成对刷")
+                st.markdown("- ⚔️ **方向对立**：投注内容完全相反")
+                st.markdown("- 💰 **金额平衡**：双方投注金额相近形成对刷")
             
             # 详细记录
             st.markdown("**详细记录:**")
@@ -3368,9 +3295,17 @@ class WashTradeDetector:
                 
                 st.write(f"{j}. 期号: {record['期号']} | 方向: {' ↔ '.join(account_directions)} | 匹配度: {record['相似度']:.2%}")
         
-        # 🆕 修复：使用传入的 total_groups_in_lottery 来判断是否显示分隔线
-        if index < total_groups_in_lottery:
-            st.markdown("---")
+        # 分隔线
+        st.markdown("---")
+    
+    # 🆕 删除原有的显示方法，因为现在统一使用 _display_single_pattern
+    def _display_traditional_patterns(self, patterns):
+        """这个方法不再使用，保留为空"""
+        pass
+    
+    def _display_pk10_patterns(self, patterns):
+        """这个方法不再使用，保留为空"""
+        pass
     
     def display_summary_statistics(self, patterns):
         """显示总体统计"""
