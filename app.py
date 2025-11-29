@@ -3076,6 +3076,12 @@ class WashTradeDetector:
         if not hasattr(self, 'df_valid') or self.df_valid is None:
             return []
         
+        # 🆕 添加调试：显示数据源的基本信息
+        st.write(f"🔍 **账户统计调试 - 数据源信息**")
+        st.write(f"df_valid 总记录数: {len(self.df_valid)}")
+        st.write(f"df_valid 唯一账户数: {self.df_valid['会员账号'].nunique()}")
+        st.write(f"df_valid 彩种分布: {self.df_valid['彩种'].value_counts().to_dict()}")
+        
         # 收集账户参与信息
         for pattern in patterns:
             group_id = f"组{len(account_participation) + 1}"
@@ -3083,7 +3089,7 @@ class WashTradeDetector:
             for account in pattern['账户组']:
                 account_info = account_participation[account]
                 account_info['groups'].add(group_id)
-                account_info['lotteries'].add(pattern['彩种'])  # 这里存储的是检测到的彩种名称
+                account_info['lotteries'].add(pattern['彩种'])
                 
                 # 收集对刷期数
                 for record in pattern['详细记录']:
@@ -3113,7 +3119,6 @@ class WashTradeDetector:
             
             for detected_lottery in info['lotteries']:
                 # 查找该账户在原始数据中对应的彩种记录
-                # 由于检测到的彩种可能是"PK10"，但原始数据中是"旧北京PK10"，我们需要模糊匹配
                 account_all_data = self.df_valid[self.df_valid['会员账号'] == account]
                 
                 # 🆕 修复：使用原始彩种列进行匹配
@@ -3131,6 +3136,14 @@ class WashTradeDetector:
                 
                 lottery_periods += account_lottery_data['期号'].nunique()
                 lottery_records += len(account_lottery_data)
+                
+                # 🆕 添加详细调试
+                st.write(f"🔍 **账户 {account} 在彩种 {detected_lottery} 的统计**")
+                st.write(f"  匹配到的记录数: {len(account_lottery_data)}")
+                st.write(f"  期数: {account_lottery_data['期号'].nunique()}")
+                if len(account_lottery_data) > 0:
+                    st.write(f"  前几条记录:")
+                    st.dataframe(account_lottery_data[['期号', '玩法', '内容', '金额']].head())
             
             stat_record = {
                 '账户': account,
@@ -3154,6 +3167,12 @@ class WashTradeDetector:
             st.warning("⚠️ '玩法分类'列不存在，跳过多方向过滤")
             return df_valid
         
+        # 🆕 添加调试：显示过滤前的数据信息
+        st.write(f"🔍 **多方向过滤调试 - 过滤前数据**")
+        st.write(f"总记录数: {len(df_valid)}")
+        st.write(f"唯一账户数: {df_valid['会员账号'].nunique()}")
+        st.write(f"彩种分布: {df_valid['彩种'].value_counts().to_dict()}")
+        
         # 🆕 修复：只排除真正的多方向下注，不排除单个位置注单
         
         # 首先，标记单个位置注单
@@ -3170,6 +3189,10 @@ class WashTradeDetector:
         single_position_data = df_valid[single_position_mask]
         other_data = df_valid[~single_position_mask]
         
+        # 🆕 调试：显示各类数据数量
+        st.write(f"单个位置注单: {len(single_position_data)} 条")
+        st.write(f"其他注单: {len(other_data)} 条")
+        
         # 对其他数据应用多方向过滤
         if len(other_data) > 0:
             # 🆕 修复：检查'投注方向'列是否存在
@@ -3179,6 +3202,9 @@ class WashTradeDetector:
                     .transform('nunique') > 1
                 )
                 other_data_filtered = other_data[~multi_direction_mask]
+                
+                # 🆕 调试：显示过滤情况
+                st.write(f"其他注单中多方向账户数: {multi_direction_mask.sum()}")
             else:
                 st.warning("⚠️ '投注方向'列不存在，跳过其他注单的多方向过滤")
                 other_data_filtered = other_data
@@ -3187,6 +3213,11 @@ class WashTradeDetector:
         
         # 合并单个位置注单和过滤后的其他数据
         df_filtered = pd.concat([single_position_data, other_data_filtered], ignore_index=True)
+        
+        # 🆕 调试：显示过滤后的数据信息
+        st.write(f"🔍 **多方向过滤调试 - 过滤后数据**")
+        st.write(f"总记录数: {len(df_filtered)}")
+        st.write(f"唯一账户数: {df_filtered['会员账号'].nunique()}")
         
         st.write(f"🔄 多方向过滤: {len(df_valid)} -> {len(df_filtered)} 条记录")
         st.write(f"   单个位置注单: {len(single_position_data)} 条")
