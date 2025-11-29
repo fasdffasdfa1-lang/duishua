@@ -1264,7 +1264,7 @@ class ContentParser:
                                 numbers.append(int(num_clean))
                     else:
                         if part_clean.isdigit():
-                            numbers.append(int(part_clean))
+                            numbers.append(int(num_clean))
                     
                     bets_by_position[position].extend(numbers)
             
@@ -1766,12 +1766,6 @@ class WashTradeDetector:
             if '玩法' in df_clean.columns:
                 df_clean['玩法分类'] = df_clean['玩法'].apply(self.play_normalizer.normalize_category)
             
-            # 🆕 调试：显示数据概览
-            st.write("🔍 数据概览调试:")
-            st.write(f"总记录数: {len(df_clean)}")
-            st.write(f"彩种类型分布: {df_clean['彩种类型'].value_counts().to_dict()}")
-            st.write(f"玩法分类分布: {df_clean['玩法分类'].value_counts().to_dict()}")
-            
             # 提取投注金额和方向
             st.info("💰 正在提取投注金额和方向...")
             
@@ -1788,10 +1782,6 @@ class WashTradeDetector:
                 ), 
                 axis=1
             )
-            
-            # 🆕 调试：显示投注方向提取结果
-            st.write("🔍 投注方向提取调试:")
-            st.write(f"投注方向分布: {df_clean['投注方向'].value_counts().head(10).to_dict()}")
             
             # 过滤有效记录
             df_valid = df_clean[
@@ -1810,20 +1800,6 @@ class WashTradeDetector:
             
             # 🆕 修复：在设置df_valid后立即计算统计信息
             self.calculate_account_total_periods_by_lottery(df_valid)
-        
-            # 🆕 调试：显示所有投注方向的详细分布
-            st.write("🔍 详细投注方向分布:")
-            direction_stats = df_clean['投注方向'].value_counts()
-            for direction, count in direction_stats.items():
-                st.write(f"  - {direction}: {count}次")
-            
-            # 🆕 调试：显示每个期号的投注方向
-            st.write("🔍 每个期号的投注方向:")
-            for period in df_clean['期号'].unique():
-                period_data = df_clean[df_clean['期号'] == period]
-                st.write(f"期号 {period}:")
-                for _, row in period_data.iterrows():
-                    st.write(f"  - 账户: {row['会员账号']}, 玩法: {row.get('玩法分类', '')}, 方向: {row['投注方向']}")
             
             return df_valid
                 
@@ -1932,24 +1908,15 @@ class WashTradeDetector:
             
             content_str = str(content).strip()
             
-            # 🆕 调试：显示原始内容
-            debug_info = f"内容: '{content_str}', 玩法分类: '{play_category}', 彩种类型: '{lottery_type}'"
-            
             # 🎯 使用增强的内容解析器提取方向
             directions = self.content_parser.enhanced_extract_directions(content_str, self.config)
             
-            # 🆕 调试：显示方向提取结果
+            # 🆕 尝试备选方案：直接提取数字
             if not directions:
-                logger.debug(f"方向提取失败: {debug_info}")
-                # 🆕 尝试备选方案：直接提取数字
                 numbers = self.content_parser.extract_all_numbers(content_str)
                 if numbers:
-                    extracted = f"数字-{numbers[0]}"
-                    logger.debug(f"数字提取成功: {debug_info} -> {extracted}")
-                    return extracted
+                    return f"数字-{numbers[0]}"
                 return ""
-            else:
-                logger.debug(f"方向提取成功: {debug_info} -> {directions}")
             
             # 🎯 从玩法分类中提取位置信息
             position = self.content_parser.extract_position_from_play_category(play_category, lottery_type, self.config)
@@ -1969,9 +1936,6 @@ class WashTradeDetector:
                     result = f"{position}-{main_direction}"
             else:
                 result = main_direction
-            
-            # 🆕 调试：显示最终结果
-            logger.debug(f"最终方向: {debug_info} -> {result}")
             
             return result
                 
@@ -2058,12 +2022,6 @@ class WashTradeDetector:
             # 计算每个账户在该彩种的记录数
             record_counts = df_lottery.groupby('会员账号').size().to_dict()
             self.account_record_stats_by_lottery[lottery] = record_counts
-            
-            # 调试信息
-            st.write(f"🎯 彩种 '{lottery}' 的账户统计:")
-            for account, periods in list(period_counts.items())[:5]:  # 显示前5个
-                records = record_counts.get(account, 0)
-                st.write(f"  - {account}: {periods}期/{records}记录")
     
     def detect_all_wash_trades(self):
         """修复的主检测方法"""
@@ -2071,20 +2029,8 @@ class WashTradeDetector:
             st.error("❌ 没有有效数据可用于检测")
             return []
         
-        # 🆕 调试：显示数据源信息
-        st.write("🔍 全面检测调试:")
-        st.write(f"df_valid 总记录数: {len(self.df_valid)}")
-        st.write(f"df_valid 彩种类型分布: {self.df_valid['彩种类型'].value_counts().to_dict()}")
-        st.write(f"df_valid 期号列表: {sorted(self.df_valid['期号'].unique().tolist())}")
-        
         # 先过滤数据 - 使用修复后的方法
         df_filtered = self.exclude_multi_direction_accounts(self.df_valid)
-        
-        # 🆕 调试：显示过滤后的数据
-        st.write(f"🔍 过滤后数据调试:")
-        st.write(f"df_filtered 总记录数: {len(df_filtered)}")
-        st.write(f"df_filtered 彩种类型分布: {df_filtered['彩种类型'].value_counts().to_dict()}")
-        st.write(f"df_filtered 期号列表: {sorted(df_filtered['期号'].unique().tolist())}")
         
         if len(df_filtered) == 0:
             st.error("❌ 过滤后无有效数据")
@@ -2158,20 +2104,11 @@ class WashTradeDetector:
                     (df_filtered['投注金额'] >= self.config.min_amount)
                 ].copy()
             
-            st.write("🔍 PK10序列检测调试:")
-            st.write(f"PK10数据量: {len(df_pk10)} 条")
-            st.write(f"所有PK10期号: {sorted(df_pk10['期号'].unique().tolist())}")
-            
             sequence_patterns = []
             
             # 按期号分组检测多种模式
             for period in sorted(df_pk10['期号'].unique()):
                 period_data = df_pk10[df_pk10['期号'] == period]
-                
-                # 🆕 调试：显示每个期号的详细信息
-                accounts = period_data['会员账号'].unique()
-                play_categories = period_data['玩法分类'].unique()
-                st.write(f"期号 {period}: {len(period_data)}条记录, 账户: {accounts}, 玩法: {play_categories}")
                 
                 # 检测1-5名和6-10名协作模式
                 patterns_1 = self._detect_1_5_6_10_collaboration(period_data, period)
@@ -2179,13 +2116,12 @@ class WashTradeDetector:
                 
                 # 🆕 专门检测十个位置全覆盖模式
                 # 只有当有单个位置投注时才检测
+                play_categories = period_data['玩法分类'].unique()
                 if any(cat in ['冠军', '亚军', '第三名', '第四名', '第五名', 
                               '第六名', '第七名', '第八名', '第九名', '第十名'] 
                        for cat in play_categories):
                     patterns_2 = self._detect_single_position_full_coverage(period_data, period)
                     sequence_patterns.extend(patterns_2)
-            
-            st.write(f"🎯 PK10序列检测: 共生成 {len(sequence_patterns)} 个单期记录")
             
             # 使用连续模式检测
             continuous_patterns = self.find_continuous_patterns_optimized(sequence_patterns)
@@ -2436,7 +2372,6 @@ class WashTradeDetector:
     def find_continuous_patterns_optimized(self, wash_records):
         """连续对刷模式检测 - 修复分组问题"""
         if not wash_records:
-            st.write("❌ 连续模式检测: 没有单期记录")
             return []
         
         account_group_patterns = defaultdict(list)
@@ -2448,9 +2383,6 @@ class WashTradeDetector:
                 account_group_key = (tuple(sorted(record['账户组'])), record['彩种'])
             
             account_group_patterns[account_group_key].append(record)
-        
-        st.write("🔍 连续模式检测调试:")
-        st.write(f"检测到 {len(account_group_patterns)} 个账户组模式")
         
         continuous_patterns = []
         
@@ -2471,17 +2403,11 @@ class WashTradeDetector:
             else:
                 continue
             
-            st.write(f"--- 检查账户组 {account_group} ---")
-            st.write(f"期号列表: {[r['期号'] for r in sorted_records]}")
-            st.write(f"记录数量: {len(sorted_records)}")
-            
             # 🎯 对于PK10序列模式，使用更灵活的最小期数要求
             if '检测类型' in records[0] and records[0]['检测类型'] == 'PK10序列位置':
                 required_min_periods = 3  # PK10序列模式至少3期
             else:
                 required_min_periods = self.get_required_min_periods(account_group, lottery)
-            
-            st.write(f"要求最小连续期数: {required_min_periods}")
             
             if len(sorted_records) >= required_min_periods:
                 total_investment = sum(r['总金额'] for r in sorted_records)
@@ -2542,11 +2468,6 @@ class WashTradeDetector:
                 }
                 
                 continuous_patterns.append(continuous_pattern)
-                st.write(f"✅ 找到连续模式: {continuous_pattern['对刷期数']}期")
-            else:
-                st.write(f"❌ 连续期数不足: {len(sorted_records)} < {required_min_periods}")
-        
-        st.write(f"📈 连续模式检测结果: {len(continuous_patterns)} 个")
         
         return continuous_patterns
 
@@ -2567,9 +2488,6 @@ class WashTradeDetector:
             content = row['内容']
             amount = row.get('投注金额', 0)
             direction = row.get('投注方向', '')
-            
-            # 🆕 调试：显示原始数据
-            st.write(f"   原始数据: 账户={account}, 玩法={play_category}, 内容={content}, 方向={direction}")
             
             # 提取位置信息
             position = self._extract_position_from_play_category(play_category)
@@ -2592,7 +2510,6 @@ class WashTradeDetector:
         # 检查账户组协作 - 只检查2个账户的情况
         all_accounts = list(account_position_bets.keys())
         if len(all_accounts) != 2:
-            st.write(f"   ❌ 期号 {period}: 账户数量不为2，实际为{len(all_accounts)}")
             return patterns
         
         # 🆕 简化：直接检查两个账户是否覆盖了十个位置且内容相同
@@ -2604,7 +2521,6 @@ class WashTradeDetector:
         
         # 检查是否覆盖了所有10个位置
         if len(account1_positions.union(account2_positions)) < 10:
-            st.write(f"   ❌ 期号 {period}: 位置覆盖不足，账户1覆盖{len(account1_positions)}个，账户2覆盖{len(account2_positions)}个，总共覆盖{len(account1_positions.union(account2_positions))}个")
             return patterns
         
         # 🆕 修复：检查投注内容是否相同
@@ -2614,7 +2530,6 @@ class WashTradeDetector:
         for position in pk10_positions:
             # 检查该位置是否被至少一个账户覆盖
             if position not in account_position_bets[account1] and position not in account_position_bets[account2]:
-                st.write(f"   ❌ 期号 {period}: 位置{position}未被任何账户覆盖")
                 all_positions_covered = False
                 break
             
@@ -2629,9 +2544,6 @@ class WashTradeDetector:
             
             # 🆕 修复：如果只有一个账户投注该位置，我们仍然可以继续
             # 只要两个账户在所有位置上的基础方向相同即可
-            
-            # 🆕 调试：显示每个位置的方向比较
-            st.write(f"   调试期号 {period} 位置 {position}: 账户1方向={account1_direction}, 账户2方向={account2_direction}")
             
             # 收集所有出现的方向
             if account1_direction:
@@ -2677,9 +2589,6 @@ class WashTradeDetector:
             }
             
             patterns.append(pattern)
-            st.write(f"✅ 期号 {period}: 发现十个位置全覆盖协作模式 - {common_direction}")
-        else:
-            st.write(f"   ❌ 期号 {period}: 所有位置覆盖检查失败，all_positions_covered={all_positions_covered}, common_directions={common_directions}")
         
         return patterns
 
@@ -2752,7 +2661,6 @@ class WashTradeDetector:
             
             result['covered'] = True
             result['patterns'].append(pattern)
-            st.write(f"✅ 期号 {period}: 发现单个位置注单全覆盖协作模式 - {common_direction}")
         
         return result
     
@@ -2799,8 +2707,6 @@ class WashTradeDetector:
         content_1_5 = self.pk10_sequence_detector._parse_pk10_content_enhanced(play_1_5)
         content_6_10 = self.pk10_sequence_detector._parse_pk10_content_enhanced(play_6_10)
         
-        st.write(f"期号 {period}: 1-5名内容='{content_1_5}', 6-10名内容='{content_6_10}'")
-        
         # 宽松的匹配条件：只要解析出的主要内容相同就认为匹配
         if content_1_5 and content_6_10 and content_1_5 == content_6_10:
             accounts_1_5 = play_1_5['会员账号'].tolist()
@@ -2827,7 +2733,6 @@ class WashTradeDetector:
                 }
                 
                 patterns.append(record)
-                st.write(f"✅ 期号 {period}: 发现1-5名和6-10名协作模式")
         
         return patterns
 
