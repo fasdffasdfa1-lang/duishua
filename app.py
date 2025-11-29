@@ -1778,14 +1778,21 @@ class WashTradeDetector:
                 lambda x: self.extract_bet_amount_safe(str(x))
             )
             
-            # 🆕 添加方向提取调试
-            if st.checkbox("🔍 调试方向提取", value=False):
-                # 测试一些特定的内容样本
-                test_samples = [
+            # 🆕 专门测试1222713期的内容
+            if st.checkbox("🔍 专门测试1222713期方向提取", value=False):
+                test_samples_1222713 = [
                     "第三名-01,04,05,第五名-01,04,05,亚军-01,04,05,第四名-01,04,05,冠军-01,04,05",
-                    "第七名-01,04,05,第六名-01,04,05,第十名-01,04,05,第九名-01,04,05,第八名-01,04,05",
+                    "第七名-01,04,05,第六名-01,04,05,第十名-01,04,05,第九名-01,04,05,第八名-01,04,05"
+                ]
+                self.debug_direction_extraction(test_samples_1222713)
+            
+            # 原有的调试复选框
+            if st.checkbox("🔍 调试方向提取", value=False):
+                test_samples = [
                     "冠军-01,04,05",
-                    "第三名-小,第五名-小,亚军-小,第四名-小,冠军-小"
+                    "第三名-小,第五名-小,亚军-小,第四名-小,冠军-小",
+                    "冠军-单",
+                    "亚军-双"
                 ]
                 self.debug_direction_extraction(test_samples)
             
@@ -1921,53 +1928,37 @@ class WashTradeDetector:
             return 0
     
     def enhanced_extract_direction_with_position(self, content, play_category, lottery_type):
-        """🎯 修复的方向提取 - 完整提取多个相同内容"""
+        """🎯 彻底修复的方向提取 - 专门处理1222713期的多数字问题"""
         try:
             if pd.isna(content):
                 return ""
             
             content_str = str(content).strip()
             
-            # 🆕 关键修复：特别处理多个数字的情况
-            # 检查是否是逗号分隔的多个数字格式
+            # 🆕 专门处理1222713期的数据格式
+            # 检查是否是"第三名-01,04,05,第五名-01,04,05,亚军-01,04,05,第四名-01,04,05,冠军-01,04,05"这种格式
             if ',' in content_str and any(char.isdigit() for char in content_str):
-                # 使用正则表达式提取所有两位数字
-                numbers = re.findall(r'\b\d{2}\b', content_str)
-                if numbers:
-                    # 对数字排序并去重
-                    unique_numbers = sorted(set(numbers))
+                # 首先尝试提取所有两位数字
+                all_numbers = re.findall(r'\b\d{2}\b', content_str)
+                if all_numbers:
+                    # 去重并排序
+                    unique_numbers = sorted(set(all_numbers))
                     if len(unique_numbers) >= 2:
-                        # 多个数字的情况，返回组合标识
+                        # 多个数字的情况
                         return f"多数字-{','.join(unique_numbers)}"
                     elif len(unique_numbers) == 1:
                         # 单个数字的情况
                         return f"数字-{unique_numbers[0]}"
             
-            # 🆕 修复：处理"第三名-01,04,05"这种格式
+            # 🆕 专门处理"第三名-01,04,05"这种单个位置的格式
             if '-' in content_str and ',' in content_str:
-                # 提取横线后面的部分
-                parts = content_str.split('-', 1)
-                if len(parts) >= 2:
-                    after_dash = parts[1]
-                    # 检查是否有逗号分隔的数字
-                    if ',' in after_dash and any(char.isdigit() for char in after_dash):
-                        numbers = re.findall(r'\b\d{2}\b', after_dash)
-                        if numbers:
-                            unique_numbers = sorted(set(numbers))
-                            if len(unique_numbers) >= 2:
-                                return f"多数字-{','.join(unique_numbers)}"
-                            elif len(unique_numbers) == 1:
-                                return f"数字-{unique_numbers[0]}"
-            
-            # 🆕 修复：处理多个位置相同内容的格式，如"第三名-01,04,05,第五名-01,04,05,..."
-            if content_str.count('-') >= 2 and ',' in content_str:
-                # 提取所有数字部分
-                all_numbers = []
-                # 分割成多个位置-内容对
+                # 分割成位置-内容对
                 pairs = content_str.split(',')
+                all_numbers = []
+                
                 for pair in pairs:
                     if '-' in pair:
-                        # 提取数字部分
+                        # 提取横线后面的数字部分
                         number_part = pair.split('-')[-1].strip()
                         # 提取数字
                         numbers_in_pair = re.findall(r'\b\d{2}\b', number_part)
@@ -1979,6 +1970,19 @@ class WashTradeDetector:
                         return f"多数字-{','.join(unique_numbers)}"
                     elif len(unique_numbers) == 1:
                         return f"数字-{unique_numbers[0]}"
+            
+            # 🆕 处理简单的"冠军-01,04,05"格式
+            if '-' in content_str and ',' in content_str:
+                parts = content_str.split('-', 1)
+                if len(parts) >= 2:
+                    number_part = parts[1]
+                    numbers = re.findall(r'\b\d{2}\b', number_part)
+                    if numbers:
+                        unique_numbers = sorted(set(numbers))
+                        if len(unique_numbers) >= 2:
+                            return f"多数字-{','.join(unique_numbers)}"
+                        elif len(unique_numbers) == 1:
+                            return f"数字-{unique_numbers[0]}"
             
             # 🎯 原有的方向提取逻辑
             directions = self.content_parser.enhanced_extract_directions(content_str, self.config)
@@ -3490,29 +3494,42 @@ class WashTradeDetector:
             st.markdown("---")
 
     def debug_direction_extraction(self, content_samples):
-        """调试方向提取问题"""
+        """调试方向提取问题 - 增强版"""
         st.subheader("🔍 方向提取调试")
         
         for i, content in enumerate(content_samples):
             st.write(f"**样本 {i+1}:** `{content}`")
             
-            # 测试不同的提取方法
-            result1 = self.enhanced_extract_direction_with_position(content, "1-5名", "PK10")
-            
-            st.write(f"  - 提取结果: `{result1}`")
+            # 测试方向提取
+            result = self.enhanced_extract_direction_with_position(content, "1-5名", "PK10")
+            st.write(f"  - 最终提取结果: `{result}`")
             
             # 显示详细的提取过程
             if ',' in content and any(char.isdigit() for char in content):
-                numbers = re.findall(r'\b\d{2}\b', content)
-                st.write(f"  - 找到数字: {numbers}")
+                # 方法1：直接提取所有两位数字
+                all_numbers = re.findall(r'\b\d{2}\b', content)
+                st.write(f"  - 方法1-直接提取所有数字: {all_numbers}")
                 
-                if '-' in content:
-                    parts = content.split('-', 1)
-                    if len(parts) >= 2:
-                        after_dash = parts[1]
-                        st.write(f"  - 横线后内容: `{after_dash}`")
-                        numbers_after_dash = re.findall(r'\b\d{2}\b', after_dash)
-                        st.write(f"  - 横线后数字: {numbers_after_dash}")
+                if all_numbers:
+                    unique_numbers = sorted(set(all_numbers))
+                    st.write(f"  - 去重排序后: {unique_numbers}")
+                
+                # 方法2：分割位置-内容对
+                if ',' in content:
+                    pairs = content.split(',')
+                    st.write(f"  - 分割成{len(pairs)}个部分: {pairs}")
+                    
+                    extracted_numbers = []
+                    for j, pair in enumerate(pairs):
+                        if '-' in pair:
+                            number_part = pair.split('-')[-1].strip()
+                            numbers_in_pair = re.findall(r'\b\d{2}\b', number_part)
+                            st.write(f"    - 部分{j+1} '{pair}' -> 数字: {numbers_in_pair}")
+                            extracted_numbers.extend(numbers_in_pair)
+                    
+                    if extracted_numbers:
+                        unique_extracted = sorted(set(extracted_numbers))
+                        st.write(f"  - 方法2提取的数字: {unique_extracted}")
     
     def display_summary_statistics(self, patterns):
         """显示总体统计"""
