@@ -1811,15 +1811,19 @@ class WashTradeDetector:
             # 🆕 修复：在设置df_valid后立即计算统计信息
             self.calculate_account_total_periods_by_lottery(df_valid)
         
-            # 🆕 调试：显示PK10数据的详细信息
-            if '彩种类型' in df_valid.columns:
-                df_pk10 = df_valid[df_valid['彩种类型'] == 'PK10']
-                if len(df_pk10) > 0:
-                    st.write("🔍 PK10数据详细分析:")
-                    st.write(f"PK10总记录数: {len(df_pk10)}")
-                    st.write(f"PK10期号分布: {df_pk10['期号'].value_counts().to_dict()}")
-                    st.write(f"PK10玩法分类分布: {df_pk10['玩法分类'].value_counts().to_dict()}")
-                    st.write(f"PK10账户分布: {df_pk10['会员账号'].value_counts().to_dict()}")
+            # 🆕 调试：显示所有投注方向的详细分布
+            st.write("🔍 详细投注方向分布:")
+            direction_stats = df_clean['投注方向'].value_counts()
+            for direction, count in direction_stats.items():
+                st.write(f"  - {direction}: {count}次")
+            
+            # 🆕 调试：显示每个期号的投注方向
+            st.write("🔍 每个期号的投注方向:")
+            for period in df_clean['期号'].unique():
+                period_data = df_clean[df_clean['期号'] == period]
+                st.write(f"期号 {period}:")
+                for _, row in period_data.iterrows():
+                    st.write(f"  - 账户: {row['会员账号']}, 玩法: {row.get('玩法分类', '')}, 方向: {row['投注方向']}")
             
             return df_valid
                 
@@ -1937,15 +1941,15 @@ class WashTradeDetector:
             # 🆕 调试：显示方向提取结果
             if not directions:
                 logger.debug(f"方向提取失败: {debug_info}")
-            else:
-                logger.debug(f"方向提取成功: {debug_info} -> {directions}")
-            
-            if not directions:
                 # 🆕 尝试备选方案：直接提取数字
                 numbers = self.content_parser.extract_all_numbers(content_str)
                 if numbers:
-                    return f"数字-{numbers[0]}"
+                    extracted = f"数字-{numbers[0]}"
+                    logger.debug(f"数字提取成功: {debug_info} -> {extracted}")
+                    return extracted
                 return ""
+            else:
+                logger.debug(f"方向提取成功: {debug_info} -> {directions}")
             
             # 🎯 从玩法分类中提取位置信息
             position = self.content_parser.extract_position_from_play_category(play_category, lottery_type, self.config)
@@ -1960,11 +1964,16 @@ class WashTradeDetector:
             if position and position != '未知位置':
                 # 对于数字投注，统一格式为"位置-数字-X"
                 if main_direction.startswith('数字-'):
-                    return f"{position}-{main_direction}"
+                    result = f"{position}-{main_direction}"
                 else:
-                    return f"{position}-{main_direction}"
+                    result = f"{position}-{main_direction}"
             else:
-                return main_direction
+                result = main_direction
+            
+            # 🆕 调试：显示最终结果
+            logger.debug(f"最终方向: {debug_info} -> {result}")
+            
+            return result
                 
         except Exception as e:
             logger.warning(f"方向提取失败: {content}, 错误: {e}")
@@ -2560,6 +2569,9 @@ class WashTradeDetector:
             amount = row.get('投注金额', 0)
             direction = row.get('投注方向', '')
             
+            # 🆕 调试：显示原始数据
+            st.write(f"   原始数据: 账户={account}, 玩法={play_category}, 内容={content}, 方向={direction}")
+            
             # 提取位置信息
             position = self._extract_position_from_play_category(play_category)
             if position not in pk10_positions:
@@ -2601,6 +2613,7 @@ class WashTradeDetector:
         all_positions_covered = True
         
         for position in pk10_positions:
+            # 检查该位置是否被至少一个账户覆盖
             if position not in account_position_bets[account1] and position not in account_position_bets[account2]:
                 st.write(f"   ❌ 期号 {period}: 位置{position}未被任何账户覆盖")
                 all_positions_covered = False
@@ -2615,23 +2628,19 @@ class WashTradeDetector:
             if position in account_position_bets[account2]:
                 account2_direction = account_position_bets[account2][position][0]['direction']
             
+            # 🆕 修复：如果只有一个账户投注该位置，我们仍然可以继续
+            # 只要两个账户在所有位置上的基础方向相同即可
+            
             # 🆕 调试：显示每个位置的方向比较
             st.write(f"   调试期号 {period} 位置 {position}: 账户1方向={account1_direction}, 账户2方向={account2_direction}")
             
-            # 检查方向是否相同
-            if account1_direction and account2_direction and account1_direction == account2_direction:
+            # 收集所有出现的方向
+            if account1_direction:
                 common_directions.add(account1_direction)
-            elif account1_direction and account2_direction:
-                # 方向不同，不符合条件
-                st.write(f"   ❌ 期号 {period}: 位置{position}方向不同，账户1为{account1_direction}，账户2为{account2_direction}")
-                all_positions_covered = False
-                break
-            elif not account1_direction and not account2_direction:
-                st.write(f"   ❌ 期号 {period}: 位置{position}两个账户都没有方向")
-                all_positions_covered = False
-                break
+            if account2_direction:
+                common_directions.add(account2_direction)
         
-        # 如果所有位置都被覆盖且方向相同
+        # 🆕 修复：如果所有位置都被覆盖且只有一个共同方向
         if all_positions_covered and len(common_directions) == 1:
             common_direction = list(common_directions)[0]
             
