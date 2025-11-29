@@ -2068,7 +2068,7 @@ class WashTradeDetector:
         st.write(f"df_valid 彩种类型分布: {self.df_valid['彩种类型'].value_counts().to_dict()}")
         st.write(f"df_valid 期号列表: {sorted(self.df_valid['期号'].unique().tolist())}")
         
-        # 先过滤数据
+        # 先过滤数据 - 使用修复后的方法
         df_filtered = self.exclude_multi_direction_accounts(self.df_valid)
         
         # 🆕 调试：显示过滤后的数据
@@ -2565,21 +2565,23 @@ class WashTradeDetector:
             if position not in pk10_positions:
                 continue
             
-            # 提取投注内容 - 简化处理，直接使用投注方向
-            bet_content = direction
-            if not bet_content:
-                continue
+            # 🆕 修复：提取基础方向（去掉位置前缀）
+            base_direction = direction
+            if '-' in direction:
+                base_direction = direction.split('-')[-1]
             
             account_position_bets[account][position].append({
-                'content': bet_content,
+                'content': base_direction,
                 'amount': amount,
-                'direction': direction,
+                'direction': base_direction,
+                'original_direction': direction,
                 'original_content': content
             })
         
         # 检查账户组协作 - 只检查2个账户的情况
         all_accounts = list(account_position_bets.keys())
         if len(all_accounts) != 2:
+            st.write(f"   ❌ 期号 {period}: 账户数量不为2，实际为{len(all_accounts)}")
             return patterns
         
         # 🆕 简化：直接检查两个账户是否覆盖了十个位置且内容相同
@@ -2590,7 +2592,8 @@ class WashTradeDetector:
         account2_positions = set(account_position_bets[account2].keys())
         
         # 检查是否覆盖了所有10个位置
-        if len(account1_positions) + len(account2_positions) < 10:
+        if len(account1_positions.union(account2_positions)) < 10:
+            st.write(f"   ❌ 期号 {period}: 位置覆盖不足，账户1覆盖{len(account1_positions)}个，账户2覆盖{len(account2_positions)}个，总共覆盖{len(account1_positions.union(account2_positions))}个")
             return patterns
         
         # 🆕 修复：检查投注内容是否相同
@@ -2599,6 +2602,7 @@ class WashTradeDetector:
         
         for position in pk10_positions:
             if position not in account_position_bets[account1] and position not in account_position_bets[account2]:
+                st.write(f"   ❌ 期号 {period}: 位置{position}未被任何账户覆盖")
                 all_positions_covered = False
                 break
             
@@ -2611,17 +2615,19 @@ class WashTradeDetector:
             if position in account_position_bets[account2]:
                 account2_direction = account_position_bets[account2][position][0]['direction']
             
-            # 提取基础方向（去掉位置前缀）
-            if account1_direction:
-                account1_base = account1_direction.split('-')[-1] if '-' in account1_direction else account1_direction
-            if account2_direction:
-                account2_base = account2_direction.split('-')[-1] if '-' in account2_direction else account2_direction
+            # 🆕 调试：显示每个位置的方向比较
+            st.write(f"   调试期号 {period} 位置 {position}: 账户1方向={account1_direction}, 账户2方向={account2_direction}")
             
             # 检查方向是否相同
-            if account1_direction and account2_direction and account1_base == account2_base:
-                common_directions.add(account1_base)
+            if account1_direction and account2_direction and account1_direction == account2_direction:
+                common_directions.add(account1_direction)
             elif account1_direction and account2_direction:
                 # 方向不同，不符合条件
+                st.write(f"   ❌ 期号 {period}: 位置{position}方向不同，账户1为{account1_direction}，账户2为{account2_direction}")
+                all_positions_covered = False
+                break
+            elif not account1_direction and not account2_direction:
+                st.write(f"   ❌ 期号 {period}: 位置{position}两个账户都没有方向")
                 all_positions_covered = False
                 break
         
@@ -2664,6 +2670,8 @@ class WashTradeDetector:
             
             patterns.append(pattern)
             st.write(f"✅ 期号 {period}: 发现十个位置全覆盖协作模式 - {common_direction}")
+        else:
+            st.write(f"   ❌ 期号 {period}: 所有位置覆盖检查失败，all_positions_covered={all_positions_covered}, common_directions={common_directions}")
         
         return patterns
 
@@ -3013,13 +3021,39 @@ class WashTradeDetector:
         return sorted(account_stats, key=lambda x: x['参与组合数'], reverse=True)
 
     def exclude_multi_direction_accounts(self, df_valid):
-        """排除同一账户多方向下注"""
-        multi_direction_mask = (
-            df_valid.groupby(['期号', '会员账号'])['投注方向']
-            .transform('nunique') > 1
-        )
+        """排除同一账户多方向下注 - 修复版本，不排除单个位置注单"""
+        # 🆕 修复：只排除真正的多方向下注，不排除单个位置注单
         
-        df_filtered = df_valid[~multi_direction_mask].copy()
+        # 首先，标记单个位置注单
+        pk10_positions = ['冠军', '亚军', '第三名', '第四名', '第五名', 
+                         '第六名', '第七名', '第八名', '第九名', '第十名']
+        
+        # 识别单个位置注单
+        single_position_mask = df_valid['玩法分类'].isin(pk10_positions)
+        
+        # 对于单个位置注单，我们允许同一账户在同一期号有多个方向（因为这是位置分工）
+        # 对于其他类型的注单，保持原有的多方向过滤
+        
+        # 分离单个位置注单和其他注单
+        single_position_data = df_valid[single_position_mask]
+        other_data = df_valid[~single_position_mask]
+        
+        # 对其他数据应用多方向过滤
+        if len(other_data) > 0:
+            multi_direction_mask = (
+                other_data.groupby(['期号', '会员账号'])['投注方向']
+                .transform('nunique') > 1
+            )
+            other_data_filtered = other_data[~multi_direction_mask]
+        else:
+            other_data_filtered = other_data
+        
+        # 合并单个位置注单和过滤后的其他数据
+        df_filtered = pd.concat([single_position_data, other_data_filtered], ignore_index=True)
+        
+        st.write(f"🔄 多方向过滤: {len(df_valid)} -> {len(df_filtered)} 条记录")
+        st.write(f"   单个位置注单: {len(single_position_data)} 条")
+        st.write(f"   其他注单过滤后: {len(other_data_filtered)} 条")
         
         return df_filtered
     
