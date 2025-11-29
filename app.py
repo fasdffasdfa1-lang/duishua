@@ -2062,8 +2062,20 @@ class WashTradeDetector:
             st.error("❌ 没有有效数据可用于检测")
             return []
         
+        # 🆕 调试：显示数据源信息
+        st.write("🔍 全面检测调试:")
+        st.write(f"df_valid 总记录数: {len(self.df_valid)}")
+        st.write(f"df_valid 彩种类型分布: {self.df_valid['彩种类型'].value_counts().to_dict()}")
+        st.write(f"df_valid 期号列表: {sorted(self.df_valid['期号'].unique().tolist())}")
+        
         # 先过滤数据
         df_filtered = self.exclude_multi_direction_accounts(self.df_valid)
+        
+        # 🆕 调试：显示过滤后的数据
+        st.write(f"🔍 过滤后数据调试:")
+        st.write(f"df_filtered 总记录数: {len(df_filtered)}")
+        st.write(f"df_filtered 彩种类型分布: {df_filtered['彩种类型'].value_counts().to_dict()}")
+        st.write(f"df_filtered 期号列表: {sorted(df_filtered['期号'].unique().tolist())}")
         
         if len(df_filtered) == 0:
             st.error("❌ 过滤后无有效数据")
@@ -2123,17 +2135,19 @@ class WashTradeDetector:
         return self.find_continuous_patterns_optimized(wash_records)
 
     def detect_pk10_sequence_patterns(self, df_filtered):
-        """PK10序列位置模式检测 - 专门修复十个位置协同"""
+        """PK10序列位置模式检测 - 修复数据源问题"""
         try:
-            # 过滤PK10数据
-            df_pk10 = df_filtered[
-                (df_filtered['彩种类型'] == 'PK10') & 
-                (df_filtered['投注金额'] >= self.config.min_amount)
-            ].copy()
-            
-            if len(df_pk10) == 0:
-                st.write("❌ PK10序列检测: 没有PK10数据")
-                return []
+            # 🆕 修复：使用原始有效数据而不是过滤后的数据
+            if hasattr(self, 'df_valid') and self.df_valid is not None:
+                df_pk10 = self.df_valid[
+                    (self.df_valid['彩种类型'] == 'PK10') & 
+                    (self.df_valid['投注金额'] >= self.config.min_amount)
+                ].copy()
+            else:
+                df_pk10 = df_filtered[
+                    (df_filtered['彩种类型'] == 'PK10') & 
+                    (df_filtered['投注金额'] >= self.config.min_amount)
+                ].copy()
             
             st.write("🔍 PK10序列检测调试:")
             st.write(f"PK10数据量: {len(df_pk10)} 条")
@@ -2529,7 +2543,7 @@ class WashTradeDetector:
         return continuous_patterns
 
     def _detect_single_position_full_coverage(self, period_data, period):
-        """专门检测十个位置协同对刷模式 - 修复版本"""
+        """专门检测十个位置协同对刷模式 - 修复方向比较"""
         patterns = []
         
         # PK10十个位置
@@ -2579,22 +2593,40 @@ class WashTradeDetector:
         if len(account1_positions) + len(account2_positions) < 10:
             return patterns
         
-        # 检查投注内容是否相同
+        # 🆕 修复：检查投注内容是否相同
         common_directions = set()
-        for position in pk10_positions:
-            if position in account_position_bets[account1] and position in account_position_bets[account2]:
-                account1_direction = account_position_bets[account1][position][0]['direction']
-                account2_direction = account_position_bets[account2][position][0]['direction']
-                
-                # 提取基础方向（去掉位置前缀）
-                account1_base_direction = account1_direction.split('-')[-1] if '-' in account1_direction else account1_direction
-                account2_base_direction = account2_direction.split('-')[-1] if '-' in account2_direction else account2_direction
-                
-                if account1_base_direction == account2_base_direction:
-                    common_directions.add(account1_base_direction)
+        all_positions_covered = True
         
-        # 如果所有位置的方向都相同
-        if len(common_directions) == 1:
+        for position in pk10_positions:
+            if position not in account_position_bets[account1] and position not in account_position_bets[account2]:
+                all_positions_covered = False
+                break
+            
+            # 获取两个账户在该位置的投注方向
+            account1_direction = None
+            account2_direction = None
+            
+            if position in account_position_bets[account1]:
+                account1_direction = account_position_bets[account1][position][0]['direction']
+            if position in account_position_bets[account2]:
+                account2_direction = account_position_bets[account2][position][0]['direction']
+            
+            # 提取基础方向（去掉位置前缀）
+            if account1_direction:
+                account1_base = account1_direction.split('-')[-1] if '-' in account1_direction else account1_direction
+            if account2_direction:
+                account2_base = account2_direction.split('-')[-1] if '-' in account2_direction else account2_direction
+            
+            # 检查方向是否相同
+            if account1_direction and account2_direction and account1_base == account2_base:
+                common_directions.add(account1_base)
+            elif account1_direction and account2_direction:
+                # 方向不同，不符合条件
+                all_positions_covered = False
+                break
+        
+        # 如果所有位置都被覆盖且方向相同
+        if all_positions_covered and len(common_directions) == 1:
             common_direction = list(common_directions)[0]
             
             # 计算总金额
