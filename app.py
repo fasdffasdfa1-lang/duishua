@@ -2852,7 +2852,7 @@ class WashTradeDetector:
                 st.markdown("---")
 
     def _calculate_detailed_account_stats(self, patterns):
-        """计算详细账户统计 - 修复显示问题"""
+        """计算详细账户统计 - 移除重复的实际对刷记录列"""
         account_participation = defaultdict(lambda: {
             'groups': set(),  # 参与的对刷组
             'lotteries': set(),  # 涉及的彩种
@@ -2860,7 +2860,6 @@ class WashTradeDetector:
             'total_bet_amount': 0,  # 总投注金额
             'lottery_total_periods': 0,  # 彩种总投注期数
             'lottery_total_records': 0,  # 彩种总记录数
-            'wash_records_count': 0  # 对刷记录数
         })
         
         # 🆕 步骤1: 从对刷模式中收集账户参与信息
@@ -2872,10 +2871,9 @@ class WashTradeDetector:
                 account_info['groups'].add(group_id)
                 account_info['lotteries'].add(pattern['彩种'])
                 
-                # 收集对刷期数和记录
+                # 收集对刷期数
                 for record in pattern['详细记录']:
                     account_info['wash_periods'].add(record['期号'])
-                    account_info['wash_records_count'] += 1
                 
                 # 计算该账户在对刷模式中的实际投注金额
                 pattern_bet_amount = 0
@@ -2915,9 +2913,6 @@ class WashTradeDetector:
             # 实际对刷期数
             wash_periods_count = len(info['wash_periods'])
             
-            # 实际对刷记录数
-            wash_records_count = info['wash_records_count']
-            
             # 总投注金额
             total_bet_amount = info['total_bet_amount']
             
@@ -2930,7 +2925,6 @@ class WashTradeDetector:
                 '涉及彩种': lotteries_count,
                 '彩种总投注期数': lottery_periods,
                 '实际对刷期数': wash_periods_count,
-                '实际对刷记录': wash_records_count,
                 '总投注金额': total_bet_amount,
                 '平均每期金额': avg_period_amount
             }
@@ -3182,7 +3176,6 @@ class WashTradeDetector:
             df_stats['总投注金额'] = df_stats['总投注金额'].apply(lambda x: f"¥{x:,.2f}")
             df_stats['平均每期金额'] = df_stats['平均每期金额'].apply(lambda x: f"¥{x:,.2f}")
             
-            # 🆕 显示所有列，不进行重命名（因为列名已经是中文）
             st.dataframe(
                 df_stats,
                 use_container_width=True,
