@@ -690,7 +690,7 @@ class PlayCategoryNormalizer:
             '连肖': '连肖', '连尾': '连尾', '龙虎': '龙虎', '五行': '五行',
             '色波': '色波', '半波': '半波', '天肖': '天肖', '地肖': '地肖',
             '家肖': '家肖', '野肖': '野肖',
-
+    
             # 🆕 增强六合彩玩法映射
             '正1特': '正1特', '正码特_正一特': '正1特', '正码特-正一特': '正1特',
             '正2特': '正2特', '正码特_正二特': '正2特', '正码特-正二特': '正2特',
@@ -717,12 +717,15 @@ class PlayCategoryNormalizer:
             '第3球': '第3球', '第4球': '第4球', '第5球': '第5球', '总和': '总和',
             '正码': '正码', '定位胆': '定位胆',
             
-            # PK拾/赛车玩法
+            # PK拾/赛车玩法 - 🆕 修复位置映射
             '前一': '冠军', '定位胆': '定位胆', '1-5名': '1-5名', '6-10名': '6-10名',
             '冠军': '冠军', '亚军': '亚军', '季军': '第三名', '第3名': '第三名',
-            '第4名': '第四名', '第5名': '第五名', '第6名': '第六名',
-            '第7名': '第七名', '第8名': '第八名', '第9名': '第九名',
-            '第10名': '第十名', '双面': '两面', '冠亚和': '冠亚和',
+            '第三名': '第三名', '第4名': '第四名', '第四名': '第四名',
+            '第5名': '第五名', '第五名': '第五名', '第6名': '第六名', '第六名': '第六名',
+            '第7名': '第七名', '第七名': '第七名', '第8名': '第八名', '第八名': '第八名',
+            '第9名': '第九名', '第九名': '第九名', '第10名': '第十名', '第十名': '第十名',
+            '双面': '两面', '冠亚和': '冠亚和',
+            
             # 🆕 新增PK10玩法分类映射
             '1-5名': '1-5名',
             '6-10名': '6-10名', 
@@ -753,28 +756,26 @@ class PlayCategoryNormalizer:
         # 智能匹配
         category_lower = category_str.lower()
         
-        # PK10/赛车智能匹配
-        if any(word in category_lower for word in ['冠军', '第一名', '第1名', '1st']):
-            return '冠军'
-        elif any(word in category_lower for word in ['亚军', '第二名', '第2名', '2nd']):
-            return '亚军'
-        elif any(word in category_lower for word in ['第三名', '第3名', '季军', '3rd']):
-            return '第三名'
-        elif any(word in category_lower for word in ['第四名', '第4名', '4th']):
-            return '第四名'
-        elif any(word in category_lower for word in ['第五名', '第5名', '5th']):
-            return '第五名'
-        elif any(word in category_lower for word in ['第六名', '第6名', '6th']):
-            return '第六名'
-        elif any(word in category_lower for word in ['第七名', '第7名', '7th']):
-            return '第七名'
-        elif any(word in category_lower for word in ['第八名', '第8名', '8th']):
-            return '第八名'
-        elif any(word in category_lower for word in ['第九名', '第9名', '9th']):
-            return '第九名'
-        elif any(word in category_lower for word in ['第十名', '第10名', '10th']):
-            return '第十名'
+        # 🆕 增强PK10/赛车智能匹配
+        pk10_position_mapping = {
+            '冠军': ['冠军', '第一名', '第1名', '1st', '前一'],
+            '亚军': ['亚军', '第二名', '第2名', '2nd', '前二'], 
+            '第三名': ['第三名', '第3名', '季军', '3rd', '前三'],
+            '第四名': ['第四名', '第4名', '4th', '前四'],
+            '第五名': ['第五名', '第5名', '5th', '前五'],
+            '第六名': ['第六名', '第6名', '6th'],
+            '第七名': ['第七名', '第7名', '7th'],
+            '第八名': ['第八名', '第8名', '8th'],
+            '第九名': ['第九名', '第9名', '9th'],
+            '第十名': ['第十名', '第10名', '10th']
+        }
         
+        for position, keywords in pk10_position_mapping.items():
+            for keyword in keywords:
+                if keyword in category_lower:
+                    return position
+        
+        # 原有的其他匹配逻辑保持不变...
         # 3D系列智能匹配
         elif any(word in category_lower for word in ['百位']):
             return '百位'
@@ -2085,17 +2086,23 @@ class WashTradeDetector:
             st.write("🔍 PK10序列检测调试:")
             st.write(f"PK10数据量: {len(df_pk10)} 条")
             
+            # 🆕 调试：显示所有期号
+            st.write(f"所有PK10期号: {df_pk10['期号'].unique().tolist()}")
+            
             sequence_patterns = []
             
             # 按期号分组检测多种模式
             for period in df_pk10['期号'].unique():
                 period_data = df_pk10[df_pk10['期号'] == period]
                 
-                # 🆕 检测1-5名和6-10名协作模式
+                # 🆕 调试：显示每个期号的数据
+                st.write(f"期号 {period}: {len(period_data)} 条记录")
+                
+                # 检测1-5名和6-10名协作模式
                 patterns_1 = self._detect_1_5_6_10_collaboration(period_data, period)
                 sequence_patterns.extend(patterns_1)
                 
-                # 🆕 检测单个位置注单全覆盖模式（使用修复后的方法）
+                # 🆕 检测单个位置注单全覆盖模式
                 patterns_2 = self._detect_single_position_full_coverage(period_data, period)
                 sequence_patterns.extend(patterns_2)
             
@@ -2483,15 +2490,16 @@ class WashTradeDetector:
             amount = row.get('投注金额', 0)
             direction = row.get('投注方向', '')
             
-            # 提取位置信息
+            # 🆕 修复：使用修复的位置提取方法
             position = self._extract_position_from_play_category(play_category)
             if position not in pk10_positions:
                 continue
             
-            # 提取投注内容
+            # 🆕 修复：提取投注内容
             bet_content = self.extract_pk10_bet_content(content, play_category)
             if not bet_content:
-                continue
+                # 如果提取失败，使用投注方向
+                bet_content = direction
             
             account_position_bets[account][position].append({
                 'content': bet_content,
@@ -2504,6 +2512,12 @@ class WashTradeDetector:
         all_accounts = list(account_position_bets.keys())
         if len(all_accounts) < 2:
             return patterns
+        
+        # 🆕 调试信息
+        st.write(f"🔍 期号 {period}: 检测单个位置全覆盖模式")
+        st.write(f"  账户: {all_accounts}")
+        for account in all_accounts:
+            st.write(f"  {account} 投注位置: {list(account_position_bets[account].keys())}")
         
         # 检查2个账户组合
         for account1, account2 in combinations(all_accounts, 2):
@@ -2589,13 +2603,15 @@ class WashTradeDetector:
         return result
     
     def _extract_position_from_play_category(self, play_category):
-        """从玩法分类中提取位置信息"""
+        """从玩法分类中提取位置信息 - 修复版本"""
         play_str = str(play_category).strip()
         
+        # 🆕 修复：增强位置映射
         position_mapping = {
             '冠军': '冠军',
             '亚军': '亚军', 
             '第三名': '第三名',
+            '季军': '第三名',
             '第3名': '第三名',
             '第四名': '第四名',
             '第4名': '第四名',
@@ -2610,7 +2626,9 @@ class WashTradeDetector:
             '第九名': '第九名',
             '第9名': '第九名',
             '第十名': '第十名',
-            '第10名': '第十名'
+            '第10名': '第十名',
+            '1-5名': '1-5名',
+            '6-10名': '6-10名'
         }
         
         return position_mapping.get(play_str, play_str)
