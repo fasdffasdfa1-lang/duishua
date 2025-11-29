@@ -2852,55 +2852,30 @@ class WashTradeDetector:
                 st.markdown("---")
 
     def _calculate_detailed_account_stats(self, patterns):
-        """计算详细账户统计 - 修复期数统计"""
+        """计算详细账户统计 - 修正列名和内容"""
         account_participation = defaultdict(lambda: {
-            'periods': set(),
-            'lotteries': set(),
-            'positions': set(),
-            'total_combinations': 0,
-            'total_bet_amount': 0,
-            'continuous_periods': 0,
-            'actual_bet_records': []
+            'groups': set(),  # 参与的对刷组
+            'lotteries': set(),  # 涉及的彩种
+            'wash_periods': set(),  # 对刷期数
+            'total_bet_amount': 0,  # 总投注金额
+            'lottery_total_periods': defaultdict(int),  # 各彩种总投注期数
+            'lottery_total_records': defaultdict(int),  # 各彩种总记录数
+            'wash_records_count': 0  # 对刷记录数
         })
         
-        # 🆕 修复：从有效数据中收集账户的实际投注信息
-        if self.df_valid is not None:
-            for _, row in self.df_valid.iterrows():
-                account = row['会员账号']
-                amount = row['投注金额']
-                period = row['期号']
-                lottery = row['彩种'] if '彩种' in row else '未知'
-                
-                account_info = account_participation[account]
-                account_info['actual_bet_records'].append({
-                    'amount': amount,
-                    'period': period,
-                    'lottery': lottery
-                })
-                account_info['periods'].add(period)
-                account_info['lotteries'].add(lottery)
-        
-        # 收集账户参与信息
+        # 🆕 步骤1: 从对刷模式中收集账户参与信息
         for pattern in patterns:
+            group_id = f"组{patterns.index(pattern) + 1}"
+            
             for account in pattern['账户组']:
                 account_info = account_participation[account]
-                
-                # 添加期号
-                for record in pattern['详细记录']:
-                    account_info['periods'].add(record['期号'])
-                
-                # 添加彩种
+                account_info['groups'].add(group_id)
                 account_info['lotteries'].add(pattern['彩种'])
                 
-                # 添加位置信息
+                # 收集对刷期数和记录
                 for record in pattern['详细记录']:
-                    for direction in record['方向组']:
-                        if '-' in direction:
-                            position = direction.split('-')[0]
-                            account_info['positions'].add(position)
-                
-                account_info['total_combinations'] += 1
-                account_info['continuous_periods'] = max(account_info['continuous_periods'], pattern['对刷期数'])
+                    account_info['wash_periods'].add(record['期号'])
+                    account_info['wash_records_count'] += 1
                 
                 # 计算该账户在对刷模式中的实际投注金额
                 pattern_bet_amount = 0
@@ -2911,26 +2886,56 @@ class WashTradeDetector:
                 
                 account_info['total_bet_amount'] += pattern_bet_amount
         
-        # 转换为显示格式
+        # 🆕 步骤2: 从有效数据中获取各彩种的实际统计信息
+        if hasattr(self, 'df_valid') and self.df_valid is not None:
+            for account in account_participation.keys():
+                account_data = self.df_valid[self.df_valid['会员账号'] == account]
+                
+                # 按彩种统计期数和记录数
+                for lottery in account_participation[account]['lotteries']:
+                    lottery_data = account_data[account_data['彩种'] == lottery]
+                    account_participation[account]['lottery_total_periods'][lottery] = lottery_data['期号'].nunique()
+                    account_participation[account]['lottery_total_records'][lottery] = len(lottery_data)
+        
+        # 🆕 步骤3: 转换为显示格式
         account_stats = []
         for account, info in account_participation.items():
-            # 🆕 修复：优先从有效数据中获取真实的期数统计
-            total_periods = len(info['periods'])
-            total_records = len(info['actual_bet_records'])
+            # 参与组合数
+            groups_count = len(info['groups'])
+            
+            # 涉及彩种数
+            lotteries_count = len(info['lotteries'])
+            
+            # 🆕 彩种总投注期数 - 取各彩种期数的最大值（主要彩种）
+            lottery_periods = list(info['lottery_total_periods'].values())
+            main_lottery_periods = max(lottery_periods) if lottery_periods else 0
+            
+            # 🆕 实际对刷期数
+            wash_periods_count = len(info['wash_periods'])
+            
+            # 🆕 实际对刷记录数
+            wash_records_count = info['wash_records_count']
+            
+            # 总投注金额
+            total_bet_amount = info['total_bet_amount']
+            
+            # 🆕 平均每期金额
+            avg_period_amount = total_bet_amount / wash_periods_count if wash_periods_count > 0 else 0
             
             stat_record = {
                 '账户': account,
-                '参与组合数': info['total_combinations'],
-                '涉及期数': total_periods,
-                '涉及彩种': len(info['lotteries']),
-                '总投注金额': f"¥{info['total_bet_amount']:,.2f}",
-                '平均每组金额': f"¥{info['total_bet_amount'] / info['total_combinations']:,.2f}" if info['total_combinations'] > 0 else "¥0.00",
-                '实际总期数': total_periods,
-                '实际总记录': total_records
+                '参与组合数': groups_count,
+                '涉及彩种': lotteries_count,
+                '彩种总投注期数': main_lottery_periods,
+                '实际对刷期数': wash_periods_count,
+                '实际对刷记录': wash_records_count,
+                '总投注金额': f"¥{total_bet_amount:,.2f}",
+                '平均每期金额': f"¥{avg_period_amount:,.2f}"
             }
             
             account_stats.append(stat_record)
         
+        # 🆕 按参与组合数排序
         return sorted(account_stats, key=lambda x: x['参与组合数'], reverse=True)
 
     def exclude_multi_direction_accounts(self, df_valid):
@@ -3169,8 +3174,24 @@ class WashTradeDetector:
         
         if account_stats:
             df_stats = pd.DataFrame(account_stats)
+            
+            # 🆕 确保列名正确显示
+            column_mapping = {
+                '账户': '账户',
+                '参与组合数': '参与组合数', 
+                '涉及彩种': '涉及彩种',
+                '彩种总投注期数': '彩种总投注期数',
+                '实际对刷期数': '实际对刷期数',
+                '实际对刷记录': '实际对刷记录',
+                '总投注金额': '总投注金额',
+                '平均每期金额': '平均每期金额'
+            }
+            
+            # 重命名列
+            df_stats_display = df_stats.rename(columns=column_mapping)
+            
             st.dataframe(
-                df_stats,
+                df_stats_display,
                 use_container_width=True,
                 hide_index=True,
                 height=min(400, len(df_stats) * 35 + 38)
