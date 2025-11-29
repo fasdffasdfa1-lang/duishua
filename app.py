@@ -775,63 +775,63 @@ class PlayCategoryNormalizer:
                 if keyword in category_lower:
                     return position
         
-        # 原有的其他匹配逻辑保持不变...
+        # 🆕 修复：使用独立的if语句，而不是elif
         # 3D系列智能匹配
-        elif any(word in category_lower for word in ['百位']):
+        if any(word in category_lower for word in ['百位']):
             return '百位'
-        elif any(word in category_lower for word in ['十位']):
+        if any(word in category_lower for word in ['十位']):
             return '十位'
-        elif any(word in category_lower for word in ['个位']):
+        if any(word in category_lower for word in ['个位']):
             return '个位'
         
         # 时时彩智能匹配
-        elif any(word in category_lower for word in ['第1球', '万位']):
+        if any(word in category_lower for word in ['第1球', '万位']):
             return '第1球'
-        elif any(word in category_lower for word in ['第2球', '千位']):
+        if any(word in category_lower for word in ['第2球', '千位']):
             return '第2球'
-        elif any(word in category_lower for word in ['第3球', '百位']):
+        if any(word in category_lower for word in ['第3球', '百位']):
             return '第3球'
-        elif any(word in category_lower for word in ['第4球', '十位']):
+        if any(word in category_lower for word in ['第4球', '十位']):
             return '第4球'
-        elif any(word in category_lower for word in ['第5球', '个位']):
+        if any(word in category_lower for word in ['第5球', '个位']):
             return '第5球'
         
         # 六合彩智能匹配
-        elif any(word in category_lower for word in ['天肖']):
+        if any(word in category_lower for word in ['天肖']):
             return '天肖'
-        elif any(word in category_lower for word in ['地肖']):
+        if any(word in category_lower for word in ['地肖']):
             return '地肖'
-        elif any(word in category_lower for word in ['家肖', '家禽']):
+        if any(word in category_lower for word in ['家肖', '家禽']):
             return '家肖'
-        elif any(word in category_lower for word in ['野肖', '野兽']):
+        if any(word in category_lower for word in ['野肖', '野兽']):
             return '野肖'
-
+    
         # 正码特智能匹配
         if any(word in category_lower for word in ['正1特', '正一特']):
             return '正1特'
-        elif any(word in category_lower for word in ['正2特', '正二特']):
+        if any(word in category_lower for word in ['正2特', '正二特']):
             return '正2特'
-        elif any(word in category_lower for word in ['正3特', '正三特']):
+        if any(word in category_lower for word in ['正3特', '正三特']):
             return '正3特'
-        elif any(word in category_lower for word in ['正4特', '正四特']):
+        if any(word in category_lower for word in ['正4特', '正四特']):
             return '正4特'
-        elif any(word in category_lower for word in ['正5特', '正五特']):
+        if any(word in category_lower for word in ['正5特', '正五特']):
             return '正5特'
-        elif any(word in category_lower for word in ['正6特', '正六特']):
+        if any(word in category_lower for word in ['正6特', '正六特']):
             return '正6特'
         
         # 正码智能匹配
-        elif any(word in category_lower for word in ['正1', '正一']):
+        if any(word in category_lower for word in ['正1', '正一']):
             return '正1'
-        elif any(word in category_lower for word in ['正2', '正二']):
+        if any(word in category_lower for word in ['正2', '正二']):
             return '正2'
-        elif any(word in category_lower for word in ['正3', '正三']):
+        if any(word in category_lower for word in ['正3', '正三']):
             return '正3'
-        elif any(word in category_lower for word in ['正4', '正四']):
+        if any(word in category_lower for word in ['正4', '正四']):
             return '正4'
-        elif any(word in category_lower for word in ['正5', '正五']):
+        if any(word in category_lower for word in ['正5', '正五']):
             return '正5'
-        elif any(word in category_lower for word in ['正6', '正六']):
+        if any(word in category_lower for word in ['正6', '正六']):
             return '正6'
         
         return category_str
