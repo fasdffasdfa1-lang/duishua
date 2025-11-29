@@ -2191,8 +2191,11 @@ class WashTradeDetector:
         return self.find_continuous_patterns_optimized(wash_records)
 
     def detect_pk10_sequence_patterns(self, df_filtered):
-        """PK10序列位置模式检测 - 修复数据源问题"""
+        """PK10序列位置模式检测 - 修复方向提取问题"""
         try:
+            # 🆕 添加调试
+            st.write("🔍 **PK10序列位置检测开始**")
+            
             # 🆕 修复：使用原始有效数据而不是过滤后的数据
             if hasattr(self, 'df_valid') and self.df_valid is not None:
                 df_pk10 = self.df_valid[
@@ -2205,11 +2208,23 @@ class WashTradeDetector:
                     (df_filtered['投注金额'] >= self.config.min_amount)
                 ].copy()
             
+            # 🆕 调试1222713期的PK10数据
+            period_1222713_pk10 = df_pk10[df_pk10['期号'] == '1222713']
+            if len(period_1222713_pk10) > 0:
+                st.write(f"🔍 **PK10序列检测中的1222713期数据:**")
+                for _, row in period_1222713_pk10.iterrows():
+                    st.write(f"  账户: {row['会员账号']}, 内容: {row['内容']}, 方向: {row['投注方向']}")
+            
             sequence_patterns = []
             
             # 按期号分组检测多种模式
             for period in sorted(df_pk10['期号'].unique()):
                 period_data = df_pk10[df_pk10['期号'] == period]
+                
+                # 🆕 调试1222713期
+                if period == '1222713':
+                    st.write(f"🔍 **PK10序列检测处理1222713期**")
+                    st.write(f"  使用的方法: {self.pk10_sequence_detector.__class__.__name__}")
                 
                 # 检测1-5名和6-10名协作模式
                 patterns_1 = self._detect_1_5_6_10_collaboration(period_data, period)
@@ -2223,12 +2238,20 @@ class WashTradeDetector:
                        for cat in play_categories):
                     patterns_2 = self._detect_single_position_full_coverage(period_data, period)
                     sequence_patterns.extend(patterns_2)
+                
+                # 🆕 调试1222713期的检测结果
+                if period == '1222713':
+                    st.write(f"🔍 **PK10序列检测1222713期结果:**")
+                    st.write(f"  1-5名和6-10名协作模式: {len(patterns_1)} 条")
+                    st.write(f"  单位置全覆盖模式: {len(patterns_2)} 条")
+                    for pattern in patterns_1 + patterns_2:
+                        st.write(f"    模式: {pattern}")
             
             # 使用连续模式检测
             continuous_patterns = self.find_continuous_patterns_optimized(sequence_patterns)
             
             return continuous_patterns
-            
+                
         except Exception as e:
             logger.error(f"PK10序列检测失败: {str(e)}")
             import traceback
@@ -2649,14 +2672,14 @@ class WashTradeDetector:
             play_category = row.get('玩法分类', '')
             content = row['内容']
             amount = row.get('投注金额', 0)
-            direction = row.get('投注方向', '')
+            direction = row.get('投注方向', '')  # 🆕 使用已经提取好的方向
             
             # 提取位置信息
             position = self._extract_position_from_play_category(play_category)
             if position not in pk10_positions:
                 continue
             
-            # 🆕 修复：提取基础方向（去掉位置前缀）
+            # 🆕 修复：使用已经提取的方向，而不是重新提取
             base_direction = direction
             if '-' in direction:
                 base_direction = direction.split('-')[-1]
@@ -2730,6 +2753,13 @@ class WashTradeDetector:
             
             total_amount = account1_amount + account2_amount
             
+            # 🆕 调试1222713期
+            if period == '1222713':
+                st.write(f"🔍 **单位置全覆盖检测:**")
+                st.write(f"  账户1位置: {account1_positions}")
+                st.write(f"  账户2位置: {account2_positions}")
+                st.write(f"  共同方向: {common_direction}")
+            
             # 构建模式记录
             pattern = {
                 '期号': period,
@@ -2743,11 +2773,7 @@ class WashTradeDetector:
                 '账户数量': 2,
                 '模式': f'PK10十位置全覆盖-{common_direction}',
                 '对立类型': f'全覆盖协作-{common_direction}',
-                '检测类型': 'PK10序列位置',
-                '位置分配': {  # 🆕 确保这是字典类型
-                    account1: list(account1_positions),
-                    account2: list(account2_positions)
-                }
+                '检测类型': 'PK10序列位置'
             }
             
             patterns.append(pattern)
@@ -2856,7 +2882,7 @@ class WashTradeDetector:
         return position_mapping.get(play_str, '')
     
     def _detect_1_5_6_10_collaboration(self, period_data, period):
-        """检测1-5名和6-10名协作模式"""
+        """检测1-5名和6-10名协作模式 - 修复方向提取"""
         patterns = []
         
         play_1_5 = period_data[period_data['玩法分类'] == '1-5名']
@@ -2865,9 +2891,33 @@ class WashTradeDetector:
         if len(play_1_5) == 0 or len(play_6_10) == 0:
             return patterns
         
-        # 🆕 使用PK10SequenceDetector的方法来解析内容
-        content_1_5 = self.pk10_sequence_detector._parse_pk10_content_enhanced(play_1_5)
-        content_6_10 = self.pk10_sequence_detector._parse_pk10_content_enhanced(play_6_10)
+        # 🆕 修复：使用修复的方向提取方法，而不是PK10序列检测器的方法
+        content_1_5 = None
+        content_6_10 = None
+        
+        # 提取1-5名的方向
+        if len(play_1_5) > 0:
+            sample_row_1_5 = play_1_5.iloc[0]
+            content_1_5 = self.enhanced_extract_direction_with_position(
+                sample_row_1_5['内容'],
+                sample_row_1_5.get('玩法分类', ''),
+                sample_row_1_5.get('彩种类型', 'PK10')
+            )
+        
+        # 提取6-10名的方向  
+        if len(play_6_10) > 0:
+            sample_row_6_10 = play_6_10.iloc[0]
+            content_6_10 = self.enhanced_extract_direction_with_position(
+                sample_row_6_10['内容'],
+                sample_row_6_10.get('玩法分类', ''),
+                sample_row_6_10.get('彩种类型', 'PK10')
+            )
+        
+        # 🆕 调试1222713期
+        if period == '1222713':
+            st.write(f"🔍 **1-5名和6-10名协作检测:**")
+            st.write(f"  1-5名方向: {content_1_5}")
+            st.write(f"  6-10名方向: {content_6_10}")
         
         # 宽松的匹配条件：只要解析出的主要内容相同就认为匹配
         if content_1_5 and content_6_10 and content_1_5 == content_6_10:
