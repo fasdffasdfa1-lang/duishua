@@ -2884,17 +2884,15 @@ class WashTradeDetector:
                 st.markdown("---")
 
     def _calculate_detailed_account_stats(self, patterns):
-        """修复的账户统计计算方法"""
+        """彻底修复的账户统计计算方法"""
         account_participation = defaultdict(lambda: {
             'groups': set(),
             'lotteries': set(),
             'wash_periods': set(),
             'total_bet_amount': 0,
-            'lottery_total_periods': 0,
-            'lottery_total_records': 0,
         })
         
-        # 🆕 修复1: 确保使用正确的数据源
+        # 🆕 彻底修复：直接从原始数据计算
         if not hasattr(self, 'df_valid') or self.df_valid is None:
             return []
         
@@ -2920,42 +2918,27 @@ class WashTradeDetector:
                 
                 account_info['total_bet_amount'] += pattern_bet_amount
         
-        # 🆕 修复2: 直接从有效数据中计算期数和记录数
-        for account in account_participation.keys():
-            # 获取该账户涉及的主要彩种
-            main_lottery = list(account_participation[account]['lotteries'])[0] if account_participation[account]['lotteries'] else None
-            
-            if main_lottery:
-                # 🆕 关键修复：使用正确的列名
-                # 先检查有哪些列可用
-                available_columns = self.df_valid.columns.tolist()
-                
-                # 确定彩种列名
-                lottery_column = '原始彩种' if '原始彩种' in available_columns else '彩种'
-                
-                # 直接查询该账户在该彩种的所有记录
-                account_lottery_data = self.df_valid[
-                    (self.df_valid['会员账号'] == account) & 
-                    (self.df_valid[lottery_column] == main_lottery)
-                ]
-                
-                # 计算期数（去重期号）
-                total_periods = account_lottery_data['期号'].nunique()
-                total_records = len(account_lottery_data)
-                
-                account_participation[account]['lottery_total_periods'] = total_periods
-                account_participation[account]['lottery_total_records'] = total_records
-        
         # 转换为显示格式
         account_stats = []
         for account, info in account_participation.items():
             groups_count = len(info['groups'])
             lotteries_count = len(info['lotteries'])
-            lottery_periods = info['lottery_total_periods']
-            lottery_records = info['lottery_total_records']
             wash_periods_count = len(info['wash_periods'])
             total_bet_amount = info['total_bet_amount']
             avg_period_amount = total_bet_amount / wash_periods_count if wash_periods_count > 0 else 0
+            
+            # 🆕 关键修复：实时计算每个账户的期数和记录数
+            lottery_periods = 0
+            lottery_records = 0
+            
+            for lottery in info['lotteries']:
+                # 直接查询该账户在该彩种的所有记录
+                account_lottery_data = self.df_valid[
+                    (self.df_valid['会员账号'] == account) & 
+                    (self.df_valid['彩种'] == lottery)
+                ]
+                lottery_periods += account_lottery_data['期号'].nunique()
+                lottery_records += len(account_lottery_data)
             
             stat_record = {
                 '账户': account,
@@ -3140,6 +3123,41 @@ class WashTradeDetector:
                 st.write(f"**{lottery}:**")
                 for opposite_type, count in sorted(opposite_stats.items(), key=lambda x: x[1], reverse=True)[:5]:
                     st.write(f"  - {opposite_type}: {count}组")
+
+    def debug_account_stats(self, patterns):
+        """调试账户统计信息"""
+        st.subheader("🔍 调试信息")
+        
+        if not hasattr(self, 'df_valid') or self.df_valid is None:
+            st.error("❌ 没有有效数据")
+            return
+        
+        st.write("**数据概览:**")
+        st.write(f"- 总记录数: {len(self.df_valid)}")
+        st.write(f"- 唯一账户数: {self.df_valid['会员账号'].nunique()}")
+        st.write(f"- 唯一彩种数: {self.df_valid['彩种'].nunique()}")
+        
+        # 检查第一个对刷组的账户
+        if patterns:
+            first_pattern = patterns[0]
+            st.write("**第一个对刷组分析:**")
+            
+            for account in first_pattern['账户组']:
+                st.write(f"**账户 {account}:**")
+                
+                # 该账户在所有彩种的记录
+                account_all_data = self.df_valid[self.df_valid['会员账号'] == account]
+                st.write(f"  - 总记录数: {len(account_all_data)}")
+                st.write(f"  - 总期数: {account_all_data['期号'].nunique()}")
+                
+                # 该账户在PK10彩种的记录
+                account_pk10_data = account_all_data[account_all_data['彩种'] == 'PK10']
+                st.write(f"  - PK10记录数: {len(account_pk10_data)}")
+                st.write(f"  - PK10期数: {account_pk10_data['期号'].nunique()}")
+                
+                # 显示前几条记录
+                st.write(f"  - 前5条记录:")
+                st.dataframe(account_pk10_data[['期号', '玩法', '内容', '金额']].head())
     
     def display_detailed_results(self, patterns):
         """显示详细检测结果 - 使用修复的统计方法"""
@@ -3254,7 +3272,7 @@ class WashTradeDetector:
                     self._display_single_pattern_by_lottery(pattern, i, lottery)
     
     def _display_single_pattern_by_lottery(self, pattern, index, lottery):
-        """按彩种显示单个对刷组详情 - 统一格式"""
+        """按彩种显示单个对刷组详情 - 彻底修复版本"""
         st.markdown(f"**对刷组 {index}:** {' ↔ '.join(pattern['账户组'])}")
         
         # 活跃度图标和文本
@@ -3266,10 +3284,9 @@ class WashTradeDetector:
             'very_high': '极高活跃度'
         }.get(pattern['账户活跃度'], pattern['账户活跃度'])
         
-        # 🆕 主要类型显示 - 简化显示
+        # 主要类型显示
         main_type = pattern['主要对立类型']
         if ' vs ' in main_type:
-            # 简化显示，去掉计数信息
             main_type_parts = main_type.split(' vs ')
             if len(main_type_parts) == 2:
                 dir1 = main_type_parts[0].split('(')[0] if '(' in main_type_parts[0] else main_type_parts[0]
@@ -3282,44 +3299,37 @@ class WashTradeDetector:
         
         st.markdown(f"**活跃度:** {activity_icon} {activity_text} | **彩种:** {lottery} | **主要类型:** {display_type}")
         
-        # 🆕 修复：直接计算账户统计信息，不使用预计算的账户统计信息
+        # 🆕 彻底修复：实时计算每个账户的统计信息
         account_stats_info = []
         for account in pattern['账户组']:
-            # 🆕 直接从有效数据中计算
-            if hasattr(self, 'df_valid') and self.df_valid is not None:
-                # 确定彩种列名
-                available_columns = self.df_valid.columns.tolist()
-                lottery_column = '原始彩种' if '原始彩种' in available_columns else '彩种'
-                
-                account_data = self.df_valid[
-                    (self.df_valid['会员账号'] == account) & 
-                    (self.df_valid[lottery_column] == lottery)
-                ]
-                total_periods = account_data['期号'].nunique()
-                records_count = len(account_data)
-                account_stats_info.append(f"{account}({total_periods}期/{records_count}记录)")
-            else:
-                account_stats_info.append(f"{account}(未知)")
+            # 直接查询该账户在该彩种的所有记录
+            account_data = self.df_valid[
+                (self.df_valid['会员账号'] == account) & 
+                (self.df_valid['彩种'] == lottery)
+            ]
+            total_periods = account_data['期号'].nunique()
+            records_count = len(account_data)
+            account_stats_info.append(f"{account}({total_periods}期/{records_count}记录)")
         
         st.markdown(f"**账户在该彩种投注期数/记录数:** {', '.join(account_stats_info)}")
         
         # 对刷期数和金额
         st.markdown(f"**对刷期数:** {pattern['对刷期数']}期 (要求≥{pattern['要求最小对刷期数']}期)")
         
-        # 🆕 根据检测类型显示不同的金额信息
+        # 根据检测类型显示不同的金额信息
         detect_type = pattern.get('检测类型', '传统对刷')
         if detect_type == 'PK10序列位置':
             st.markdown(f"**总金额:** {pattern['总投注金额']:.2f}元")
         else:
             st.markdown(f"**总金额:** {pattern['总投注金额']:.2f}元 | **平均匹配:** {pattern['平均相似度']:.2%}")
         
-        # 🆕 详细记录显示
+        # 详细记录显示
         st.markdown("**详细记录:**")
         for j, record in enumerate(pattern['详细记录'], 1):
             # 统一格式：期号 + 方向 + 金额 + 匹配度
             account_directions = []
             for account, direction, amount in zip(record['账户组'], record['方向组'], record['金额组']):
-                # 🆕 修复：简化方向显示，去掉位置前缀（如果有）
+                # 简化方向显示，去掉位置前缀（如果有）
                 if '-' in direction:
                     clean_direction = direction.split('-', 1)[1]  # 只分割第一个横线
                 else:
