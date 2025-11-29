@@ -1768,46 +1768,27 @@ class WashTradeDetector:
             return None, None
     
     def enhance_data_processing(self, df_clean):
-        """修复的数据处理流程"""
+        """数据处理流程 - 清理版本"""
         try:
             # 彩种识别
             if '彩种' in df_clean.columns:
                 df_clean['原始彩种'] = df_clean['彩种']
                 df_clean['彩种类型'] = df_clean['彩种'].apply(self.lottery_identifier.identify_lottery_type)
             
-            # 🆕 修复：玩法分类统一，添加列存在性检查
+            # 玩法分类统一
             if '玩法' in df_clean.columns:
                 df_clean['玩法分类'] = df_clean['玩法'].apply(self.play_normalizer.normalize_category)
             else:
-                st.warning("⚠️ 数据中缺少'玩法'列，无法创建'玩法分类'列")
                 # 创建一个空的玩法分类列，避免后续错误
                 df_clean['玩法分类'] = ''
             
             # 提取投注金额和方向
             st.info("💰 正在提取投注金额和方向...")
             
-            # 🆕 修复：使用统一的方向提取方法
+            # 使用修复的方向提取方法
             df_clean['投注金额'] = df_clean['金额'].apply(
                 lambda x: self.extract_bet_amount_safe(str(x))
             )
-            
-            # 🆕 专门测试1222713期的内容
-            if st.checkbox("🔍 专门测试1222713期方向提取", value=False):
-                test_samples_1222713 = [
-                    "第三名-01,04,05,第五名-01,04,05,亚军-01,04,05,第四名-01,04,05,冠军-01,04,05",
-                    "第七名-01,04,05,第六名-01,04,05,第十名-01,04,05,第九名-01,04,05,第八名-01,04,05"
-                ]
-                self.debug_direction_extraction(test_samples_1222713)
-            
-            # 原有的调试复选框
-            if st.checkbox("🔍 调试方向提取", value=False):
-                test_samples = [
-                    "冠军-01,04,05",
-                    "第三名-小,第五名-小,亚军-小,第四名-小,冠军-小",
-                    "冠军-单",
-                    "亚军-双"
-                ]
-                self.debug_direction_extraction(test_samples)
             
             df_clean['投注方向'] = df_clean.apply(
                 lambda row: self.enhanced_extract_direction_with_position(
@@ -1817,15 +1798,6 @@ class WashTradeDetector:
                 ), 
                 axis=1
             )
-            
-            # 🆕 检查1222713期的实际方向提取结果
-            if st.checkbox("🔍 检查1222713期实际数据的方向提取", value=False):
-                st.write("**1222713期实际数据的方向提取结果:**")
-                period_1222713_data = df_clean[df_clean['期号'] == '1222713']
-                if len(period_1222713_data) > 0:
-                    st.dataframe(period_1222713_data[['会员账号', '内容', '投注方向']])
-                else:
-                    st.write("未找到1222713期的数据")
             
             # 过滤有效记录
             df_valid = df_clean[
@@ -1842,7 +1814,7 @@ class WashTradeDetector:
             self.data_processed = True
             self.df_valid = df_valid
             
-            # 🆕 修复：在设置df_valid后立即计算统计信息
+            # 计算统计信息
             self.calculate_account_total_periods_by_lottery(df_valid)
             
             return df_valid
@@ -1851,12 +1823,7 @@ class WashTradeDetector:
             logger.error(f"数据处理增强失败: {str(e)}")
             st.error(f"数据处理增强失败: {str(e)}")
             return pd.DataFrame()
-                
-        except Exception as e:
-            logger.error(f"数据处理增强失败: {str(e)}")
-            st.error(f"数据处理增强失败: {str(e)}")
-            return pd.DataFrame()
-    
+
     def extract_bet_amount_safe(self, amount_text):
         """安全提取投注金额 - 增强版本"""
         try:
@@ -1950,29 +1917,28 @@ class WashTradeDetector:
             return 0
     
     def enhanced_extract_direction_with_position(self, content, play_category, lottery_type):
-        """🎯 彻底修复的方向提取 - 专门处理1222713期的多数字问题"""
+        """方向提取 - 支持多个相同内容识别"""
         try:
             if pd.isna(content):
                 return ""
             
             content_str = str(content).strip()
             
-            # 🆕 专门处理1222713期的数据格式
-            # 检查是否是"第三名-01,04,05,第五名-01,04,05,亚军-01,04,05,第四名-01,04,05,冠军-01,04,05"这种格式
+            # 处理多个数字的情况
             if ',' in content_str and any(char.isdigit() for char in content_str):
-                # 首先尝试提取所有两位数字
+                # 提取所有两位数字
                 all_numbers = re.findall(r'\b\d{2}\b', content_str)
                 if all_numbers:
-                    # 去重并排序
+                    # 对数字排序并去重
                     unique_numbers = sorted(set(all_numbers))
                     if len(unique_numbers) >= 2:
-                        # 多个数字的情况
+                        # 多个数字的情况，返回组合标识
                         return f"多数字-{','.join(unique_numbers)}"
                     elif len(unique_numbers) == 1:
                         # 单个数字的情况
                         return f"数字-{unique_numbers[0]}"
             
-            # 🆕 专门处理"第三名-01,04,05"这种单个位置的格式
+            # 处理"第三名-01,04,05"这种单个位置的格式
             if '-' in content_str and ',' in content_str:
                 # 分割成位置-内容对
                 pairs = content_str.split(',')
@@ -1993,7 +1959,7 @@ class WashTradeDetector:
                     elif len(unique_numbers) == 1:
                         return f"数字-{unique_numbers[0]}"
             
-            # 🆕 处理简单的"冠军-01,04,05"格式
+            # 处理简单的"冠军-01,04,05"格式
             if '-' in content_str and ',' in content_str:
                 parts = content_str.split('-', 1)
                 if len(parts) >= 2:
@@ -2006,10 +1972,10 @@ class WashTradeDetector:
                         elif len(unique_numbers) == 1:
                             return f"数字-{unique_numbers[0]}"
             
-            # 🎯 原有的方向提取逻辑
+            # 原有的方向提取逻辑
             directions = self.content_parser.enhanced_extract_directions(content_str, self.config)
             
-            # 🆕 尝试备选方案：直接提取数字
+            # 尝试备选方案：直接提取数字
             if not directions:
                 numbers = self.content_parser.extract_all_numbers(content_str)
                 if numbers:
@@ -2020,16 +1986,16 @@ class WashTradeDetector:
                         return f"数字-{numbers[0]}"
                 return ""
             
-            # 🎯 从玩法分类中提取位置信息
+            # 从玩法分类中提取位置信息
             position = self.content_parser.extract_position_from_play_category(play_category, lottery_type, self.config)
             
-            # 🎯 方向优先级排序和选择
+            # 方向优先级排序和选择
             main_direction = self.content_parser.prioritize_directions(directions, content_str, play_category)
             
             if not main_direction:
                 return ""
             
-            # 🎯 统一格式：如果有位置信息，组合位置和方向
+            # 统一格式：如果有位置信息，组合位置和方向
             if position and position != '未知位置':
                 if main_direction.startswith('数字-') or main_direction.startswith('多数字-'):
                     result = f"{position}-{main_direction}"
@@ -2259,13 +2225,10 @@ class WashTradeDetector:
             return []
     
     def _get_valid_direction_combinations(self, n_accounts):
-        """🎯 有效方向组合生成 - 检查是否包含多数字组合"""
+        """有效方向组合生成 - 包含多数字组合"""
         valid_combinations = []
         
-        # 🆕 添加调试
-        st.write(f"🔍 **生成 {n_accounts} 个账户的有效方向组合**")
-        
-        # 🎯 基础对立组处理 - 使用增强的对立组
+        # 基础对立组处理
         for opposites in self.config.opposite_groups:
             opposite_list = list(opposites)
             
@@ -2294,28 +2257,20 @@ class WashTradeDetector:
                             'combination_type': 'basic'
                         })
         
-        # 🆕 添加多数字组合
-        # 添加多数字的协作组合（两个账户投注相同的多数字）
+        # 添加多数字的协作组合
         multi_number_combinations = [
             ['多数字-01,04,05', '多数字-01,04,05'],
-            ['多数字-01,04,05', '多数字-01,04,05'],
-            # 可以添加其他多数字组合
         ]
         
         for combo in multi_number_combinations:
             if n_accounts == len(combo):
                 valid_combinations.append({
                     'directions': combo,
-                    'dir1_count': n_accounts,  # 所有账户投注相同内容
+                    'dir1_count': n_accounts,
                     'dir2_count': 0,
                     'opposite_type': f"协作覆盖-多数字",
                     'combination_type': 'multi_number'
                 })
-        
-        # 🆕 显示生成的有效组合
-        st.write(f"生成的有效组合数量: {len(valid_combinations)}")
-        for i, combo in enumerate(valid_combinations[:5]):  # 只显示前5个
-            st.write(f"  组合 {i+1}: {combo['directions']} -> {combo['opposite_type']}")
         
         return valid_combinations
     
@@ -2891,7 +2846,7 @@ class WashTradeDetector:
         if len(play_1_5) == 0 or len(play_6_10) == 0:
             return patterns
         
-        # 🆕 修复：使用修复的方向提取方法，而不是PK10序列检测器的方法
+        # 使用修复的方向提取方法
         content_1_5 = None
         content_6_10 = None
         
@@ -2913,13 +2868,7 @@ class WashTradeDetector:
                 sample_row_6_10.get('彩种类型', 'PK10')
             )
         
-        # 🆕 调试1222713期
-        if period == '1222713':
-            st.write(f"🔍 **1-5名和6-10名协作检测:**")
-            st.write(f"  1-5名方向: {content_1_5}")
-            st.write(f"  6-10名方向: {content_6_10}")
-        
-        # 宽松的匹配条件：只要解析出的主要内容相同就认为匹配
+        # 匹配条件：只要解析出的主要内容相同就认为匹配
         if content_1_5 and content_6_10 and content_1_5 == content_6_10:
             accounts_1_5 = play_1_5['会员账号'].tolist()
             accounts_6_10 = play_6_10['会员账号'].tolist()
@@ -3064,7 +3013,7 @@ class WashTradeDetector:
                 st.markdown("---")
 
     def _calculate_detailed_account_stats(self, patterns):
-        """彻底修复的账户统计计算方法 - 解决彩种名称匹配问题"""
+        """账户统计计算方法 - 修复版本"""
         account_participation = defaultdict(lambda: {
             'groups': set(),
             'lotteries': set(),
@@ -3075,12 +3024,6 @@ class WashTradeDetector:
         # 确保使用正确的数据源
         if not hasattr(self, 'df_valid') or self.df_valid is None:
             return []
-        
-        # 🆕 添加调试：显示数据源的基本信息
-        st.write(f"🔍 **账户统计调试 - 数据源信息**")
-        st.write(f"df_valid 总记录数: {len(self.df_valid)}")
-        st.write(f"df_valid 唯一账户数: {self.df_valid['会员账号'].nunique()}")
-        st.write(f"df_valid 彩种分布: {self.df_valid['彩种'].value_counts().to_dict()}")
         
         # 收集账户参与信息
         for pattern in patterns:
@@ -3113,7 +3056,7 @@ class WashTradeDetector:
             total_bet_amount = info['total_bet_amount']
             avg_period_amount = total_bet_amount / wash_periods_count if wash_periods_count > 0 else 0
             
-            # 🆕 关键修复：实时计算每个账户的期数和记录数，使用原始彩种名称
+            # 实时计算每个账户的期数和记录数
             lottery_periods = 0
             lottery_records = 0
             
@@ -3121,7 +3064,7 @@ class WashTradeDetector:
                 # 查找该账户在原始数据中对应的彩种记录
                 account_all_data = self.df_valid[self.df_valid['会员账号'] == account]
                 
-                # 🆕 修复：使用原始彩种列进行匹配
+                # 使用多种匹配策略
                 if '原始彩种' in self.df_valid.columns:
                     # 使用原始彩种列进行精确匹配
                     account_lottery_data = account_all_data[account_all_data['原始彩种'] == detected_lottery]
@@ -3129,21 +3072,12 @@ class WashTradeDetector:
                     # 使用彩种列进行匹配
                     account_lottery_data = account_all_data[account_all_data['彩种'] == detected_lottery]
                 
-                # 如果精确匹配没有找到，尝试模糊匹配
+                # 如果精确匹配没有找到，尝试彩种类型匹配
                 if len(account_lottery_data) == 0 and '彩种类型' in self.df_valid.columns:
-                    # 使用彩种类型进行匹配（如PK10类型的所有彩种）
                     account_lottery_data = account_all_data[account_all_data['彩种类型'] == detected_lottery]
                 
                 lottery_periods += account_lottery_data['期号'].nunique()
                 lottery_records += len(account_lottery_data)
-                
-                # 🆕 添加详细调试
-                st.write(f"🔍 **账户 {account} 在彩种 {detected_lottery} 的统计**")
-                st.write(f"  匹配到的记录数: {len(account_lottery_data)}")
-                st.write(f"  期数: {account_lottery_data['期号'].nunique()}")
-                if len(account_lottery_data) > 0:
-                    st.write(f"  前几条记录:")
-                    st.dataframe(account_lottery_data[['期号', '玩法', '内容', '金额']].head())
             
             stat_record = {
                 '账户': account,
@@ -3557,15 +3491,8 @@ class WashTradeDetector:
                     self._display_single_pattern_by_lottery(pattern, i, lottery)
     
     def _display_single_pattern_by_lottery(self, pattern, index, lottery):
-        """按彩种显示单个对刷组详情 - 彻底修复版本"""
+        """按彩种显示单个对刷组详情 - 修复版本"""
         st.markdown(f"**对刷组 {index}:** {' ↔ '.join(pattern['账户组'])}")
-        
-        # 🆕 添加调试：检查1222713期的最终显示
-        if st.checkbox(f"🔍 调试对刷组{index}的详细记录", value=False):
-            st.write(f"**对刷组{index}的详细记录:**")
-            for j, record in enumerate(pattern['详细记录'], 1):
-                if record['期号'] == '1222713':
-                    st.write(f"1222713期原始记录: {record}")
         
         # 活跃度图标和文本
         activity_icon = "🟢" if pattern['账户活跃度'] == 'low' else "🟡" if pattern['账户活跃度'] == 'medium' else "🟠" if pattern['账户活跃度'] == 'high' else "🔴"
@@ -3591,42 +3518,17 @@ class WashTradeDetector:
         
         st.markdown(f"**活跃度:** {activity_icon} {activity_text} | **彩种:** {lottery} | **主要类型:** {display_type}")
         
-        # 🆕 彻底修复：实时计算每个账户的统计信息，解决彩种名称匹配问题
+        # 实时计算每个账户的统计信息
         account_stats_info = []
         for account in pattern['账户组']:
-            # 直接查询该账户的所有记录
-            account_all_data = self.df_valid[self.df_valid['会员账号'] == account]
-            
-            # 🆕 关键修复：使用多种方式匹配彩种
-            account_lottery_data = pd.DataFrame()
-            
-            # 方式1：使用原始彩种列精确匹配
-            if '原始彩种' in self.df_valid.columns:
-                account_lottery_data = account_all_data[account_all_data['原始彩种'] == lottery]
-            
-            # 方式2：如果方式1没有找到，使用彩种列匹配
-            if len(account_lottery_data) == 0 and '彩种' in self.df_valid.columns:
-                account_lottery_data = account_all_data[account_all_data['彩种'] == lottery]
-            
-            # 方式3：如果方式2没有找到，使用彩种类型匹配
-            if len(account_lottery_data) == 0 and '彩种类型' in self.df_valid.columns:
-                account_lottery_data = account_all_data[account_all_data['彩种类型'] == lottery]
-            
-            # 方式4：如果以上都没有，使用模糊匹配
-            if len(account_lottery_data) == 0:
-                # 查找包含彩种关键词的记录
-                account_lottery_data = account_all_data[account_all_data['彩种'].str.contains(lottery, na=False)]
-            
-            total_periods = account_lottery_data['期号'].nunique()
-            records_count = len(account_lottery_data)
-            
-            # 🆕 添加调试信息
-            if total_periods == 0:
-                # 显示该账户的所有彩种，帮助诊断
-                all_lotteries = account_all_data['彩种'].unique() if '彩种' in account_all_data.columns else []
-                account_stats_info.append(f"{account}(0期/0记录) [实际彩种: {', '.join(all_lotteries[:3])}]")
-            else:
-                account_stats_info.append(f"{account}({total_periods}期/{records_count}记录)")
+            # 直接查询该账户在该彩种的所有记录
+            account_data = self.df_valid[
+                (self.df_valid['会员账号'] == account) & 
+                (self.df_valid['彩种'] == lottery)
+            ]
+            total_periods = account_data['期号'].nunique()
+            records_count = len(account_data)
+            account_stats_info.append(f"{account}({total_periods}期/{records_count}记录)")
         
         st.markdown(f"**账户在该彩种投注期数/记录数:** {', '.join(account_stats_info)}")
         
