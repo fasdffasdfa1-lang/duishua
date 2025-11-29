@@ -3156,12 +3156,13 @@ class WashTradeDetector:
             
             with st.expander(f"{lottery_icon} 彩种：{lottery}（发现{total_groups_in_lottery}组）", expanded=True):
                 for i, pattern in enumerate(lottery_patterns, 1):
-                    self._display_single_pattern_by_lottery(pattern, i, lottery)
+                    # 🆕 修复：传递当前彩种的总组数
+                    self._display_single_pattern_by_lottery(pattern, i, lottery, total_groups_in_lottery)
         
         # 显示总结统计
         self.display_summary_statistics(patterns)
     
-    def _display_single_pattern_by_lottery(self, pattern, index, lottery):
+    def _display_single_pattern_by_lottery(self, pattern, index, lottery, total_groups_in_lottery):
         """按照彩种显示单个对刷组详情"""
         st.markdown(f"**对刷组 {index}:** {' ↔ '.join(pattern['账户组'])}")
         
@@ -3246,8 +3247,8 @@ class WashTradeDetector:
                 
                 st.write(f"{j}. 期号: {record['期号']} | 方向: {' ↔ '.join(account_directions)} | 匹配度: {record['相似度']:.2%}")
         
-        # 分隔线
-        if index < len([p for p in patterns if p['彩种'] == lottery]):
+        # 🆕 修复：使用传入的 total_groups_in_lottery 来判断是否显示分隔线
+        if index < total_groups_in_lottery:
             st.markdown("---")
     
     def display_summary_statistics(self, patterns):
