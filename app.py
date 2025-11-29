@@ -439,6 +439,24 @@ class DataProcessor:
             start_row, start_col = self.find_data_start(df_temp)
             st.info(f"数据起始位置: 第{start_row+1}行, 第{start_col+1}列")
             
+            # 🆕 修复：读取所有数据，不只是前50行
+            df_clean = pd.read_excel(
+                uploaded_file, 
+                header=start_row,
+                skiprows=range(start_row + 1) if start_row > 0 else None,
+                dtype=str,
+                na_filter=False,
+                keep_default_na=False
+            )
+            
+            if start_col > 0:
+                df_clean = df_clean.iloc[:, start_col:]
+            
+            st.info(f"清理后数据维度: {df_clean.shape}")
+            
+            # 🆕 调试：显示所有列名
+            st.write(f"🔍 所有列名: {list(df_clean.columns)}")
+            
             df_clean = pd.read_excel(
                 uploaded_file, 
                 header=start_row,
@@ -1748,8 +1766,11 @@ class WashTradeDetector:
             if '玩法' in df_clean.columns:
                 df_clean['玩法分类'] = df_clean['玩法'].apply(self.play_normalizer.normalize_category)
             
-            # 🆕 修复：使用修复后的账户统计方法
-            self.calculate_account_total_periods_by_lottery(df_clean)
+            # 🆕 调试：显示数据概览
+            st.write("🔍 数据概览调试:")
+            st.write(f"总记录数: {len(df_clean)}")
+            st.write(f"彩种类型分布: {df_clean['彩种类型'].value_counts().to_dict()}")
+            st.write(f"玩法分类分布: {df_clean['玩法分类'].value_counts().to_dict()}")
             
             # 提取投注金额和方向
             st.info("💰 正在提取投注金额和方向...")
@@ -1768,11 +1789,17 @@ class WashTradeDetector:
                 axis=1
             )
             
+            # 🆕 调试：显示投注方向提取结果
+            st.write("🔍 投注方向提取调试:")
+            st.write(f"投注方向分布: {df_clean['投注方向'].value_counts().head(10).to_dict()}")
+            
             # 过滤有效记录
             df_valid = df_clean[
                 (df_clean['投注方向'] != '') & 
                 (df_clean['投注金额'] >= self.config.min_amount)
             ].copy()
+            
+            st.write(f"🔄 过滤后记录数: {len(df_valid)} (过滤掉 {len(df_clean) - len(df_valid)} 条)")
             
             if len(df_valid) == 0:
                 st.error("❌ 过滤后没有有效记录")
@@ -1780,8 +1807,10 @@ class WashTradeDetector:
             
             self.data_processed = True
             self.df_valid = df_valid
+            
+            # 🆕 修复：在设置df_valid后立即计算统计信息
             self.calculate_account_total_periods_by_lottery(df_valid)
-    
+        
             return df_valid
                 
         except Exception as e:
@@ -1882,17 +1911,30 @@ class WashTradeDetector:
             return 0
     
     def enhanced_extract_direction_with_position(self, content, play_category, lottery_type):
-        """🎯 统一方向提取格式"""
+        """🎯 统一方向提取格式 - 修复版本"""
         try:
             if pd.isna(content):
                 return ""
             
             content_str = str(content).strip()
             
+            # 🆕 调试：显示原始内容
+            debug_info = f"内容: '{content_str}', 玩法分类: '{play_category}', 彩种类型: '{lottery_type}'"
+            
             # 🎯 使用增强的内容解析器提取方向
             directions = self.content_parser.enhanced_extract_directions(content_str, self.config)
             
+            # 🆕 调试：显示方向提取结果
             if not directions:
+                logger.debug(f"方向提取失败: {debug_info}")
+            else:
+                logger.debug(f"方向提取成功: {debug_info} -> {directions}")
+            
+            if not directions:
+                # 🆕 尝试备选方案：直接提取数字
+                numbers = self.content_parser.extract_all_numbers(content_str)
+                if numbers:
+                    return f"数字-{numbers[0]}"
                 return ""
             
             # 🎯 从玩法分类中提取位置信息
@@ -2071,23 +2113,26 @@ class WashTradeDetector:
         return self.find_continuous_patterns_optimized(wash_records)
 
     def detect_pk10_sequence_patterns(self, df_filtered):
-        """PK10序列位置模式检测 - 增强版本"""
+        """PK10序列位置模式检测 - 修复数据过滤问题"""
         try:
-            # 过滤PK10数据
+            # 🆕 修复：显示所有可能的PK10数据
+            st.write("🔍 所有彩种类型:", df_filtered['彩种类型'].unique())
+            
+            # 过滤PK10数据 - 修复过滤条件
             df_pk10 = df_filtered[
                 (df_filtered['彩种类型'] == 'PK10') & 
                 (df_filtered['投注金额'] >= self.config.min_amount)
             ].copy()
             
-            if len(df_pk10) == 0:
-                st.write("❌ PK10序列检测: 没有PK10数据")
-                return []
-            
             st.write("🔍 PK10序列检测调试:")
             st.write(f"PK10数据量: {len(df_pk10)} 条")
-            
-            # 🆕 调试：显示所有期号
             st.write(f"所有PK10期号: {df_pk10['期号'].unique().tolist()}")
+            
+            # 🆕 调试：显示每个期号的记录数和玩法分类
+            for period in df_pk10['期号'].unique():
+                period_data = df_pk10[df_pk10['期号'] == period]
+                play_categories = period_data['玩法分类'].unique().tolist()
+                st.write(f"期号 {period}: {len(period_data)} 条记录, 玩法分类: {play_categories}")
             
             sequence_patterns = []
             
@@ -2096,13 +2141,14 @@ class WashTradeDetector:
                 period_data = df_pk10[df_pk10['期号'] == period]
                 
                 # 🆕 调试：显示每个期号的数据
-                st.write(f"期号 {period}: {len(period_data)} 条记录")
+                st.write(f"--- 处理期号 {period} ---")
+                st.write(f"记录数: {len(period_data)}")
                 
                 # 检测1-5名和6-10名协作模式
                 patterns_1 = self._detect_1_5_6_10_collaboration(period_data, period)
                 sequence_patterns.extend(patterns_1)
                 
-                # 🆕 检测单个位置注单全覆盖模式
+                # 检测单个位置注单全覆盖模式
                 patterns_2 = self._detect_single_position_full_coverage(period_data, period)
                 sequence_patterns.extend(patterns_2)
             
