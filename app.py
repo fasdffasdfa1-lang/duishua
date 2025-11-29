@@ -1698,6 +1698,10 @@ class WashTradeDetector:
         if not amounts or len(amounts) < 2:
             return account_group, directions, amounts
         
+        # 🆕 调试：检查输入的方向
+        if any('多数字' in d for d in directions):
+            st.write(f"🔍 **金额平衡过滤前** - 方向: {directions}")
+        
         # 🆕 检查组内金额平衡性
         max_amount = max(amounts)
         min_amount = min(amounts)
@@ -1718,10 +1722,19 @@ class WashTradeDetector:
                 filtered_amounts = [amounts[i] for i in valid_indices]
                 
                 logger.info(f"金额平衡过滤: {len(account_group)} -> {len(filtered_accounts)} 个账户 (原比例: {amount_ratio:.1f}倍)")
+                
+                # 🆕 调试：检查过滤后的方向
+                if any('多数字' in d for d in filtered_directions):
+                    st.write(f"🔍 **金额平衡过滤后** - 方向: {filtered_directions}")
+                
                 return filtered_accounts, filtered_directions, filtered_amounts
             else:
                 # 过滤后不足2个有效账户，返回空
                 return [], [], []
+        
+        # 🆕 调试：金额平衡，不需要过滤
+        if any('多数字' in d for d in directions):
+            st.write(f"🔍 **金额平衡检查通过** - 方向保持不变: {directions}")
         
         # 金额平衡，不需要过滤
         return account_group, directions, amounts
@@ -2223,8 +2236,11 @@ class WashTradeDetector:
             return []
     
     def _get_valid_direction_combinations(self, n_accounts):
-        """🎯 有效方向组合生成 - 使用增强的对立组 - 修复：优化组合生成逻辑"""
+        """🎯 有效方向组合生成 - 检查是否包含多数字组合"""
         valid_combinations = []
+        
+        # 🆕 添加调试
+        st.write(f"🔍 **生成 {n_accounts} 个账户的有效方向组合**")
         
         # 🎯 基础对立组处理 - 使用增强的对立组
         for opposites in self.config.opposite_groups:
@@ -2255,37 +2271,28 @@ class WashTradeDetector:
                             'combination_type': 'basic'
                         })
         
-        # 🎯 带位置的对立组 - 动态生成（支持变异形式）
-        positions = ['冠军', '亚军', '第三名', '第四名', '第五名', 
-                    '第六名', '第七名', '第七名', '第八名', '第九名', '第十名',
-                    '百位', '十位', '个位', '第1球', '第2球', '第3球', '第4球', '第5球',
-                    '特码', '正码', '平特', '连肖', '连尾', '色波', '五行']  # 🆕 新增六合彩位置
+        # 🆕 添加多数字组合
+        # 添加多数字的协作组合（两个账户投注相同的多数字）
+        multi_number_combinations = [
+            ['多数字-01,04,05', '多数字-01,04,05'],
+            ['多数字-01,04,05', '多数字-01,04,05'],
+            # 可以添加其他多数字组合
+        ]
         
-        for position in positions:
-            for opposites in self.config.opposite_groups:
-                if len(opposites) == 2:
-                    dir1, dir2 = list(opposites)
-                    if n_accounts == 2:
-                        valid_combinations.append({
-                            'directions': [f"{position}-{dir1}", f"{position}-{dir2}"],
-                            'dir1_count': 1,
-                            'dir2_count': 1,
-                            'opposite_type': f"{position}-{dir1} vs {position}-{dir2}",
-                            'combination_type': 'positional'
-                        })
-                    else:
-                        for i in range(1, n_accounts):
-                            j = n_accounts - i
-                            valid_combinations.append({
-                                'directions': [f"{position}-{dir1}"] * i + [f"{position}-{dir2}"] * j,
-                                'dir1_count': i,
-                                'dir2_count': j,
-                                'opposite_type': f"{position}-{dir1} vs {position}-{dir2}",
-                                'combination_type': 'positional'
-                            })
+        for combo in multi_number_combinations:
+            if n_accounts == len(combo):
+                valid_combinations.append({
+                    'directions': combo,
+                    'dir1_count': n_accounts,  # 所有账户投注相同内容
+                    'dir2_count': 0,
+                    'opposite_type': f"协作覆盖-多数字",
+                    'combination_type': 'multi_number'
+                })
         
-        # 修复：添加调试信息，帮助诊断问题
-        logger.info(f"为{n_accounts}个账户生成{len(valid_combinations)}个有效方向组合")
+        # 🆕 显示生成的有效组合
+        st.write(f"生成的有效组合数量: {len(valid_combinations)}")
+        for i, combo in enumerate(valid_combinations[:5]):  # 只显示前5个
+            st.write(f"  组合 {i+1}: {combo['directions']} -> {combo['opposite_type']}")
         
         return valid_combinations
     
@@ -2297,11 +2304,20 @@ class WashTradeDetector:
         # 获取当前彩种
         lottery = period_data['原始彩种'].iloc[0] if '原始彩种' in period_data.columns else period_data['彩种'].iloc[0]
         
-        # 🆕 添加调试：检查1222713期的方向提取
-        if period_data['期号'].iloc[0] == '1222713' and st.checkbox(f"🔍 调试1222713期方向处理", value=False):
-            st.write(f"**1222713期方向提取调试:**")
-            for _, row in period_data.iterrows():
-                st.write(f"账户: {row['会员账号']}, 内容: {row['内容']}, 方向: {row['投注方向']}")
+        current_period = period_data['期号'].iloc[0]
+        
+        # 🆕 专门调试1222713期
+        if current_period == '1222713':
+            st.write(f"🔍 **1222713期调试 - 开始检测**")
+            st.write(f"账户组: {period_accounts}")
+            st.write(f"数据记录数: {len(period_data)}")
+            
+            # 显示每个账户的所有记录
+            for account in period_accounts:
+                account_data = period_data[period_data['会员账号'] == account]
+                st.write(f"账户 {account} 的所有记录:")
+                for _, row in account_data.iterrows():
+                    st.write(f"  - 内容: {row['内容']}, 方向: {row['投注方向']}")
         
         # 🎯 构建账户信息字典
         account_info = {}
@@ -2310,6 +2326,10 @@ class WashTradeDetector:
             direction = row['投注方向']
             amount = row['投注金额']
             
+            # 🆕 调试1222713期的每条记录
+            if current_period == '1222713':
+                st.write(f"构建账户信息: {account} -> 方向: {direction}, 金额: {amount}")
+            
             if account not in account_info:
                 account_info[account] = []
             account_info[account].append({
@@ -2317,8 +2337,20 @@ class WashTradeDetector:
                 'amount': amount
             })
         
+        # 🆕 调试构建后的账户信息
+        if current_period == '1222713':
+            st.write(f"🔍 **构建后的账户信息字典:**")
+            for account, bets in account_info.items():
+                st.write(f"账户 {account}:")
+                for bet in bets:
+                    st.write(f"  - 方向: {bet['direction']}, 金额: {bet['amount']}")
+        
         # 检查所有可能的账户组合
         for account_group in combinations(period_accounts, n_accounts):
+            # 🆕 继续调试1222713期
+            if current_period == '1222713':
+                st.write(f"🔍 **检查账户组: {account_group}**")
+            
             # 检查账户期数差异
             if not self._check_account_period_difference(account_group, lottery):
                 continue
@@ -2335,10 +2367,23 @@ class WashTradeDetector:
             if len(group_directions) != n_accounts:
                 continue
             
+            # 🆕 调试1222713期的方向组
+            if current_period == '1222713':
+                st.write(f"  提取的方向组: {group_directions}")
+                st.write(f"  提取的金额组: {group_amounts}")
+            
+            # 🆕 关键调试：检查方向组是否被修改
+            if current_period == '1222713' and any('多数字' in d for d in group_directions):
+                st.write(f"  🚨 发现多数字方向，应该保持为: {group_directions}")
+            
             # 应用金额平衡过滤
             filtered_account_group, filtered_directions, filtered_amounts = self.filter_accounts_by_amount_balance(
                 account_group, group_directions, group_amounts
             )
+            
+            # 🆕 调试过滤后的方向组
+            if current_period == '1222713':
+                st.write(f"  过滤后的方向组: {filtered_directions}")
             
             # 如果过滤后账户不足2个，跳过该组合
             if len(filtered_account_group) < 2:
@@ -2349,7 +2394,7 @@ class WashTradeDetector:
             group_directions = filtered_directions
             group_amounts = filtered_amounts
             n_accounts = len(account_group)  # 更新账户数量
-
+    
             # 🆕 增强去重逻辑：基于账户组+方向组+金额组的唯一键
             combination_key = (
                 tuple(sorted(account_group)), 
@@ -2367,9 +2412,19 @@ class WashTradeDetector:
                 actual_directions_sorted = sorted(group_directions)
                 target_directions_sorted = sorted(target_directions)
                 
+                # 🆕 调试匹配过程
+                if current_period == '1222713':
+                    st.write(f"  尝试匹配组合: {combo['opposite_type']}")
+                    st.write(f"  实际方向: {actual_directions_sorted}")
+                    st.write(f"  目标方向: {target_directions_sorted}")
+                
                 if actual_directions_sorted == target_directions_sorted:
                     # 🆕 标记该组合为已检测
                     detected_combinations.add(combination_key)
+                    
+                    # 🆕 调试1222713期的匹配结果
+                    if current_period == '1222713':
+                        st.write(f"  ✅ 匹配到有效组合: {combo['opposite_type']}")
                     
                     # 计算两个方向的总金额
                     dir1_total = 0
@@ -2425,6 +2480,12 @@ class WashTradeDetector:
                                 '模式': pattern_str,
                                 '对立类型': combo['opposite_type']
                             }
+                            
+                            # 🆕 调试1222713期的最终记录
+                            if current_period == '1222713':
+                                st.write(f"  🎯 生成对刷记录:")
+                                st.write(f"    方向组: {record['方向组']}")
+                                st.write(f"    模式: {record['模式']}")
                             
                             patterns.append(record)
                             break  # 🆕 找到一个匹配后跳出循环，避免重复匹配其他组合
