@@ -3462,6 +3462,31 @@ class WashTradeDetector:
         # 分隔线
         if index < len(pattern):  # 不是最后一个
             st.markdown("---")
+
+    def debug_direction_extraction(self, content_samples):
+        """调试方向提取问题"""
+        st.subheader("🔍 方向提取调试")
+        
+        for i, content in enumerate(content_samples):
+            st.write(f"**样本 {i+1}:** `{content}`")
+            
+            # 测试不同的提取方法
+            result1 = self.enhanced_extract_direction_with_position(content, "1-5名", "PK10")
+            
+            st.write(f"  - 提取结果: `{result1}`")
+            
+            # 显示详细的提取过程
+            if ',' in content and any(char.isdigit() for char in content):
+                numbers = re.findall(r'\b\d{2}\b', content)
+                st.write(f"  - 找到数字: {numbers}")
+                
+                if '-' in content:
+                    parts = content.split('-', 1)
+                    if len(parts) >= 2:
+                        after_dash = parts[1]
+                        st.write(f"  - 横线后内容: `{after_dash}`")
+                        numbers_after_dash = re.findall(r'\b\d{2}\b', after_dash)
+                        st.write(f"  - 横线后数字: {numbers_after_dash}")
     
     def display_summary_statistics(self, patterns):
         """显示总体统计"""
