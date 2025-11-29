@@ -2884,7 +2884,7 @@ class WashTradeDetector:
                 st.markdown("---")
 
     def _calculate_detailed_account_stats(self, patterns):
-        """彻底修复的账户统计计算方法"""
+        """彻底修复的账户统计计算方法 - 解决彩种名称匹配问题"""
         account_participation = defaultdict(lambda: {
             'groups': set(),
             'lotteries': set(),
@@ -2892,7 +2892,7 @@ class WashTradeDetector:
             'total_bet_amount': 0,
         })
         
-        # 🆕 彻底修复：直接从原始数据计算
+        # 确保使用正确的数据源
         if not hasattr(self, 'df_valid') or self.df_valid is None:
             return []
         
@@ -2903,7 +2903,7 @@ class WashTradeDetector:
             for account in pattern['账户组']:
                 account_info = account_participation[account]
                 account_info['groups'].add(group_id)
-                account_info['lotteries'].add(pattern['彩种'])
+                account_info['lotteries'].add(pattern['彩种'])  # 这里存储的是检测到的彩种名称
                 
                 # 收集对刷期数
                 for record in pattern['详细记录']:
@@ -2927,16 +2927,28 @@ class WashTradeDetector:
             total_bet_amount = info['total_bet_amount']
             avg_period_amount = total_bet_amount / wash_periods_count if wash_periods_count > 0 else 0
             
-            # 🆕 关键修复：实时计算每个账户的期数和记录数
+            # 🆕 关键修复：实时计算每个账户的期数和记录数，使用原始彩种名称
             lottery_periods = 0
             lottery_records = 0
             
-            for lottery in info['lotteries']:
-                # 直接查询该账户在该彩种的所有记录
-                account_lottery_data = self.df_valid[
-                    (self.df_valid['会员账号'] == account) & 
-                    (self.df_valid['彩种'] == lottery)
-                ]
+            for detected_lottery in info['lotteries']:
+                # 查找该账户在原始数据中对应的彩种记录
+                # 由于检测到的彩种可能是"PK10"，但原始数据中是"旧北京PK10"，我们需要模糊匹配
+                account_all_data = self.df_valid[self.df_valid['会员账号'] == account]
+                
+                # 🆕 修复：使用原始彩种列进行匹配
+                if '原始彩种' in self.df_valid.columns:
+                    # 使用原始彩种列进行精确匹配
+                    account_lottery_data = account_all_data[account_all_data['原始彩种'] == detected_lottery]
+                else:
+                    # 使用彩种列进行匹配
+                    account_lottery_data = account_all_data[account_all_data['彩种'] == detected_lottery]
+                
+                # 如果精确匹配没有找到，尝试模糊匹配
+                if len(account_lottery_data) == 0 and '彩种类型' in self.df_valid.columns:
+                    # 使用彩种类型进行匹配（如PK10类型的所有彩种）
+                    account_lottery_data = account_all_data[account_all_data['彩种类型'] == detected_lottery]
+                
                 lottery_periods += account_lottery_data['期号'].nunique()
                 lottery_records += len(account_lottery_data)
             
@@ -3124,6 +3136,49 @@ class WashTradeDetector:
                 for opposite_type, count in sorted(opposite_stats.items(), key=lambda x: x[1], reverse=True)[:5]:
                     st.write(f"  - {opposite_type}: {count}组")
 
+    def diagnose_account_data(self, account, lottery):
+        """诊断账户数据匹配问题"""
+        if not hasattr(self, 'df_valid') or self.df_valid is None:
+            return "无数据"
+        
+        account_data = self.df_valid[self.df_valid['会员账号'] == account]
+        
+        result = {
+            'account': account,
+            'total_records': len(account_data),
+            'total_periods': account_data['期号'].nunique(),
+            'available_columns': self.df_valid.columns.tolist(),
+            'lottery_match_attempts': {}
+        }
+        
+        # 尝试不同的匹配方式
+        if '原始彩种' in self.df_valid.columns:
+            original_match = account_data[account_data['原始彩种'] == lottery]
+            result['lottery_match_attempts']['原始彩种精确匹配'] = {
+                'records': len(original_match),
+                'periods': original_match['期号'].nunique()
+            }
+        
+        if '彩种' in self.df_valid.columns:
+            lottery_match = account_data[account_data['彩种'] == lottery]
+            result['lottery_match_attempts']['彩种精确匹配'] = {
+                'records': len(lottery_match),
+                'periods': lottery_match['期号'].nunique()
+            }
+        
+        if '彩种类型' in self.df_valid.columns:
+            type_match = account_data[account_data['彩种类型'] == lottery]
+            result['lottery_match_attempts']['彩种类型匹配'] = {
+                'records': len(type_match),
+                'periods': type_match['期号'].nunique()
+            }
+        
+        # 显示该账户的所有彩种
+        if '彩种' in account_data.columns:
+            result['all_lotteries'] = account_data['彩种'].unique().tolist()
+        
+        return result
+
     def debug_account_stats(self, patterns):
         """调试账户统计信息"""
         st.subheader("🔍 调试信息")
@@ -3160,10 +3215,19 @@ class WashTradeDetector:
                 st.dataframe(account_pk10_data[['期号', '玩法', '内容', '金额']].head())
     
     def display_detailed_results(self, patterns):
-        """显示详细检测结果 - 使用修复的统计方法"""
+        """显示详细检测结果 - 添加诊断功能"""
         if not patterns:
             st.error("❌ 未发现符合阈值条件的连续对刷模式")
             return
+        
+        # 🆕 添加诊断功能
+        if st.checkbox("🔍 显示数据诊断信息", value=False):
+            st.subheader("数据诊断")
+            for i, pattern in enumerate(patterns[:2]):  # 只诊断前2个模式
+                st.write(f"**对刷组 {i+1} 诊断:**")
+                for account in pattern['账户组']:
+                    diagnosis = self.diagnose_account_data(account, pattern['彩种'])
+                    st.json(diagnosis)
         
         # ========== 总体统计 ==========
         st.subheader("📊 总体统计")
@@ -3299,17 +3363,42 @@ class WashTradeDetector:
         
         st.markdown(f"**活跃度:** {activity_icon} {activity_text} | **彩种:** {lottery} | **主要类型:** {display_type}")
         
-        # 🆕 彻底修复：实时计算每个账户的统计信息
+        # 🆕 彻底修复：实时计算每个账户的统计信息，解决彩种名称匹配问题
         account_stats_info = []
         for account in pattern['账户组']:
-            # 直接查询该账户在该彩种的所有记录
-            account_data = self.df_valid[
-                (self.df_valid['会员账号'] == account) & 
-                (self.df_valid['彩种'] == lottery)
-            ]
-            total_periods = account_data['期号'].nunique()
-            records_count = len(account_data)
-            account_stats_info.append(f"{account}({total_periods}期/{records_count}记录)")
+            # 直接查询该账户的所有记录
+            account_all_data = self.df_valid[self.df_valid['会员账号'] == account]
+            
+            # 🆕 关键修复：使用多种方式匹配彩种
+            account_lottery_data = pd.DataFrame()
+            
+            # 方式1：使用原始彩种列精确匹配
+            if '原始彩种' in self.df_valid.columns:
+                account_lottery_data = account_all_data[account_all_data['原始彩种'] == lottery]
+            
+            # 方式2：如果方式1没有找到，使用彩种列匹配
+            if len(account_lottery_data) == 0 and '彩种' in self.df_valid.columns:
+                account_lottery_data = account_all_data[account_all_data['彩种'] == lottery]
+            
+            # 方式3：如果方式2没有找到，使用彩种类型匹配
+            if len(account_lottery_data) == 0 and '彩种类型' in self.df_valid.columns:
+                account_lottery_data = account_all_data[account_all_data['彩种类型'] == lottery]
+            
+            # 方式4：如果以上都没有，使用模糊匹配
+            if len(account_lottery_data) == 0:
+                # 查找包含彩种关键词的记录
+                account_lottery_data = account_all_data[account_all_data['彩种'].str.contains(lottery, na=False)]
+            
+            total_periods = account_lottery_data['期号'].nunique()
+            records_count = len(account_lottery_data)
+            
+            # 🆕 添加调试信息
+            if total_periods == 0:
+                # 显示该账户的所有彩种，帮助诊断
+                all_lotteries = account_all_data['彩种'].unique() if '彩种' in account_all_data.columns else []
+                account_stats_info.append(f"{account}(0期/0记录) [实际彩种: {', '.join(all_lotteries[:3])}]")
+            else:
+                account_stats_info.append(f"{account}({total_periods}期/{records_count}记录)")
         
         st.markdown(f"**账户在该彩种投注期数/记录数:** {', '.join(account_stats_info)}")
         
