@@ -2503,22 +2503,21 @@ class WashTradeDetector:
                 
                 # 账户统计信息 - 确保这部分的缩进正确
                 account_stats_info = []
-                total_periods_stats = self.account_total_periods_by_lottery.get(lottery, {})
-                record_stats = self.account_record_stats_by_lottery.get(lottery, {})
-                
                 for account in account_group:
-                    total_periods = total_periods_stats.get(account, 0)
-                    records_count = record_stats.get(account, 0)
-                    
-                    # 🆕 如果找不到统计信息，尝试从原始数据中计算
-                    if total_periods == 0 and hasattr(self, 'df_valid') and self.df_valid is not None:
-                        # 从有效数据中计算该账户在该彩种的期数和记录数
+                    # 🆕 修复：直接从有效数据中计算
+                    if hasattr(self, 'df_valid') and self.df_valid is not None:
                         account_data = self.df_valid[
                             (self.df_valid['会员账号'] == account) & 
                             (self.df_valid['彩种'] == lottery)
                         ]
                         total_periods = account_data['期号'].nunique()
                         records_count = len(account_data)
+                    else:
+                        # 备用方案：从统计信息获取
+                        total_periods_stats = self.account_total_periods_by_lottery.get(lottery, {})
+                        record_stats = self.account_record_stats_by_lottery.get(lottery, {})
+                        total_periods = total_periods_stats.get(account, 0)
+                        records_count = record_stats.get(account, 0)
                     
                     account_stats_info.append(f"{account}({total_periods}期/{records_count}记录)")
                 
@@ -2671,7 +2670,7 @@ class WashTradeDetector:
                 '模式': f'PK10十位置全覆盖-{common_direction}',
                 '对立类型': f'全覆盖协作-{common_direction}',
                 '检测类型': 'PK10序列位置',
-                '位置分配': {
+                '位置分配': {  # 🆕 确保这是字典类型
                     account1: list(account1_positions),
                     account2: list(account2_positions)
                 }
@@ -3323,7 +3322,7 @@ class WashTradeDetector:
                 st.markdown("---")
     
     def _display_pk10_patterns(self, patterns):
-        """显示PK10协作对刷模式 - 增强版本"""
+        """显示PK10协作对刷模式 - 修复显示错误"""
         for i, pattern in enumerate(patterns, 1):
             st.markdown(f"**对刷组 {i}:** {' ↔ '.join(pattern['账户组'])}")
             
@@ -3354,36 +3353,23 @@ class WashTradeDetector:
             
             st.markdown("**详细记录:**")
             for j, record in enumerate(pattern['详细记录'], 1):
-                # 🆕 增强显示：根据记录类型显示不同的信息
+                # 🆕 修复：根据记录类型显示不同的信息
                 if '位置分配' in record:
-                    # 显示位置分配详情
-                    if len(record['账户组']) == 2:
-                        account1, account2 = record['账户组']
-                        account1_positions = []
-                        account2_positions = []
-                        
-                        for position, bets in record['位置分配'].items():
-                            for bet in bets:
-                                if bet['account'] == account1:
-                                    account1_positions.append(position)
-                                elif bet['account'] == account2:
-                                    account2_positions.append(position)
-                        
-                        st.write(f"{j}. 期号: {record['期号']} | {account1}({len(account1_positions)}个位置) + {account2}({len(account2_positions)}个位置) | 内容: {record['方向组'][0]} | 金额: ¥{record['总金额']:.2f}")
-                    else:
-                        # 3个账户的情况
-                        st.write(f"{j}. 期号: {record['期号']} | {'+'.join(record['账户组'])} | 内容: {record['方向组'][0]} | 金额: ¥{record['总金额']:.2f}")
+                    # 显示位置分配详情 - 修复数据类型错误
+                    account1, account2 = record['账户组']
+                    account1_positions = record['位置分配'].get(account1, [])
+                    account2_positions = record['位置分配'].get(account2, [])
+                    
+                    st.write(f"{j}. 期号: {record['期号']} | {account1}({len(account1_positions)}个位置) + {account2}({len(account2_positions)}个位置) | 内容: {record['方向组'][0]} | 金额: ¥{record['总金额']:.2f}")
+                    st.write(f"   位置分配: {account1}→[{', '.join(account1_positions)}], {account2}→[{', '.join(account2_positions)}]")
                 else:
-                    # 原有的显示方式
+                    # 原有的显示方式（1-5名 vs 6-10名模式）
                     if len(record['账户组']) == 2:
                         account1, account2 = record['账户组']
                         st.write(f"{j}. 期号: {record['期号']} | {account1}(1-5名) + {account2}(6-10名) | 方向: {record['方向组'][0]} | 金额: ¥{record['总金额']:.2f}")
-                    elif len(record['账户组']) == 3:
-                        account1, account2, account3 = record['账户组']
-                        st.write(f"{j}. 期号: {record['期号']} | {account1}+{account2}+{account3} | 方向: {record['方向组'][0]} | 金额: ¥{record['总金额']:.2f}")
-            
-            if i < len(patterns):
-                st.markdown("---")
+                
+                if i < len(patterns):
+                    st.markdown("---")
     
     def display_summary_statistics(self, patterns):
         """显示总体统计"""
