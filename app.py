@@ -3284,16 +3284,7 @@ class WashTradeDetector:
             st.markdown(f"**对刷期数:** {pattern['对刷期数']}期 (要求≥{pattern['要求最小对刷期数']}期)")
             st.markdown(f"**总金额:** {pattern['总投注金额']:.2f}元")
             
-            # 协作模式说明
-            st.markdown("**协作模式说明:**")
-            if '数字' in pattern['主要对立类型']:
-                st.markdown("- 🎯 **PK10十个位置全覆盖**：多个账户协作覆盖PK10所有位置")
-                st.markdown("- 🔢 **相同数字投注**：所有位置投注相同数字")
-                st.markdown("- 🔄 **位置分工**：账户间按位置范围分工协作")
-            else:
-                st.markdown("- 🎯 **PK10十个位置全覆盖**：多个账户协作覆盖PK10所有位置")
-                st.markdown("- 🤝 **相同投注内容**：所有位置投注相同方向")
-                st.markdown("- 🔄 **位置分工**：账户间按位置范围分工协作")
+            # 🆕 移除协作模式说明部分
             
             # 详细记录
             st.markdown("**详细记录:**")
@@ -3319,23 +3310,7 @@ class WashTradeDetector:
             st.markdown(f"**对刷期数:** {pattern['对刷期数']}期 (要求≥{pattern['要求最小对刷期数']}期)")
             st.markdown(f"**总金额:** {pattern['总投注金额']:.2f}元 | **平均匹配:** {pattern['平均相似度']:.2%}")
             
-            # 🆕 根据彩种类型显示不同的对刷说明
-            lottery_type = pattern.get('彩种类型', '')
-            if '六合彩' in pattern['彩种'] or 'LHC' in lottery_type:
-                st.markdown("**对刷模式说明:**")
-                st.markdown("- 🎰 **六合彩传统对刷**：投注相反方向形成对刷")
-                st.markdown("- ⚔️ **方向对立**：如尾大vs尾小、天肖vs地肖等")
-                st.markdown("- 💰 **金额平衡**：双方投注金额相近形成对刷")
-            elif 'PK10' in lottery_type:
-                st.markdown("**对刷模式说明:**")
-                st.markdown("- 🏁 **PK10传统对刷**：投注相反方向形成对刷") 
-                st.markdown("- ⚔️ **方向对立**：如大vs小、单vs双、龙vs虎等")
-                st.markdown("- 💰 **金额平衡**：双方投注金额相近形成对刷")
-            else:
-                st.markdown("**对刷模式说明:**")
-                st.markdown("- 📊 **传统对立对刷**：投注相反方向形成对刷")
-                st.markdown("- ⚔️ **方向对立**：投注内容完全相反")
-                st.markdown("- 💰 **金额平衡**：双方投注金额相近形成对刷")
+            # 🆕 移除传统对刷模式说明部分
             
             # 详细记录
             st.markdown("**详细记录:**")
