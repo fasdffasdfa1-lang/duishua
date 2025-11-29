@@ -1901,21 +1901,39 @@ class WashTradeDetector:
             return 0
     
     def enhanced_extract_direction_with_position(self, content, play_category, lottery_type):
-        """🎯 统一方向提取格式 - 修复版本"""
+        """🎯 修复的方向提取 - 支持多个相同内容识别"""
         try:
             if pd.isna(content):
                 return ""
             
             content_str = str(content).strip()
             
-            # 🎯 使用增强的内容解析器提取方向
+            # 🆕 修复：特别处理多个数字的情况
+            if any(char.isdigit() for char in content_str) and ',' in content_str:
+                # 提取所有数字
+                numbers = re.findall(r'\b\d{1,2}\b', content_str)
+                if numbers:
+                    # 对数字排序并去重，生成唯一标识
+                    unique_numbers = sorted(set(numbers))
+                    if len(unique_numbers) > 1:
+                        # 多个数字的情况，返回组合标识
+                        return f"多数字-{','.join(unique_numbers)}"
+                    else:
+                        # 单个数字的情况
+                        return f"数字-{unique_numbers[0]}"
+            
+            # 🎯 原有的方向提取逻辑
             directions = self.content_parser.enhanced_extract_directions(content_str, self.config)
             
             # 🆕 尝试备选方案：直接提取数字
             if not directions:
                 numbers = self.content_parser.extract_all_numbers(content_str)
                 if numbers:
-                    return f"数字-{numbers[0]}"
+                    if len(numbers) > 1:
+                        unique_numbers = sorted(set(numbers))
+                        return f"多数字-{','.join(unique_numbers)}"
+                    else:
+                        return f"数字-{numbers[0]}"
                 return ""
             
             # 🎯 从玩法分类中提取位置信息
@@ -1929,8 +1947,7 @@ class WashTradeDetector:
             
             # 🎯 统一格式：如果有位置信息，组合位置和方向
             if position and position != '未知位置':
-                # 对于数字投注，统一格式为"位置-数字-X"
-                if main_direction.startswith('数字-'):
+                if main_direction.startswith('数字-') or main_direction.startswith('多数字-'):
                     result = f"{position}-{main_direction}"
                 else:
                     result = f"{position}-{main_direction}"
@@ -2472,7 +2489,7 @@ class WashTradeDetector:
         return continuous_patterns
 
     def _detect_single_position_full_coverage(self, period_data, period):
-        """专门检测十个位置协同对刷模式 - 确保设置位置分配"""
+        """专门检测十个位置协同对刷模式 - 修复方向比较"""
         patterns = []
         
         # PK10十个位置
@@ -2568,12 +2585,6 @@ class WashTradeDetector:
             
             total_amount = account1_amount + account2_amount
             
-            # 🆕 确保设置位置分配信息
-            position_allocation = {
-                account1: list(account1_positions),
-                account2: list(account2_positions)
-            }
-            
             # 构建模式记录
             pattern = {
                 '期号': period,
@@ -2588,7 +2599,10 @@ class WashTradeDetector:
                 '模式': f'PK10十位置全覆盖-{common_direction}',
                 '对立类型': f'全覆盖协作-{common_direction}',
                 '检测类型': 'PK10序列位置',
-                '位置分配': position_allocation  # 🆕 确保设置位置分配
+                '位置分配': {  # 🆕 确保这是字典类型
+                    account1: list(account1_positions),
+                    account2: list(account2_positions)
+                }
             }
             
             patterns.append(pattern)
@@ -2720,13 +2734,6 @@ class WashTradeDetector:
             if 2 <= len(all_accounts) <= 3:
                 total_amount = play_1_5['投注金额'].sum() + play_6_10['投注金额'].sum()
                 
-                # 🆕 确保设置位置分配信息
-                position_allocation = {}
-                for account in accounts_1_5:
-                    position_allocation[account] = ['冠军', '亚军', '第三名', '第四名', '第五名']
-                for account in accounts_6_10:
-                    position_allocation[account] = ['第六名', '第七名', '第八名', '第九名', '第十名']
-                
                 record = {
                     '期号': period,
                     '彩种': 'PK10',
@@ -2739,8 +2746,7 @@ class WashTradeDetector:
                     '账户数量': len(all_accounts),
                     '模式': f'PK10位置协作-{content_1_5}',
                     '对立类型': f'协作覆盖-{content_1_5}',
-                    '检测类型': 'PK10序列位置',
-                    '位置分配': position_allocation  # 🆕 确保设置位置分配
+                    '检测类型': 'PK10序列位置'
                 }
                 
                 patterns.append(record)
@@ -2863,7 +2869,7 @@ class WashTradeDetector:
                 st.markdown("---")
 
     def _calculate_detailed_account_stats(self, patterns):
-        """计算详细账户统计 - 修复账户统计信息"""
+        """修复的账户统计计算方法"""
         account_participation = defaultdict(lambda: {
             'groups': set(),
             'lotteries': set(),
@@ -2873,24 +2879,11 @@ class WashTradeDetector:
             'lottery_total_records': 0,
         })
         
-        # 🆕 首先从有效数据中获取账户的基础统计
-        if hasattr(self, 'df_valid') and self.df_valid is not None:
-            for account in set().union(*[set(p['账户组']) for p in patterns]):
-                account_data = self.df_valid[self.df_valid['会员账号'] == account]
-                if len(account_data) > 0:
-                    # 获取主要彩种（参与对刷的彩种）
-                    main_lottery = None
-                    for pattern in patterns:
-                        if account in pattern['账户组']:
-                            main_lottery = pattern['彩种']
-                            break
-                    
-                    if main_lottery:
-                        lottery_data = account_data[account_data['彩种'] == main_lottery]
-                        account_participation[account]['lottery_total_periods'] = lottery_data['期号'].nunique()
-                        account_participation[account]['lottery_total_records'] = len(lottery_data)
+        # 🆕 修复1: 确保使用正确的数据源
+        if not hasattr(self, 'df_valid') or self.df_valid is None:
+            return []
         
-        # 🆕 然后收集对刷参与信息
+        # 收集账户参与信息
         for pattern in patterns:
             group_id = f"组{len(account_participation) + 1}"
             
@@ -2903,7 +2896,7 @@ class WashTradeDetector:
                 for record in pattern['详细记录']:
                     account_info['wash_periods'].add(record['期号'])
                 
-                # 计算对刷金额
+                # 计算该账户在对刷模式中的实际投注金额
                 pattern_bet_amount = 0
                 for record in pattern['详细记录']:
                     for acc, amt in zip(record['账户组'], record['金额组']):
@@ -2912,12 +2905,32 @@ class WashTradeDetector:
                 
                 account_info['total_bet_amount'] += pattern_bet_amount
         
-        # 🆕 转换为显示格式
+        # 🆕 修复2: 直接从有效数据中计算期数和记录数
+        for account in account_participation.keys():
+            # 获取该账户涉及的主要彩种
+            main_lottery = list(account_participation[account]['lotteries'])[0] if account_participation[account]['lotteries'] else None
+            
+            if main_lottery:
+                # 直接查询该账户在该彩种的所有记录
+                account_lottery_data = self.df_valid[
+                    (self.df_valid['会员账号'] == account) & 
+                    (self.df_valid['原始彩种'] == main_lottery)  # 使用原始彩种
+                ]
+                
+                # 计算期数（去重期号）
+                total_periods = account_lottery_data['期号'].nunique()
+                total_records = len(account_lottery_data)
+                
+                account_participation[account]['lottery_total_periods'] = total_periods
+                account_participation[account]['lottery_total_records'] = total_records
+        
+        # 转换为显示格式
         account_stats = []
         for account, info in account_participation.items():
             groups_count = len(info['groups'])
             lotteries_count = len(info['lotteries'])
             lottery_periods = info['lottery_total_periods']
+            lottery_records = info['lottery_total_records']
             wash_periods_count = len(info['wash_periods'])
             total_bet_amount = info['total_bet_amount']
             avg_period_amount = total_bet_amount / wash_periods_count if wash_periods_count > 0 else 0
@@ -2927,6 +2940,7 @@ class WashTradeDetector:
                 '参与组合数': groups_count,
                 '涉及彩种': lotteries_count,
                 '彩种总投注期数': lottery_periods,
+                '彩种总记录数': lottery_records,
                 '实际对刷期数': wash_periods_count,
                 '总投注金额': total_bet_amount,
                 '平均每期金额': avg_period_amount
@@ -3106,7 +3120,7 @@ class WashTradeDetector:
                     st.write(f"  - {opposite_type}: {count}组")
     
     def display_detailed_results(self, patterns):
-        """显示详细检测结果 - 按彩种分组显示"""
+        """显示详细检测结果 - 使用修复的统计方法"""
         if not patterns:
             st.error("❌ 未发现符合阈值条件的连续对刷模式")
             return
@@ -3168,6 +3182,7 @@ class WashTradeDetector:
         # ========== 参与账户详细统计 ==========
         st.subheader("👥 参与账户详细统计")
         
+        # 🆕 使用修复的统计方法
         account_stats = self._calculate_detailed_account_stats(patterns)
         
         if account_stats:
@@ -3188,7 +3203,7 @@ class WashTradeDetector:
         # ========== 详细对刷组分析 ==========
         st.subheader("🔍 详细对刷组分析")
         
-        # 🆕 按彩种分组显示（主要修改部分）
+        # 🆕 按彩种分组显示
         patterns_by_lottery = defaultdict(list)
         for pattern in patterns:
             lottery = pattern['彩种']
@@ -3217,7 +3232,7 @@ class WashTradeDetector:
                     self._display_single_pattern_by_lottery(pattern, i, lottery)
     
     def _display_single_pattern_by_lottery(self, pattern, index, lottery):
-        """按彩种显示单个对刷组详情 - 修复账户统计信息"""
+        """按彩种显示单个对刷组详情 - 统一格式"""
         st.markdown(f"**对刷组 {index}:** {' ↔ '.join(pattern['账户组'])}")
         
         # 活跃度图标和文本
@@ -3229,61 +3244,38 @@ class WashTradeDetector:
             'very_high': '极高活跃度'
         }.get(pattern['账户活跃度'], pattern['账户活跃度'])
         
-        # 🆕 检测类型判断
-        detect_type = pattern.get('检测类型', '传统对刷')
-        
-        # 🆕 主要类型显示 - 根据检测类型调整
+        # 🆕 主要类型显示 - 简化显示
         main_type = pattern['主要对立类型']
-        if detect_type == 'PK10序列位置':
-            # PK10协作模式显示
-            if '数字' in main_type:
-                display_type = "数字组合协作"
-            elif '全覆盖' in main_type:
-                display_type = "十个位置全覆盖协作"
-            else:
-                display_type = "位置分工协作"
-        else:
-            # 传统对刷模式显示
-            if ' vs ' in main_type:
-                # 简化显示，去掉计数信息
-                main_type_parts = main_type.split(' vs ')
-                if len(main_type_parts) == 2:
-                    dir1 = main_type_parts[0].split('(')[0] if '(' in main_type_parts[0] else main_type_parts[0]
-                    dir2 = main_type_parts[1].split('(')[0] if '(' in main_type_parts[1] else main_type_parts[1]
-                    display_type = f"{dir1}-{dir2}"
-                else:
-                    display_type = main_type.split('(')[0] if '(' in main_type else main_type
+        if ' vs ' in main_type:
+            # 简化显示，去掉计数信息
+            main_type_parts = main_type.split(' vs ')
+            if len(main_type_parts) == 2:
+                dir1 = main_type_parts[0].split('(')[0] if '(' in main_type_parts[0] else main_type_parts[0]
+                dir2 = main_type_parts[1].split('(')[0] if '(' in main_type_parts[1] else main_type_parts[1]
+                display_type = f"{dir1}-{dir2}"
             else:
                 display_type = main_type.split('(')[0] if '(' in main_type else main_type
+        else:
+            display_type = main_type.split('(')[0] if '(' in main_type else main_type
         
         st.markdown(f"**活跃度:** {activity_icon} {activity_text} | **彩种:** {lottery} | **主要类型:** {display_type}")
         
-        # 🆕 修复：使用更可靠的方法获取账户统计信息
+        # 🆕 账户统计信息 - 显示每个账户在该彩种的期数/记录数
         account_stats = []
-        for account in pattern['账户组']:
-            # 首先尝试从模式中的账户统计信息获取
-            found_stats = False
-            for account_info in pattern.get('账户统计信息', []):
-                if account in account_info:
+        for account_info in pattern['账户统计信息']:
+            # 解析格式：账户名(期数期/记录数记录)
+            if '(' in account_info and ')' in account_info:
+                account_name = account_info.split('(')[0]
+                stats_part = account_info.split('(')[1].replace(')', '')
+                # 提取期数和记录数
+                if '期/' in stats_part:
+                    periods = stats_part.split('期/')[0]
+                    records = stats_part.split('期/')[1].replace('记录', '')
+                    account_stats.append(f"{account_name}({periods}期/{records}记录)")
+                else:
                     account_stats.append(account_info)
-                    found_stats = True
-                    break
-            
-            # 如果模式中没有，尝试从有效数据中获取
-            if not found_stats and hasattr(self, 'df_valid') and self.df_valid is not None:
-                account_data = self.df_valid[
-                    (self.df_valid['会员账号'] == account) & 
-                    (self.df_valid['彩种'] == lottery)
-                ]
-                if len(account_data) > 0:
-                    total_periods = account_data['期号'].nunique()
-                    records_count = len(account_data)
-                    account_stats.append(f"{account}({total_periods}期/{records_count}记录)")
-                    found_stats = True
-            
-            # 如果都没有，显示默认信息
-            if not found_stats:
-                account_stats.append(f"{account}(统计中)")
+            else:
+                account_stats.append(account_info)
         
         st.markdown(f"**账户在该彩种投注期数/记录数:** {', '.join(account_stats)}")
         
@@ -3291,58 +3283,26 @@ class WashTradeDetector:
         st.markdown(f"**对刷期数:** {pattern['对刷期数']}期 (要求≥{pattern['要求最小对刷期数']}期)")
         
         # 🆕 根据检测类型显示不同的金额信息
+        detect_type = pattern.get('检测类型', '传统对刷')
         if detect_type == 'PK10序列位置':
             st.markdown(f"**总金额:** {pattern['总投注金额']:.2f}元")
-            
-            # 🆕 PK10协作模式说明
-            st.markdown("**协作模式说明:**")
-            st.markdown("- 🎯 **PK10十个位置全覆盖**：多个账户分工覆盖PK10所有位置")
-            st.markdown("- 🤝 **相同投注内容**：每期投注相同方向或数字组合")
-            st.markdown("- 🔄 **位置分工**：账户间按位置范围分工协作（如1-5名 vs 6-10名）")
         else:
             st.markdown(f"**总金额:** {pattern['总投注金额']:.2f}元 | **平均匹配:** {pattern['平均相似度']:.2%}")
-            
-            # 🆕 传统对刷模式说明
-            st.markdown("**对刷模式说明:**")
-            st.markdown("- 📊 **传统对立对刷**：投注相反方向形成对刷")
-            st.markdown("- ⚔️ **方向对立**：投注内容完全相反")
-            st.markdown("- 💰 **金额平衡**：双方投注金额相近形成对刷")
         
-        # 🆕 详细记录显示 - 统一显示格式
+        # 🆕 详细记录显示
         st.markdown("**详细记录:**")
         for j, record in enumerate(pattern['详细记录'], 1):
-            # 🆕 统一显示格式：期号 + 账户分工 + 内容 + 金额
+            # 统一格式：期号 + 方向 + 金额 + 匹配度
+            account_directions = []
+            for account, direction, amount in zip(record['账户组'], record['方向组'], record['金额组']):
+                # 简化方向显示，去掉位置前缀（如果有）
+                clean_direction = direction.split('-')[-1] if '-' in direction else direction
+                account_directions.append(f"{account}({clean_direction}:¥{amount})")
+            
+            # 根据检测类型显示匹配度
             if detect_type == 'PK10序列位置':
-                # PK10协作模式统一显示
-                if len(record['账户组']) == 2:
-                    account1, account2 = record['账户组']
-                    
-                    # 🆕 检查是否有位置分配信息
-                    if '位置分配' in record and record['位置分配']:
-                        account1_positions = record['位置分配'].get(account1, [])
-                        account2_positions = record['位置分配'].get(account2, [])
-                        
-                        if account1_positions and account2_positions:
-                            # 显示位置分配
-                            st.write(f"{j}. 期号: {record['期号']} | {account1}({len(account1_positions)}个位置) + {account2}({len(account2_positions)}个位置) | 内容: {record['方向组'][0]} | 金额: ¥{record['总金额']:.2f}")
-                        else:
-                            # 显示简单分工
-                            st.write(f"{j}. 期号: {record['期号']} | {account1} + {account2} | 内容: {record['方向组'][0]} | 金额: ¥{record['总金额']:.2f}")
-                    else:
-                        # 显示简单分工
-                        st.write(f"{j}. 期号: {record['期号']} | {account1} + {account2} | 内容: {record['方向组'][0]} | 金额: ¥{record['总金额']:.2f}")
-                else:
-                    # 多个账户的情况
-                    account_list = ' + '.join(record['账户组'])
-                    st.write(f"{j}. 期号: {record['期号']} | {account_list} | 内容: {record['方向组'][0]} | 金额: ¥{record['总金额']:.2f}")
+                st.write(f"{j}. 期号: {record['期号']} | 方向: {' ↔ '.join(account_directions)}")
             else:
-                # 传统对刷模式显示
-                account_directions = []
-                for account, direction, amount in zip(record['账户组'], record['方向组'], record['金额组']):
-                    # 简化方向显示，去掉位置前缀（如果有）
-                    clean_direction = direction.split('-')[-1] if '-' in direction else direction
-                    account_directions.append(f"{account}({clean_direction}:¥{amount})")
-                
                 similarity_display = f"{record['相似度']:.2%}" if '相似度' in record else "100.00%"
                 st.write(f"{j}. 期号: {record['期号']} | 方向: {' ↔ '.join(account_directions)} | 匹配度: {similarity_display}")
         
