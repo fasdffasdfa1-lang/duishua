@@ -3255,15 +3255,14 @@ class WashTradeDetector:
                     self._display_single_pattern_by_lottery(pattern, i, lottery, total_groups_in_lottery)
     
     def _calculate_opposite_type_stats(self, patterns):
-        """🆕 重新设计对立类型统计逻辑 - 确保正确分类"""
+        """🆕 重新设计对立类型统计逻辑 - 确保传统对立模式正确显示"""
         opposite_type_stats = defaultdict(int)
         
         for pattern in patterns:
-            # 根据彩种类型和检测类型来确定统计方式
-            lottery_type = pattern.get('彩种类型', '')
+            # 检测类型判断
             detect_type = pattern.get('检测类型', '传统对刷')
             
-            if detect_type == 'PK10序列位置' or lottery_type == 'PK10':
+            if detect_type == 'PK10序列位置':
                 # PK10协作模式：按投注内容分组统计
                 content_stats = defaultdict(int)
                 for record in pattern['详细记录']:
@@ -3278,7 +3277,7 @@ class WashTradeDetector:
                 if direction_count > 0:
                     # 获取所有方向并格式化
                     directions = [content for content in content_stats.keys() 
-                                 if not content.startswith('数字-') and content not in ['尾大', '尾小', '特大', '特小', '特单', '特双']]
+                                 if not content.startswith('数字-') and content in ['大', '小', '单', '双']]
                     if directions:
                         formatted_directions = '-'.join(sorted(set(directions)))
                         opposite_type_stats[f"协作-{formatted_directions}"] += direction_count
@@ -3291,7 +3290,7 @@ class WashTradeDetector:
                         formatted_numbers = '-'.join(sorted(set(numbers)))
                         opposite_type_stats[f"协作数字-{formatted_numbers}"] += number_count
             else:
-                # 传统对立模式：直接统计主要对立类型
+                # 🆕 修复：传统对立模式直接统计
                 main_opposite = pattern['主要对立类型']
                 # 简化对立类型显示
                 if ' vs ' in main_opposite:
@@ -3299,13 +3298,14 @@ class WashTradeDetector:
                 else:
                     simplified = main_opposite
                 
+                # 统计所有期的对立类型
                 for record in pattern['详细记录']:
                     opposite_type_stats[simplified] += 1
         
         return opposite_type_stats
     
     def _count_pk10_bet_types(self, content_stats):
-        """🆕 统计PK10投注类型"""
+        """🆕 统计PK10投注类型 - 只统计基础方向和数字"""
         direction_count = 0
         number_count = 0
         
@@ -3314,6 +3314,7 @@ class WashTradeDetector:
                 number_count += count
             elif content in ['大', '小', '单', '双']:
                 direction_count += count
+            # 🆕 六合彩方向不计入PK10协作统计
         
         return direction_count, number_count
     
