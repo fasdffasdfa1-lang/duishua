@@ -3255,14 +3255,15 @@ class WashTradeDetector:
                     self._display_single_pattern_by_lottery(pattern, i, lottery, total_groups_in_lottery)
     
     def _calculate_opposite_type_stats(self, patterns):
-        """🆕 重新设计对立类型统计逻辑 - 区分传统对立和协作模式"""
+        """🆕 重新设计对立类型统计逻辑 - 确保正确分类"""
         opposite_type_stats = defaultdict(int)
         
         for pattern in patterns:
-            # 检测类型判断
+            # 根据彩种类型和检测类型来确定统计方式
+            lottery_type = pattern.get('彩种类型', '')
             detect_type = pattern.get('检测类型', '传统对刷')
             
-            if detect_type == 'PK10序列位置':
+            if detect_type == 'PK10序列位置' or lottery_type == 'PK10':
                 # PK10协作模式：按投注内容分组统计
                 content_stats = defaultdict(int)
                 for record in pattern['详细记录']:
@@ -3271,61 +3272,50 @@ class WashTradeDetector:
                         content = record['方向组'][0]
                         content_stats[content] += 1
                 
-                # 按照用户期望的格式合并
-                merged_content = self._format_pk10_content_stats(content_stats)
-                if merged_content:
-                    opposite_type_stats[merged_content] += sum(content_stats.values())
+                # 分别统计方向投注和数字投注
+                direction_count, number_count = self._count_pk10_bet_types(content_stats)
+                
+                if direction_count > 0:
+                    # 获取所有方向并格式化
+                    directions = [content for content in content_stats.keys() 
+                                 if not content.startswith('数字-') and content not in ['尾大', '尾小', '特大', '特小', '特单', '特双']]
+                    if directions:
+                        formatted_directions = '-'.join(sorted(set(directions)))
+                        opposite_type_stats[f"协作-{formatted_directions}"] += direction_count
+                
+                if number_count > 0:
+                    # 获取所有数字并格式化
+                    numbers = [content.replace('数字-', '') for content in content_stats.keys() 
+                              if content.startswith('数字-')]
+                    if numbers:
+                        formatted_numbers = '-'.join(sorted(set(numbers)))
+                        opposite_type_stats[f"协作数字-{formatted_numbers}"] += number_count
             else:
                 # 传统对立模式：直接统计主要对立类型
                 main_opposite = pattern['主要对立类型']
-                # 🆕 修复：六合彩传统对立模式不应该归类为协作
-                if '尾大' in main_opposite or '尾小' in main_opposite or '特大' in main_opposite or '特小' in main_opposite or '特单' in main_opposite or '特双' in main_opposite:
-                    # 这是六合彩的传统对立模式
-                    for record in pattern['详细记录']:
-                        opposite_type_stats[main_opposite] += 1
+                # 简化对立类型显示
+                if ' vs ' in main_opposite:
+                    simplified = main_opposite.replace(' vs ', '-')
                 else:
-                    # 其他传统对立模式
-                    for record in pattern['详细记录']:
-                        opposite_type_stats[main_opposite] += 1
+                    simplified = main_opposite
+                
+                for record in pattern['详细记录']:
+                    opposite_type_stats[simplified] += 1
         
         return opposite_type_stats
     
-    def _format_pk10_content_stats(self, content_stats):
-        """🆕 按照用户期望的格式格式化PK10内容统计"""
-        if not content_stats:
-            return ""
-        
-        # 分离数字投注和方向投注
-        number_bets = []
-        direction_bets = []
+    def _count_pk10_bet_types(self, content_stats):
+        """🆕 统计PK10投注类型"""
+        direction_count = 0
+        number_count = 0
         
         for content, count in content_stats.items():
             if content.startswith('数字-'):
-                number_bets.append(content.replace('数字-', ''))
+                number_count += count
             elif content in ['大', '小', '单', '双']:
-                direction_bets.append(content)
-            # 🆕 排除六合彩相关方向
-            elif content in ['尾大', '尾小', '特大', '特小', '特单', '特双']:
-                # 这些不应该出现在PK10协作模式中
-                continue
+                direction_count += count
         
-        # 构建格式化的字符串
-        parts = []
-        
-        if direction_bets:
-            # 去重并排序
-            unique_directions = sorted(set(direction_bets))
-            parts.append('-'.join(unique_directions))
-        
-        if number_bets:
-            # 去重并排序
-            unique_numbers = sorted(set(number_bets))
-            parts.append('数字-' + '-'.join(unique_numbers))
-        
-        if parts:
-            return "协作-" + '-'.join(parts)
-        else:
-            return ""
+        return direction_count, number_count
     
     def _display_single_pattern_by_lottery(self, pattern, index, lottery, total_groups_in_lottery):
         """按照彩种显示单个对刷组详情"""
