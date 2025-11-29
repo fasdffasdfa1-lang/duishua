@@ -3584,7 +3584,7 @@ class WashTradeDetector:
             else:
                 account_stats_info.append(f"{account}({total_periods}期/{records_count}记录)")
         
-        st.markdown(f"**账户在该彩种投注期数/记录数:** {', '.join(account_stats_info)}")
+        st.markdown(f"**账户统计:** {', '.join(account_stats_info)} (共{len(self.df_valid)}条总记录)")
         
         # 对刷期数和金额
         st.markdown(f"**对刷期数:** {pattern['对刷期数']}期 (要求≥{pattern['要求最小对刷期数']}期)")
