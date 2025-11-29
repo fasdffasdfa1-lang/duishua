@@ -1805,6 +1805,15 @@ class WashTradeDetector:
                 axis=1
             )
             
+            # 🆕 检查1222713期的实际方向提取结果
+            if st.checkbox("🔍 检查1222713期实际数据的方向提取", value=False):
+                st.write("**1222713期实际数据的方向提取结果:**")
+                period_1222713_data = df_clean[df_clean['期号'] == '1222713']
+                if len(period_1222713_data) > 0:
+                    st.dataframe(period_1222713_data[['会员账号', '内容', '投注方向']])
+                else:
+                    st.write("未找到1222713期的数据")
+            
             # 过滤有效记录
             df_valid = df_clean[
                 (df_clean['投注方向'] != '') & 
@@ -2288,6 +2297,12 @@ class WashTradeDetector:
         # 获取当前彩种
         lottery = period_data['原始彩种'].iloc[0] if '原始彩种' in period_data.columns else period_data['彩种'].iloc[0]
         
+        # 🆕 添加调试：检查1222713期的方向提取
+        if period_data['期号'].iloc[0] == '1222713' and st.checkbox(f"🔍 调试1222713期方向处理", value=False):
+            st.write(f"**1222713期方向提取调试:**")
+            for _, row in period_data.iterrows():
+                st.write(f"账户: {row['会员账号']}, 内容: {row['内容']}, 方向: {row['投注方向']}")
+        
         # 🎯 构建账户信息字典
         account_info = {}
         for _, row in period_data.iterrows():
@@ -2452,6 +2467,13 @@ class WashTradeDetector:
         """连续对刷模式检测 - 修复分组问题"""
         if not wash_records:
             return []
+        
+        # 🆕 添加调试：检查1222713期的对刷记录
+        if st.checkbox("🔍 检查1222713期对刷记录", value=False):
+            st.write("**1222713期对刷记录:**")
+            for record in wash_records:
+                if record['期号'] == '1222713':
+                    st.write(f"期号: {record['期号']}, 账户组: {record['账户组']}, 方向组: {record['方向组']}")
         
         account_group_patterns = defaultdict(list)
         for record in wash_records:
@@ -3395,6 +3417,13 @@ class WashTradeDetector:
     def _display_single_pattern_by_lottery(self, pattern, index, lottery):
         """按彩种显示单个对刷组详情 - 彻底修复版本"""
         st.markdown(f"**对刷组 {index}:** {' ↔ '.join(pattern['账户组'])}")
+        
+        # 🆕 添加调试：检查1222713期的最终显示
+        if st.checkbox(f"🔍 调试对刷组{index}的详细记录", value=False):
+            st.write(f"**对刷组{index}的详细记录:**")
+            for j, record in enumerate(pattern['详细记录'], 1):
+                if record['期号'] == '1222713':
+                    st.write(f"1222713期原始记录: {record}")
         
         # 活跃度图标和文本
         activity_icon = "🟢" if pattern['账户活跃度'] == 'low' else "🟡" if pattern['账户活跃度'] == 'medium' else "🟠" if pattern['账户活跃度'] == 'high' else "🔴"
