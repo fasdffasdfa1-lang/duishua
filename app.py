@@ -1757,7 +1757,18 @@ class WashTradeDetector:
     def enhance_data_processing(self, df_clean):
         """修复的数据处理流程"""
         try:
-            # ... 原有代码 ...
+            # 彩种识别
+            if '彩种' in df_clean.columns:
+                df_clean['原始彩种'] = df_clean['彩种']
+                df_clean['彩种类型'] = df_clean['彩种'].apply(self.lottery_identifier.identify_lottery_type)
+            
+            # 🆕 修复：玩法分类统一，添加列存在性检查
+            if '玩法' in df_clean.columns:
+                df_clean['玩法分类'] = df_clean['玩法'].apply(self.play_normalizer.normalize_category)
+            else:
+                st.warning("⚠️ 数据中缺少'玩法'列，无法创建'玩法分类'列")
+                # 创建一个空的玩法分类列，避免后续错误
+                df_clean['玩法分类'] = ''
             
             # 提取投注金额和方向
             st.info("💰 正在提取投注金额和方向...")
@@ -1806,6 +1817,11 @@ class WashTradeDetector:
             self.calculate_account_total_periods_by_lottery(df_valid)
             
             return df_valid
+                
+        except Exception as e:
+            logger.error(f"数据处理增强失败: {str(e)}")
+            st.error(f"数据处理增强失败: {str(e)}")
+            return pd.DataFrame()
                 
         except Exception as e:
             logger.error(f"数据处理增强失败: {str(e)}")
@@ -2995,7 +3011,12 @@ class WashTradeDetector:
         return sorted(account_stats, key=lambda x: x['参与组合数'], reverse=True)
 
     def exclude_multi_direction_accounts(self, df_valid):
-        """排除同一账户多方向下注 - 修复版本，不排除单个位置注单"""
+        """排除同一账户多方向下注 - 修复版本，检查列是否存在"""
+        # 🆕 修复：先检查必要的列是否存在
+        if '玩法分类' not in df_valid.columns:
+            st.warning("⚠️ '玩法分类'列不存在，跳过多方向过滤")
+            return df_valid
+        
         # 🆕 修复：只排除真正的多方向下注，不排除单个位置注单
         
         # 首先，标记单个位置注单
@@ -3014,11 +3035,16 @@ class WashTradeDetector:
         
         # 对其他数据应用多方向过滤
         if len(other_data) > 0:
-            multi_direction_mask = (
-                other_data.groupby(['期号', '会员账号'])['投注方向']
-                .transform('nunique') > 1
-            )
-            other_data_filtered = other_data[~multi_direction_mask]
+            # 🆕 修复：检查'投注方向'列是否存在
+            if '投注方向' in other_data.columns:
+                multi_direction_mask = (
+                    other_data.groupby(['期号', '会员账号'])['投注方向']
+                    .transform('nunique') > 1
+                )
+                other_data_filtered = other_data[~multi_direction_mask]
+            else:
+                st.warning("⚠️ '投注方向'列不存在，跳过其他注单的多方向过滤")
+                other_data_filtered = other_data
         else:
             other_data_filtered = other_data
         
