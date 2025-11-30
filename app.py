@@ -1833,7 +1833,9 @@ class WashTradeDetector:
         all_patterns.extend(pk10_patterns)
         
         progress_bar.progress(1.0)
-        status_text.text("✅ 检测完成")
+        # 删除或注释掉检测完成提示
+        # status_text.text("✅ 检测完成")
+        status_text.text("")  # 清空状态文本
         
         return all_patterns
     
@@ -3458,7 +3460,6 @@ def main():
             detector = WashTradeDetector(config)
             
             st.success(f"✅ 已上传文件: {uploaded_file.name}")
-            st.info(f"📊 当前检测参数: 最小金额 ≥ {min_amount}, 基础匹配度 ≥ {similarity_2_accounts*100}%")
             
             with st.spinner("🔄 正在解析数据..."):
                 df_enhanced, filename = detector.upload_and_process(uploaded_file)
@@ -3468,7 +3469,6 @@ def main():
                         patterns = detector.detect_all_wash_trades()
                     
                     if patterns:
-                        st.success(f"✅ 检测完成！发现 {len(patterns)} 个对刷组")
                         detector.display_detailed_results(patterns)
                         detector.display_export_buttons(patterns)
                     else:
