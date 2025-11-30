@@ -2888,6 +2888,23 @@ class WashTradeDetector:
             st.error("❌ 未发现符合阈值条件的连续对刷模式")
             return
         
+        # ========== 数据基础统计 ==========
+        if hasattr(self, 'df_valid') and self.df_valid is not None:
+            st.subheader("📊 数据基础统计")
+            
+            df_enhanced = self.df_valid
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("有效记录数", f"{len(df_enhanced):,}")
+            with col2:
+                st.metric("唯一期号数", f"{df_enhanced['期号'].nunique():,}")
+            with col3:
+                st.metric("唯一账户数", f"{df_enhanced['会员账号'].nunique():,}")
+            with col4:
+                if '彩种类型' in df_enhanced.columns:
+                    st.metric("彩种类型数", f"{df_enhanced['彩种类型'].nunique()}")
+        
         # ========== 总体统计 ==========
         st.subheader("📊 总体统计")
         
