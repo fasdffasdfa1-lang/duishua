@@ -2552,28 +2552,34 @@ class WashTradeDetector:
                 st.markdown("---")
 
     def _calculate_detailed_account_stats(self, patterns):
-        """彻底修复的账户统计计算方法"""
+        """彻底修复的账户统计计算方法 - 按新格式重新组织"""
         account_participation = defaultdict(lambda: {
             'groups': set(),
             'lotteries': set(),
             'wash_periods': set(),
+            'lottery_wash_periods': defaultdict(set),  # 按彩种记录对刷期数
             'total_bet_amount': 0,
         })
         
         if not hasattr(self, 'df_valid') or self.df_valid is None:
             return []
         
+        # 收集账户参与信息
         for pattern in patterns:
             group_id = f"组{len(account_participation) + 1}"
+            lottery = pattern['彩种']
             
             for account in pattern['账户组']:
                 account_info = account_participation[account]
                 account_info['groups'].add(group_id)
-                account_info['lotteries'].add(pattern['彩种'])
+                account_info['lotteries'].add(lottery)
                 
+                # 记录每个彩种的对刷期数
                 for record in pattern['详细记录']:
                     account_info['wash_periods'].add(record['期号'])
+                    account_info['lottery_wash_periods'][lottery].add(record['期号'])
                 
+                # 计算该账户在这个模式中的总投注金额
                 pattern_bet_amount = 0
                 for record in pattern['详细记录']:
                     for acc, amt in zip(record['账户组'], record['金额组']):
@@ -2582,6 +2588,7 @@ class WashTradeDetector:
                 
                 account_info['total_bet_amount'] += pattern_bet_amount
         
+        # 生成统计记录
         account_stats = []
         for account, info in account_participation.items():
             groups_count = len(info['groups'])
@@ -2590,8 +2597,9 @@ class WashTradeDetector:
             total_bet_amount = info['total_bet_amount']
             avg_period_amount = total_bet_amount / wash_periods_count if wash_periods_count > 0 else 0
             
-            lottery_periods = 0
-            lottery_records = 0
+            # 计算彩种总投注期数
+            lottery_total_periods = 0
+            lottery_total_records = 0
             
             for detected_lottery in info['lotteries']:
                 account_all_data = self.df_valid[self.df_valid['会员账号'] == account]
@@ -2607,16 +2615,27 @@ class WashTradeDetector:
                 if len(account_lottery_data) == 0:
                     account_lottery_data = account_all_data[account_all_data['彩种'].str.contains(detected_lottery, na=False)]
                 
-                lottery_periods += account_lottery_data['期号'].nunique()
-                lottery_records += len(account_lottery_data)
+                lottery_total_periods += account_lottery_data['期号'].nunique()
+                lottery_total_records += len(account_lottery_data)
+            
+            # 生成违规彩种字符串（彩种（期数））
+            violation_lotteries = []
+            for lottery, periods in info['lottery_wash_periods'].items():
+                period_count = len(periods)
+                violation_lotteries.append(f"{lottery}（{period_count}期）")
+            
+            violation_lotteries_str = "；".join(violation_lotteries)
+            
+            # 生成涉及彩种字符串
+            involved_lotteries_str = "；".join(info['lotteries'])
             
             stat_record = {
                 '账户': account,
                 '参与组合数': groups_count,
-                '涉及彩种': lotteries_count,
-                '彩种总投注期数': lottery_periods,
-                '彩种总记录数': lottery_records,
+                '彩种总投注期数': lottery_total_periods,
                 '实际对刷期数': wash_periods_count,
+                '涉及彩种': involved_lotteries_str,
+                '违规彩种（彩种（期数））': violation_lotteries_str,
                 '总投注金额': total_bet_amount,
                 '平均每期金额': avg_period_amount
             }
@@ -2827,9 +2846,11 @@ class WashTradeDetector:
         # ========== 总体统计 ==========
         st.subheader("📊 总体统计")
         
-        # 基础数据统计
+        # 基础数据统计 + 对刷检测统计
         if hasattr(self, 'df_valid') and self.df_valid is not None:
             df_enhanced = self.df_valid
+            
+            # 第一行：基础数据统计
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
@@ -2842,16 +2863,11 @@ class WashTradeDetector:
                 if '彩种类型' in df_enhanced.columns:
                     st.metric("彩种类型数", f"{df_enhanced['彩种类型'].nunique()}")
         
-        # 对刷检测统计
+        # 第二行：对刷检测统计
         total_groups = len(patterns)
         total_accounts = sum(p['账户数量'] for p in patterns)
         total_wash_periods = sum(p['对刷期数'] for p in patterns)
         total_amount = sum(p['总投注金额'] for p in patterns)
-        
-        detection_type_stats = defaultdict(int)
-        for pattern in patterns:
-            detection_type = pattern.get('检测类型', '传统对刷')
-            detection_type_stats[detection_type] += 1
         
         col1, col2, col3, col4 = st.columns(4)
         
@@ -2867,7 +2883,12 @@ class WashTradeDetector:
         with col4:
             st.metric("总涉及金额", f"¥{total_amount:,.2f}")
         
-        # 其余原有代码保持不变...
+        # 检测类型分布（如果有多种类型）
+        detection_type_stats = defaultdict(int)
+        for pattern in patterns:
+            detection_type = pattern.get('检测类型', '传统对刷')
+            detection_type_stats[detection_type] += 1
+        
         if len(detection_type_stats) > 1:
             st.write("**检测类型分布:**")
             type_cols = st.columns(len(detection_type_stats))
@@ -2901,8 +2922,17 @@ class WashTradeDetector:
         if account_stats:
             df_stats = pd.DataFrame(account_stats)
             
+            # 格式化金额列
             df_stats['总投注金额'] = df_stats['总投注金额'].apply(lambda x: f"¥{x:,.2f}")
             df_stats['平均每期金额'] = df_stats['平均每期金额'].apply(lambda x: f"¥{x:,.2f}")
+            
+            # 确保列的顺序符合要求
+            desired_columns = ['账户', '参与组合数', '彩种总投注期数', '实际对刷期数', 
+                              '涉及彩种', '违规彩种（彩种（期数））', '总投注金额', '平均每期金额']
+            
+            # 只保留存在的列
+            available_columns = [col for col in desired_columns if col in df_stats.columns]
+            df_stats = df_stats[available_columns]
             
             st.dataframe(
                 df_stats,
