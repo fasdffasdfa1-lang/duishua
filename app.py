@@ -2692,13 +2692,7 @@ class WashTradeDetector:
     def exclude_multi_direction_accounts(self, df_valid):
         """排除同一账户多方向下注"""
         if '玩法分类' not in df_valid.columns:
-            st.warning("⚠️ '玩法分类'列不存在，跳过多方向过滤")
             return df_valid
-        
-        st.write(f"🔍 **多方向过滤调试 - 过滤前数据**")
-        st.write(f"总记录数: {len(df_valid)}")
-        st.write(f"唯一账户数: {df_valid['会员账号'].nunique()}")
-        st.write(f"彩种分布: {df_valid['彩种'].value_counts().to_dict()}")
         
         pk10_positions = ['冠军', '亚军', '第三名', '第四名', '第五名', 
                          '第六名', '第七名', '第八名', '第九名', '第十名']
@@ -2708,9 +2702,6 @@ class WashTradeDetector:
         single_position_data = df_valid[single_position_mask]
         other_data = df_valid[~single_position_mask]
         
-        st.write(f"单个位置注单: {len(single_position_data)} 条")
-        st.write(f"其他注单: {len(other_data)} 条")
-        
         if len(other_data) > 0:
             if '投注方向' in other_data.columns:
                 multi_direction_mask = (
@@ -2718,23 +2709,12 @@ class WashTradeDetector:
                     .transform('nunique') > 1
                 )
                 other_data_filtered = other_data[~multi_direction_mask]
-                
-                st.write(f"其他注单中多方向账户数: {multi_direction_mask.sum()}")
             else:
-                st.warning("⚠️ '投注方向'列不存在，跳过其他注单的多方向过滤")
                 other_data_filtered = other_data
         else:
             other_data_filtered = other_data
         
         df_filtered = pd.concat([single_position_data, other_data_filtered], ignore_index=True)
-        
-        st.write(f"🔍 **多方向过滤调试 - 过滤后数据**")
-        st.write(f"总记录数: {len(df_filtered)}")
-        st.write(f"唯一账户数: {df_filtered['会员账号'].nunique()}")
-        
-        st.write(f"🔄 多方向过滤: {len(df_valid)} -> {len(df_filtered)} 条记录")
-        st.write(f"   单个位置注单: {len(single_position_data)} 条")
-        st.write(f"   其他注单过滤后: {len(other_data_filtered)} 条")
         
         return df_filtered
     
