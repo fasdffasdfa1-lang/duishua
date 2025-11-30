@@ -2552,7 +2552,7 @@ class WashTradeDetector:
                 st.markdown("---")
 
     def _calculate_detailed_account_stats(self, patterns):
-        """彻底修复的账户统计计算方法 - 按新格式重新组织"""
+        """彻底修复的账户统计计算方法 - 去掉涉及彩种列"""
         account_participation = defaultdict(lambda: {
             'groups': set(),
             'lotteries': set(),
@@ -2592,14 +2592,12 @@ class WashTradeDetector:
         account_stats = []
         for account, info in account_participation.items():
             groups_count = len(info['groups'])
-            lotteries_count = len(info['lotteries'])
             wash_periods_count = len(info['wash_periods'])
             total_bet_amount = info['total_bet_amount']
             avg_period_amount = total_bet_amount / wash_periods_count if wash_periods_count > 0 else 0
             
             # 计算彩种总投注期数
             lottery_total_periods = 0
-            lottery_total_records = 0
             
             for detected_lottery in info['lotteries']:
                 account_all_data = self.df_valid[self.df_valid['会员账号'] == account]
@@ -2616,7 +2614,6 @@ class WashTradeDetector:
                     account_lottery_data = account_all_data[account_all_data['彩种'].str.contains(detected_lottery, na=False)]
                 
                 lottery_total_periods += account_lottery_data['期号'].nunique()
-                lottery_total_records += len(account_lottery_data)
             
             # 生成违规彩种字符串（彩种（期数））
             violation_lotteries = []
@@ -2626,15 +2623,11 @@ class WashTradeDetector:
             
             violation_lotteries_str = "；".join(violation_lotteries)
             
-            # 生成涉及彩种字符串
-            involved_lotteries_str = "；".join(info['lotteries'])
-            
             stat_record = {
                 '账户': account,
                 '参与组合数': groups_count,
                 '彩种总投注期数': lottery_total_periods,
                 '实际对刷期数': wash_periods_count,
-                '涉及彩种': involved_lotteries_str,
                 '违规彩种（彩种（期数））': violation_lotteries_str,
                 '总投注金额': total_bet_amount,
                 '平均每期金额': avg_period_amount
@@ -2926,9 +2919,9 @@ class WashTradeDetector:
             df_stats['总投注金额'] = df_stats['总投注金额'].apply(lambda x: f"¥{x:,.2f}")
             df_stats['平均每期金额'] = df_stats['平均每期金额'].apply(lambda x: f"¥{x:,.2f}")
             
-            # 确保列的顺序符合要求
+            # 新的列顺序（去掉涉及彩种）
             desired_columns = ['账户', '参与组合数', '彩种总投注期数', '实际对刷期数', 
-                              '涉及彩种', '违规彩种（彩种（期数））', '总投注金额', '平均每期金额']
+                              '违规彩种（彩种（期数））', '总投注金额', '平均每期金额']
             
             # 只保留存在的列
             available_columns = [col for col in desired_columns if col in df_stats.columns]
