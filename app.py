@@ -286,37 +286,31 @@ class DataProcessor:
         identified_columns = {}
         actual_columns = [str(col).strip() for col in df_columns]
         
-        with st.expander("🔍 列名识别详情", expanded=False):
-            st.info(f"检测到的列名: {actual_columns}")
-            
-            for standard_col, possible_names in self.column_mapping.items():
-                found = False
-                for actual_col in actual_columns:
-                    actual_col_lower = actual_col.lower().replace(' ', '').replace('_', '').replace('-', '')
+        # 删除展开器和所有日志输出
+        for standard_col, possible_names in self.column_mapping.items():
+            found = False
+            for actual_col in actual_columns:
+                actual_col_lower = actual_col.lower().replace(' ', '').replace('_', '').replace('-', '')
+                
+                for possible_name in possible_names:
+                    possible_name_lower = possible_name.lower().replace(' ', '').replace('_', '').replace('-', '')
                     
-                    for possible_name in possible_names:
-                        possible_name_lower = possible_name.lower().replace(' ', '').replace('_', '').replace('-', '')
-                        
-                        set1 = set(possible_name_lower)
-                        set2 = set(actual_col_lower)
-                        intersection = set1 & set2
-                        
-                        similarity_score = len(intersection) / len(set1) if set1 else 0
-                        
-                        if (possible_name_lower in actual_col_lower or 
-                            actual_col_lower in possible_name_lower or
-                            similarity_score >= self.similarity_threshold):
-                            
-                            identified_columns[actual_col] = standard_col
-                            st.success(f"✅ 识别列名: {actual_col} -> {standard_col} (相似度: {similarity_score:.2f})")
-                            found = True
-                            break
+                    set1 = set(possible_name_lower)
+                    set2 = set(actual_col_lower)
+                    intersection = set1 & set2
                     
-                    if found:
+                    similarity_score = len(intersection) / len(set1) if set1 else 0
+                    
+                    if (possible_name_lower in actual_col_lower or 
+                        actual_col_lower in possible_name_lower or
+                        similarity_score >= self.similarity_threshold):
+                        
+                        identified_columns[actual_col] = standard_col
+                        found = True
                         break
                 
-                if not found:
-                    st.warning(f"⚠️ 未识别到 {standard_col} 对应的列名")
+                if found:
+                    break
         
         return identified_columns
     
@@ -346,57 +340,19 @@ class DataProcessor:
                 if null_count > 0:
                     issues.append(f"列 '{col}' 有 {null_count} 个空值")
 
-        if '会员账号' in df.columns:
-            truncated_accounts = df[df['会员账号'].str.contains(r'\.\.\.|…', na=False)]
-            if len(truncated_accounts) > 0:
-                issues.append(f"发现 {len(truncated_accounts)} 个可能被截断的会员账号")
-            
-            account_lengths = df['会员账号'].str.len()
-            if account_lengths.max() > 50:
-                issues.append("发现异常长度的会员账号")
-            
-            unique_accounts = df['会员账号'].unique()[:5]
-            sample_info = " | ".join([f"'{acc}'" for acc in unique_accounts])
-            st.info(f"会员账号格式样本: {sample_info}")
-        
-        if '期号' in df.columns:
-            df['期号'] = df['期号'].astype(str).str.replace(r'\.0$', '', regex=True)
-            invalid_periods = df[~df['期号'].str.match(r'^[\dA-Za-z]+$')]
-            if len(invalid_periods) > 0:
-                issues.append(f"发现 {len(invalid_periods)} 条无效期号记录")
-        
-        if '彩种' in df.columns:
-            lottery_stats = df['彩种'].value_counts()
-            st.info(f"🎲 彩种分布: 共{len(lottery_stats)}种，前5: {', '.join([f'{k}({v}条)' for k,v in lottery_stats.head().items()])}")
-        
-        if hasattr(df, '投注方向') and '投注方向' in df.columns:
-            direction_stats = df['投注方向'].value_counts().head(10)
-            with st.expander("🎯 投注方向分布TOP10", expanded=False):
-                for direction, count in direction_stats.items():
-                    st.write(f"  - {direction}: {count}次")
-        
         # 检查重复数据
         duplicate_count = df.duplicated().sum()
         if duplicate_count > 0:
             issues.append(f"发现 {duplicate_count} 条重复记录")
-        
-        if issues:
-            with st.expander("⚠️ 数据质量问题", expanded=True):
-                for issue in issues:
-                    st.warning(f"  - {issue}")
-        else:
-            st.success("✅ 数据质量检查通过")
-        
+
         return issues
     
     def clean_data(self, uploaded_file):
         """数据清洗主函数"""
         try:
             df_temp = pd.read_excel(uploaded_file, header=None, nrows=50)
-            st.info(f"原始数据维度: {df_temp.shape}")
             
             start_row, start_col = self.find_data_start(df_temp)
-            st.info(f"数据起始位置: 第{start_row+1}行, 第{start_col+1}列")
             
             df_clean = pd.read_excel(
                 uploaded_file, 
@@ -410,16 +366,12 @@ class DataProcessor:
             if start_col > 0:
                 df_clean = df_clean.iloc[:, start_col:]
             
-            st.info(f"清理后数据维度: {df_clean.shape}")
-            
             column_mapping = self.smart_column_identification(df_clean.columns)
             if column_mapping:
                 df_clean = df_clean.rename(columns=column_mapping)
-                st.success("✅ 列名识别完成!")
             
             missing_columns = [col for col in self.required_columns if col not in df_clean.columns]
             if missing_columns and len(df_clean.columns) >= 4:
-                st.warning("自动映射列名...")
                 manual_mapping = {}
                 col_names = ['会员账号', '彩种', '期号', '内容', '玩法', '金额']
                 for i, col_name in enumerate(col_names):
@@ -427,7 +379,6 @@ class DataProcessor:
                         manual_mapping[df_clean.columns[i]] = col_name
                 
                 df_clean = df_clean.rename(columns=manual_mapping)
-                st.info(f"手动重命名后的列: {list(df_clean.columns)}")
             
             initial_count = len(df_clean)
             df_clean = df_clean.dropna(subset=[col for col in self.required_columns if col in df_clean.columns])
@@ -453,17 +404,8 @@ class DataProcessor:
             
             self.validate_data_quality(df_clean)
             
-            st.success(f"✅ 数据清洗完成: {initial_count} -> {len(df_clean)} 条记录")
-            
-            st.info(f"📊 唯一会员账号数: {df_clean['会员账号'].nunique()}")
-            
-            if '彩种' in df_clean.columns:
-                lottery_dist = df_clean['彩种'].value_counts()
-                with st.expander("🎯 彩种分布", expanded=False):
-                    st.dataframe(lottery_dist.reset_index().rename(columns={'index': '彩种', '彩种': '数量'}))
-            
             return df_clean
-            
+                
         except Exception as e:
             st.error(f"❌ 数据清洗失败: {str(e)}")
             logger.error(f"数据清洗失败: {str(e)}")
@@ -1601,8 +1543,6 @@ class WashTradeDetector:
             else:
                 df_clean['玩法分类'] = ''
             
-            st.info("💰 正在提取投注金额和方向...")
-            
             df_clean['投注金额'] = df_clean['金额'].apply(
                 lambda x: self.extract_bet_amount_safe(str(x))
             )
@@ -1620,12 +1560,6 @@ class WashTradeDetector:
                 (df_clean['投注方向'] != '') & 
                 (df_clean['投注金额'] >= self.config.min_amount)
             ].copy()
-            
-            st.write(f"🔄 过滤后记录数: {len(df_valid)} (过滤掉 {len(df_clean) - len(df_valid)} 条)")
-            
-            if len(df_valid) == 0:
-                st.error("❌ 过滤后没有有效记录")
-                return pd.DataFrame()
             
             self.data_processed = True
             self.df_valid = df_valid
@@ -2888,10 +2822,11 @@ class WashTradeDetector:
             st.error("❌ 未发现符合阈值条件的连续对刷模式")
             return
         
-        # ========== 数据基础统计 ==========
+        # ========== 总体统计 ==========
+        st.subheader("📊 总体统计")
+        
+        # 基础数据统计
         if hasattr(self, 'df_valid') and self.df_valid is not None:
-            st.subheader("📊 数据基础统计")
-            
             df_enhanced = self.df_valid
             col1, col2, col3, col4 = st.columns(4)
             
@@ -2905,9 +2840,7 @@ class WashTradeDetector:
                 if '彩种类型' in df_enhanced.columns:
                     st.metric("彩种类型数", f"{df_enhanced['彩种类型'].nunique()}")
         
-        # ========== 总体统计 ==========
-        st.subheader("📊 总体统计")
-        
+        # 对刷检测统计
         total_groups = len(patterns)
         total_accounts = sum(p['账户数量'] for p in patterns)
         total_wash_periods = sum(p['对刷期数'] for p in patterns)
@@ -2932,6 +2865,7 @@ class WashTradeDetector:
         with col4:
             st.metric("总涉及金额", f"¥{total_amount:,.2f}")
         
+        # 其余原有代码保持不变...
         if len(detection_type_stats) > 1:
             st.write("**检测类型分布:**")
             type_cols = st.columns(len(detection_type_stats))
@@ -3524,61 +3458,18 @@ def main():
             detector = WashTradeDetector(config)
             
             st.success(f"✅ 已上传文件: {uploaded_file.name}")
-            
             st.info(f"📊 当前检测参数: 最小金额 ≥ {min_amount}, 基础匹配度 ≥ {similarity_2_accounts*100}%")
             
             with st.spinner("🔄 正在解析数据..."):
                 df_enhanced, filename = detector.upload_and_process(uploaded_file)
                 
                 if df_enhanced is not None and len(df_enhanced) > 0:
-                    st.success("✅ 数据解析完成")
-                    
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.metric("有效记录数", f"{len(df_enhanced):,}")
-                    with col2:
-                        st.metric("唯一期号数", f"{df_enhanced['期号'].nunique():,}")
-                    with col3:
-                        st.metric("唯一账户数", f"{df_enhanced['会员账号'].nunique():,}")
-                    with col4:
-                        if '彩种类型' in df_enhanced.columns:
-                            st.metric("彩种类型数", f"{df_enhanced['彩种类型'].nunique()}")
-                    
-                    initial_count = len(df_enhanced)
-                    if hasattr(detector, 'df_valid') and detector.df_valid is not None:
-                        valid_count = len(detector.df_valid)
-                        filtered_count = initial_count - valid_count
-                        if filtered_count > 0:
-                            st.info(f"📊 过滤统计: 移除了 {filtered_count} 条金额低于{min_amount}的记录")
-                    
-                    with st.expander("📊 数据预览", expanded=False):
-                        tab1, tab2, tab3 = st.tabs(["数据概览", "彩种分布", "金额统计"])
-                        
-                        with tab1:
-                            st.dataframe(df_enhanced.head(50), use_container_width=True)
-                        
-                        with tab2:
-                            if '彩种类型' in df_enhanced.columns:
-                                lottery_type_stats = df_enhanced['彩种类型'].value_counts()
-                                st.bar_chart(lottery_type_stats)
-                        
-                        with tab3:
-                            if '投注金额' in df_enhanced.columns:
-                                st.write(f"- 总投注额: {df_enhanced['投注金额'].sum():,.2f} 元")
-                                st.write(f"- 平均每注: {df_enhanced['投注金额'].mean():.2f} 元")
-                                st.write(f"- 最大单注: {df_enhanced['投注金额'].max():.2f} 元")
-                                st.write(f"- 最小单注: {df_enhanced['投注金额'].min():.2f} 元")
-                                st.write(f"- 金额≥{min_amount}的记录: {len(df_enhanced[df_enhanced['投注金额'] >= min_amount]):,} 条")
-                    
-                    st.info("🚀 开始检测对刷交易...")
                     with st.spinner("🔍 正在检测对刷交易..."):
                         patterns = detector.detect_all_wash_trades()
                     
                     if patterns:
                         st.success(f"✅ 检测完成！发现 {len(patterns)} 个对刷组")
-                        
                         detector.display_detailed_results(patterns)
-                        
                         detector.display_export_buttons(patterns)
                     else:
                         st.warning("⚠️ 未发现符合阈值条件的对刷行为")
