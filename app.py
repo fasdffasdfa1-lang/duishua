@@ -1974,11 +1974,7 @@ class WashTradeDetector:
         """N个账户对刷模式检测"""
         wash_records = []
         
-        # 根据可用列选择分组方式
-        if '原始彩种' in df_filtered.columns:
-            period_groups = df_filtered.groupby(['期号', '原始彩种'])  # 按具体彩种分组
-        else:
-            period_groups = df_filtered.groupby(['期号', '彩种'])  # 按彩种分组
+        period_groups = df_filtered.groupby(['期号', '原始彩种'])
         
         valid_direction_combinations = self._get_valid_direction_combinations(n_accounts)
         
@@ -2022,35 +2018,34 @@ class WashTradeDetector:
             
             sequence_patterns = []
             
-            # 按期号和具体彩种分组处理
-            if '原始彩种' in df_pk10.columns:
-                # 按具体彩种分组
-                period_groups = df_pk10.groupby(['期号', '原始彩种'])
-            else:
-                # 按彩种分组
-                period_groups = df_pk10.groupby(['期号', '彩种'])
+            # 按期号分组（不按具体彩种分组，保持原有逻辑）
+            period_groups = df_pk10.groupby('期号')
             
-            for (period, lottery), period_data in period_groups:
-                # 获取具体彩种名称
-                specific_lottery = lottery
+            for period, period_data in period_groups:
+                # 获取这个期号中的具体彩种名称
+                if len(period_data) > 0:
+                    # 优先使用"原始彩种"，如果不存在则使用"彩种"
+                    if '原始彩种' in period_data.columns:
+                        specific_lottery = period_data['原始彩种'].iloc[0]
+                    else:
+                        specific_lottery = period_data['彩种'].iloc[0]
+                else:
+                    specific_lottery = 'PK10'  # 默认值
                 
-                # 检测1-5名和6-10名协作模式
+                # 调用原有的检测方法，但传入具体的彩种名称
                 patterns_1 = self._detect_1_5_6_10_collaboration(period_data, period, specific_lottery)
                 sequence_patterns.extend(patterns_1)
                 
-                # 检测其他PK10模式
                 patterns_2 = self._detect_single_position_full_coverage(period_data, period, specific_lottery)
                 sequence_patterns.extend(patterns_2)
                 
-                # 检测竖线格式的协作模式
                 patterns_3 = self._detect_vertical_format_collaboration(period_data, period, specific_lottery)
                 sequence_patterns.extend(patterns_3)
             
-            # 额外的完整性检查：过滤掉不完整的覆盖
+            # 原有的过滤逻辑保持不变
             filtered_patterns = []
             for pattern in sequence_patterns:
                 if '位置覆盖详情' in pattern:
-                    # 检查是否都是完整覆盖
                     is_full = True
                     for detail in pattern['位置覆盖详情'].values():
                         if '5/5' not in detail:
@@ -2060,10 +2055,9 @@ class WashTradeDetector:
                     if is_full:
                         filtered_patterns.append(pattern)
                 else:
-                    # 没有位置覆盖信息，默认为完整
                     filtered_patterns.append(pattern)
             
-            # 查找连续模式
+            # 原有的连续模式检测保持不变
             continuous_patterns = self.find_continuous_patterns_optimized(filtered_patterns)
             
             return continuous_patterns
@@ -2124,38 +2118,137 @@ class WashTradeDetector:
         patterns = []
         detected_combinations = set()
         
-        # 获取具体彩种名称
-        if '原始彩种' in period_data.columns:
-            lottery = period_data['原始彩种'].iloc[0]
-        else:
-            lottery = period_data['彩种'].iloc[0]
+        # 确保lottery_type有默认值
+        lottery_type = '未知'
         
-        # 获取彩种类型
-        if '彩种类型' in period_data.columns:
-            lottery_type = period_data['彩种类型'].iloc[0]
-        else:
-            # 从彩种名称推断类型
-            lottery_type = self.lottery_identifier.identify_lottery_type(lottery)
+        # 尝试从不同列获取彩种类型
+        if len(period_data) > 0:
+            if '彩种类型' in period_data.columns:
+                lottery_type = period_data['彩种类型'].iloc[0]
+            elif '原始彩种' in period_data.columns:
+                # 从原始彩种推断类型
+                lottery_name = period_data['原始彩种'].iloc[0]
+                lottery_type = self.lottery_identifier.identify_lottery_type(lottery_name)
+            elif '彩种' in period_data.columns:
+                lottery_name = period_data['彩种'].iloc[0]
+                lottery_type = self.lottery_identifier.identify_lottery_type(lottery_name)
         
-        # 其余代码保持不变，只修改记录中的彩种字段
-        # ... 原有的检测逻辑 ...
+        lottery = period_data['原始彩种'].iloc[0] if '原始彩种' in period_data.columns else period_data['彩种'].iloc[0]
         
-        # 在创建记录时，使用具体彩种名称
-        record = {
-            '期号': period_data['期号'].iloc[0],
-            '彩种': lottery,  # 使用具体彩种名称
-            '彩种类型': lottery_type,
-            '账户组': list(account_group),
-            '方向组': group_directions,
-            '金额组': group_amounts,
-            '总金额': dir1_total + dir2_total,
-            '相似度': similarity,
-            '账户数量': n_accounts,
-            '模式': pattern_str,
-            '对立类型': combo['opposite_type']
-        }
+        current_period = period_data['期号'].iloc[0]
         
-        patterns.append(record)
+        account_info = {}
+        for _, row in period_data.iterrows():
+            account = row['会员账号']
+            direction = row['投注方向']
+            amount = row['投注金额']
+            
+            if account not in account_info:
+                account_info[account] = []
+            account_info[account].append({
+                'direction': direction,
+                'amount': amount
+            })
+        
+        for account_group in combinations(period_accounts, n_accounts):
+            if not self._check_account_period_difference(account_group, lottery):
+                continue
+            
+            group_directions = []
+            group_amounts = []
+            
+            for account in account_group:
+                if account in account_info and account_info[account]:
+                    first_bet = account_info[account][0]
+                    group_directions.append(first_bet['direction'])
+                    group_amounts.append(first_bet['amount'])
+            
+            if len(group_directions) != n_accounts:
+                continue
+            
+            filtered_account_group, filtered_directions, filtered_amounts = self.filter_accounts_by_amount_balance(
+                account_group, group_directions, group_amounts
+            )
+            
+            if len(filtered_account_group) < 2:
+                continue
+            
+            account_group = filtered_account_group
+            group_directions = filtered_directions
+            group_amounts = filtered_amounts
+            n_accounts = len(account_group)
+    
+            combination_key = (
+                tuple(sorted(account_group)), 
+                tuple(sorted(group_directions)),
+                tuple(sorted(group_amounts))
+            )
+            
+            if combination_key in detected_combinations:
+                continue
+            
+            for combo in valid_combinations:
+                target_directions = combo['directions']
+                
+                actual_directions_sorted = sorted(group_directions)
+                target_directions_sorted = sorted(target_directions)
+                
+                if actual_directions_sorted == target_directions_sorted:
+                    detected_combinations.add(combination_key)
+                    
+                    dir1_total = 0
+                    dir2_total = 0
+                    dir1 = combo['directions'][0]
+                    
+                    for direction, amount in zip(group_directions, group_amounts):
+                        if direction == dir1:
+                            dir1_total += amount
+                        else:
+                            dir2_total += amount
+                    
+                    similarity_threshold = self.config.account_count_similarity_thresholds.get(
+                        n_accounts, self.config.amount_similarity_threshold
+                    )
+                    
+                    if dir1_total > 0 and dir2_total > 0:
+                        similarity = min(dir1_total, dir2_total) / max(dir1_total, dir2_total)
+                        
+                        if similarity >= similarity_threshold:
+                            # 使用已经定义好的lottery_type
+                            if ' vs ' in combo['opposite_type']:
+                                pattern_parts = combo['opposite_type'].split(' vs ')
+                                if len(pattern_parts) == 2:
+                                    dir1_part = pattern_parts[0].split('-')
+                                    dir2_part = pattern_parts[1].split('-')
+                                    if len(dir1_part) == 2 and len(dir2_part) == 2:
+                                        pattern_str = f"{dir1_part[0]}-{dir1_part[1]}({combo['dir1_count']}个) vs {dir2_part[0]}-{dir2_part[1]}({combo['dir2_count']}个)"
+                                    else:
+                                        pattern_str = f"{pattern_parts[0]}({combo['dir1_count']}个) vs {pattern_parts[1]}({combo['dir2_count']}个)"
+                                else:
+                                    pattern_str = combo['opposite_type']
+                            else:
+                                opposite_parts = combo['opposite_type'].split('-')
+                                if len(opposite_parts) == 2:
+                                    pattern_str = f"{opposite_parts[0]}({combo['dir1_count']}个) vs {opposite_parts[1]}({combo['dir2_count']}个)"
+                                else:
+                                    pattern_str = combo['opposite_type']
+                            
+                            record = {
+                                '期号': period_data['期号'].iloc[0],
+                                '彩种': lottery,
+                                '彩种类型': lottery_type,
+                                '账户组': list(account_group),
+                                '方向组': group_directions,
+                                '金额组': group_amounts,
+                                '总金额': dir1_total + dir2_total,
+                                '相似度': similarity,
+                                '账户数量': n_accounts,
+                                '模式': pattern_str,
+                                '对立类型': combo['opposite_type']
+                            }
+                            
+                            patterns.append(record)
+                            break
         
         return patterns
     
@@ -2310,7 +2403,7 @@ class WashTradeDetector:
         
         return continuous_patterns
 
-    def _detect_single_position_full_coverage(self, period_data, period, specific_lottery):
+    def _detect_single_position_full_coverage(self, period_data, period, specific_lottery='PK10'):
         """修复单个位置全覆盖检测 - 确保能检测所有方向类型"""
         patterns = []
         
@@ -2414,16 +2507,16 @@ class WashTradeDetector:
                     # 生成模式描述
                     if common_direction.startswith('多数字-'):
                         numbers = common_direction.replace('多数字-', '')
-                        pattern_desc = f'十位置全覆盖-多数字{numbers}'
+                        pattern_desc = f'PK10十位置全覆盖-多数字{numbers}'
                     elif common_direction.startswith('数字-'):
                         number = common_direction.replace('数字-', '')
-                        pattern_desc = f'十位置全覆盖-数字{number}'
+                        pattern_desc = f'PK10十位置全覆盖-数字{number}'
                     else:
-                        pattern_desc = f'十位置全覆盖-{common_direction}'
+                        pattern_desc = f'PK10十位置全覆盖-{common_direction}'
                     
                     pattern = {
                         '期号': period,
-                        '彩种': specific_lottery,  # 使用具体彩种名称
+                        '彩种': specific_lottery,
                         '彩种类型': 'PK10',
                         '账户组': [account1, account2],
                         '方向组': [common_direction, common_direction],
@@ -2573,7 +2666,7 @@ class WashTradeDetector:
         
         return ''
     
-    def _detect_1_5_6_10_collaboration(self, period_data, period, specific_lottery):
+    def _detect_1_5_6_10_collaboration(self, period_data, period, specific_lottery='PK10'):
         """恢复原始检测逻辑，但添加完整性检查"""
         patterns = []
         
@@ -2650,16 +2743,16 @@ class WashTradeDetector:
                 # 提取投注内容
                 if data1['direction'].startswith('多数字-'):
                     numbers = data1['direction'].replace('多数字-', '')
-                    pattern_desc = f'十位置完整覆盖-多数字{numbers}'
+                    pattern_desc = f'PK10十位置完整覆盖-多数字{numbers}'
                 elif data1['direction'].startswith('数字-'):
                     number = data1['direction'].replace('数字-', '')
-                    pattern_desc = f'十位置完整覆盖-数字{number}'
+                    pattern_desc = f'PK10十位置完整覆盖-数字{number}'
                 else:
-                    pattern_desc = f'十位置完整覆盖-{data1["direction"]}'
+                    pattern_desc = f'PK10十位置完整覆盖-{data1["direction"]}'
                 
                 record = {
                     '期号': period,
-                    '彩种': specific_lottery,  # 使用具体彩种名称
+                    '彩种': specific_lottery,
                     '彩种类型': 'PK10',
                     '账户组': account_group,
                     '方向组': directions,
@@ -2676,7 +2769,7 @@ class WashTradeDetector:
         
         return patterns
 
-    def _detect_vertical_format_collaboration(self, period_data, period, specific_lottery):
+    def _detect_vertical_format_collaboration(self, period_data, period, specific_lottery='PK10'):
         """检测竖线分隔格式的协作模式"""
         patterns = []
         
@@ -2722,7 +2815,7 @@ class WashTradeDetector:
                         if bet1['direction'] and bet2['direction'] and bet1['direction'] == bet2['direction']:
                             record = {
                                 '期号': period,
-                                '彩种': specific_lottery,  # 使用具体彩种名称
+                                '彩种': specific_lottery,
                                 '彩种类型': 'PK10',
                                 '账户组': [acc1, acc2],
                                 '方向组': [bet1['direction'], bet2['direction']],
@@ -2730,7 +2823,7 @@ class WashTradeDetector:
                                 '总金额': bet1['amount'] + bet2['amount'],
                                 '相似度': 1.0,
                                 '账户数量': 2,
-                                '模式': f'竖线格式协作-{bet1["direction"]}',
+                                '模式': f'PK10竖线格式协作-{bet1["direction"]}',
                                 '对立类型': f'竖线格式协作-{bet1["direction"]}',
                                 '检测类型': 'PK10序列位置'
                             }
