@@ -1766,70 +1766,42 @@ class WashTradeDetector:
             return 0
     
     def enhanced_extract_direction_with_position(self, content, play_category, lottery_type):
-        """修复方向提取逻辑，特别处理PK10的位置协作模式"""
+        """修复方向提取 - 正确处理多个数字的情况"""
         try:
             if pd.isna(content):
                 return ""
             
             content_str = str(content).strip()
             
-            # 如果是PK10，检查是否是位置协作格式（如：第三名-06,第四名-06,...）
+            # 对于PK10，检查是否是多个位置-多个数字的格式（如：冠军-01,04,05）
             if lottery_type == 'PK10':
-                # 检查是否是多个位置-数字的格式
-                if ',' in content_str and '-' in content_str:
-                    items = content_str.split(',')
-                    numbers_found = set()
-                    positions_found = set()
-                    
-                    for item in items:
-                        item_clean = item.strip()
-                        if '-' in item_clean:
-                            parts = item_clean.split('-')
-                            if len(parts) >= 2:
-                                position_part = parts[0].strip()
-                                number_part = parts[-1].strip()
-                                
-                                # 检查是否是有效位置
-                                pk10_positions = ['冠军', '亚军', '第三名', '第四名', '第五名', 
-                                                '第六名', '第七名', '第八名', '第九名', '第十名']
-                                if any(pos in position_part for pos in pk10_positions):
-                                    positions_found.add(position_part)
-                                
-                                # 提取数字
-                                numbers = re.findall(r'\b\d{1,2}\b', number_part)
-                                for num in numbers:
-                                    if num.isdigit():
-                                        numbers_found.add(num)
-                    
-                    if numbers_found and positions_found:
-                        # 添加位置数量信息到方向中
-                        position_count = len(positions_found)
-                        if len(numbers_found) == 1:
-                            return f"数字-{list(numbers_found)[0]}-{position_count}位"
-                        else:
-                            sorted_numbers = sorted(numbers_found)
-                            return f"多数字-{','.join(sorted_numbers)}-{position_count}位"
+                if '-' in content_str and ',' in content_str:
+                    # 格式如：冠军-01,04,05
+                    parts = content_str.split('-', 1)
+                    if len(parts) >= 2:
+                        number_part = parts[1].strip()
+                        # 提取所有数字
+                        numbers = re.findall(r'\b\d{1,2}\b', number_part)
+                        if numbers:
+                            unique_numbers = sorted(set(numbers))
+                            if len(unique_numbers) > 1:
+                                return f"多数字-{','.join(unique_numbers)}"
+                            elif len(unique_numbers) == 1:
+                                return f"数字-{unique_numbers[0]}"
             
-            # 简化处理：只提取数字
+            # 通用数字提取
             numbers = re.findall(r'\b\d{1,2}\b', content_str)
             if numbers:
                 unique_numbers = sorted(set(numbers))
-                if len(unique_numbers) == 1:
-                    return f"数字-{unique_numbers[0]}"
-                else:
+                if len(unique_numbers) > 1:
                     return f"多数字-{','.join(unique_numbers)}"
+                elif len(unique_numbers) == 1:
+                    return f"数字-{unique_numbers[0]}"
             
-            # 方向提取
+            # 方向提取（大小单双等）
             directions = self.content_parser.enhanced_extract_directions(content_str, self.config)
             
             if not directions:
-                numbers = self.content_parser.extract_all_numbers(content_str)
-                if numbers:
-                    if len(numbers) > 1:
-                        unique_numbers = sorted(set(numbers))
-                        return f"多数字-{','.join(unique_numbers)}"
-                    else:
-                        return f"数字-{numbers[0]}"
                 return ""
             
             # 处理位置-方向的组合
@@ -2383,7 +2355,7 @@ class WashTradeDetector:
         return continuous_patterns
 
     def _detect_single_position_full_coverage(self, period_data, period):
-        """专门检测十个位置协同对刷模式"""
+        """修复单个位置全覆盖检测 - 确保能检测1222706期"""
         patterns = []
         
         pk10_positions = ['冠军', '亚军', '第三名', '第四名', '第五名', 
@@ -2402,82 +2374,87 @@ class WashTradeDetector:
             if position not in pk10_positions:
                 continue
             
-            base_direction = direction
-            if '-' in direction:
-                base_direction = direction.split('-')[-1]
-            
             account_position_bets[account][position].append({
-                'content': base_direction,
+                'content': direction,  # 使用提取的方向
                 'amount': amount,
-                'direction': base_direction,
-                'original_direction': direction,
+                'direction': direction,
                 'original_content': content
             })
         
+        # 找出所有账户
         all_accounts = list(account_position_bets.keys())
-        if len(all_accounts) != 2:
+        if len(all_accounts) < 2:
             return patterns
         
-        account1, account2 = all_accounts
-        
-        account1_positions = set(account_position_bets[account1].keys())
-        account2_positions = set(account_position_bets[account2].keys())
-        
-        if len(account1_positions.union(account2_positions)) < 10:
-            return patterns
-        
-        common_directions = set()
-        all_positions_covered = True
-        
-        for position in pk10_positions:
-            if position not in account_position_bets[account1] and position not in account_position_bets[account2]:
-                all_positions_covered = False
-                break
-            
-            account1_direction = None
-            account2_direction = None
-            
-            if position in account_position_bets[account1]:
-                account1_direction = account_position_bets[account1][position][0]['direction']
-            if position in account_position_bets[account2]:
-                account2_direction = account_position_bets[account2][position][0]['direction']
-            
-            if account1_direction:
-                common_directions.add(account1_direction)
-            if account2_direction:
-                common_directions.add(account2_direction)
-        
-        if all_positions_covered and len(common_directions) == 1:
-            common_direction = list(common_directions)[0]
-            
-            total_amount = 0
-            account1_amount = 0
-            account2_amount = 0
-            
-            for position in pk10_positions:
-                if position in account_position_bets[account1]:
-                    account1_amount += sum(bet['amount'] for bet in account_position_bets[account1][position])
-                if position in account_position_bets[account2]:
-                    account2_amount += sum(bet['amount'] for bet in account_position_bets[account2][position])
-            
-            total_amount = account1_amount + account2_amount
-            
-            pattern = {
-                '期号': period,
-                '彩种': 'PK10',
-                '彩种类型': 'PK10',
-                '账户组': [account1, account2],
-                '方向组': [common_direction, common_direction],
-                '金额组': [account1_amount, account2_amount],
-                '总金额': total_amount,
-                '相似度': 1.0,
-                '账户数量': 2,
-                '模式': f'PK10十位置全覆盖-{common_direction}',
-                '对立类型': f'全覆盖协作-{common_direction}',
-                '检测类型': 'PK10序列位置'
-            }
-            
-            patterns.append(pattern)
+        # 检查两个账户是否能覆盖十个位置
+        for i in range(len(all_accounts)):
+            for j in range(i+1, len(all_accounts)):
+                account1 = all_accounts[i]
+                account2 = all_accounts[j]
+                
+                # 检查两个账户的投注方向是否在所有位置上一致
+                common_directions = set()
+                all_positions_covered = True
+                
+                for position in pk10_positions:
+                    account1_bets = account_position_bets[account1].get(position, [])
+                    account2_bets = account_position_bets[account2].get(position, [])
+                    
+                    if not account1_bets and not account2_bets:
+                        # 这个位置两个账户都没投注
+                        all_positions_covered = False
+                        break
+                    
+                    if account1_bets and account2_bets:
+                        # 两个账户都在这个位置投注，检查方向是否相同
+                        direction1 = account1_bets[0]['direction']
+                        direction2 = account2_bets[0]['direction']
+                        
+                        if direction1 == direction2:
+                            common_directions.add(direction1)
+                        else:
+                            # 方向不同，不构成对刷
+                            all_positions_covered = False
+                            break
+                    elif account1_bets or account2_bets:
+                        # 只有一个账户在这个位置投注，可以接受
+                        if account1_bets:
+                            common_directions.add(account1_bets[0]['direction'])
+                        else:
+                            common_directions.add(account2_bets[0]['direction'])
+                
+                # 如果覆盖了所有位置且投注方向一致（或只有一个方向）
+                if all_positions_covered and len(common_directions) == 1:
+                    common_direction = list(common_directions)[0]
+                    
+                    # 计算金额
+                    account1_amount = 0
+                    account2_amount = 0
+                    
+                    for position in pk10_positions:
+                        if position in account_position_bets[account1]:
+                            account1_amount += sum(bet['amount'] for bet in account_position_bets[account1][position])
+                        if position in account_position_bets[account2]:
+                            account2_amount += sum(bet['amount'] for bet in account_position_bets[account2][position])
+                    
+                    total_amount = account1_amount + account2_amount
+                    
+                    pattern = {
+                        '期号': period,
+                        '彩种': 'PK10',
+                        '彩种类型': 'PK10',
+                        '账户组': [account1, account2],
+                        '方向组': [common_direction, common_direction],
+                        '金额组': [account1_amount, account2_amount],
+                        '总金额': total_amount,
+                        '相似度': 1.0,
+                        '账户数量': 2,
+                        '模式': f'PK10十位置全覆盖-{common_direction.replace("多数字-", "多").replace("数字-", "")}',
+                        '对立类型': f'全覆盖协作-{common_direction}',
+                        '检测类型': 'PK10序列位置'
+                    }
+                    
+                    patterns.append(pattern)
         
         return patterns
 
@@ -2578,22 +2555,16 @@ class WashTradeDetector:
         return position_mapping.get(play_str, '')
     
     def _detect_1_5_6_10_collaboration(self, period_data, period):
-        """修复1-5名和6-10名协作模式检测 - 严格检查位置完整性"""
+        """恢复原始检测逻辑，但添加完整性检查"""
         patterns = []
         
-        # 分别获取1-5名和6-10名的数据
         play_1_5 = period_data[period_data['玩法分类'] == '1-5名']
         play_6_10 = period_data[period_data['玩法分类'] == '6-10名']
         
         if len(play_1_5) == 0 or len(play_6_10) == 0:
             return patterns
         
-        # 1-5名完整位置列表
-        positions_1_5_full = ['冠军', '亚军', '第三名', '第四名', '第五名']
-        # 6-10名完整位置列表
-        positions_6_10_full = ['第六名', '第七名', '第八名', '第九名', '第十名']
-        
-        # 按账户分组，同时记录投注内容和位置覆盖
+        # 按账户分组
         account_1_5_data = {}
         account_6_10_data = {}
         
@@ -2602,28 +2573,19 @@ class WashTradeDetector:
             account = row['会员账号']
             direction = row.get('投注方向', '')
             amount = row.get('投注金额', 0)
-            content = row.get('内容', '')
+            content = row['内容']
             
             if direction:
-                # 检查内容中覆盖了多少个1-5名位置
-                positions_covered = []
-                for position in positions_1_5_full:
-                    if position in content:
-                        positions_covered.append(position)
-                
-                # 检查方向中是否包含位置信息
-                direction_with_positions = direction
-                if len(positions_covered) < 5 and not direction.endswith(f"-{len(positions_covered)}位"):
-                    direction_with_positions = f"{direction}-{len(positions_covered)}位"
+                # 检查是否完整覆盖1-5名
+                required_positions = ['冠军', '亚军', '第三名', '第四名', '第五名']
+                missing_positions = [p for p in required_positions if p not in content]
+                is_complete = len(missing_positions) == 0
                 
                 account_1_5_data[account] = {
+                    'direction': direction,
                     'amount': amount,
-                    'direction': direction_with_positions,
-                    'original_direction': direction,
-                    'content': content,
-                    'positions_covered': positions_covered,
-                    'position_count': len(positions_covered),
-                    'is_full_coverage': len(positions_covered) == 5
+                    'is_complete': is_complete,
+                    'missing_positions': missing_positions
                 }
         
         # 处理6-10名数据
@@ -2631,91 +2593,64 @@ class WashTradeDetector:
             account = row['会员账号']
             direction = row.get('投注方向', '')
             amount = row.get('投注金额', 0)
-            content = row.get('内容', '')
+            content = row['内容']
             
             if direction:
-                # 检查内容中覆盖了多少个6-10名位置
-                positions_covered = []
-                for position in positions_6_10_full:
-                    if position in content:
-                        positions_covered.append(position)
-                
-                # 检查方向中是否包含位置信息
-                direction_with_positions = direction
-                if len(positions_covered) < 5 and not direction.endswith(f"-{len(positions_covered)}位"):
-                    direction_with_positions = f"{direction}-{len(positions_covered)}位"
+                # 检查是否完整覆盖6-10名
+                required_positions = ['第六名', '第七名', '第八名', '第九名', '第十名']
+                missing_positions = [p for p in required_positions if p not in content]
+                is_complete = len(missing_positions) == 0
                 
                 account_6_10_data[account] = {
+                    'direction': direction,
                     'amount': amount,
-                    'direction': direction_with_positions,
-                    'original_direction': direction,
-                    'content': content,
-                    'positions_covered': positions_covered,
-                    'position_count': len(positions_covered),
-                    'is_full_coverage': len(positions_covered) == 5
+                    'is_complete': is_complete,
+                    'missing_positions': missing_positions
                 }
         
-        # 查找协作模式 - 严格要求完整覆盖
+        # 查找协作模式
         for acc1, data1 in account_1_5_data.items():
             for acc2, data2 in account_6_10_data.items():
                 if acc1 == acc2:
                     continue
                 
-                # 提取基础方向（去掉位置计数信息）
-                base_direction1 = data1['original_direction']
-                base_direction2 = data2['original_direction']
-                
-                # 基础方向必须相同
-                if base_direction1 != base_direction2:
+                # 检查投注方向是否相同
+                if data1['direction'] != data2['direction']:
                     continue
                 
-                # 严格检查：1-5名必须完整覆盖5个位置，6-10名必须完整覆盖5个位置
-                if not data1['is_full_coverage'] or not data2['is_full_coverage']:
-                    # 如果有一个不完整，检查是否应该被忽略
-                    if data1['position_count'] == 1 and data2['position_count'] == 5:
-                        # 这是您提到的情况：1-5名只投了1个位置，6-10名完整
-                        # 不应该被判定为对刷
-                        continue
-                    elif data1['position_count'] == 5 and data2['position_count'] == 1:
-                        # 1-5名完整，6-10名只投了1个位置
-                        # 也不应该被判定为对刷
-                        continue
-                    else:
-                        # 其他部分覆盖情况，暂时不判定为对刷
-                        continue
+                # 检查完整性
+                if not data1['is_complete'] or not data2['is_complete']:
+                    # 不完整，跳过
+                    continue
                 
-                # 只有完整覆盖才判定为对刷
                 account_group = [acc1, acc2]
                 directions = [data1['direction'], data2['direction']]
                 amounts = [data1['amount'], data2['amount']]
                 total_amount = data1['amount'] + data2['amount']
                 
-                # 提取投注的数字内容
-                if base_direction1.startswith('数字-'):
-                    number = base_direction1.replace('数字-', '')
+                # 提取投注内容
+                if data1['direction'].startswith('多数字-'):
+                    numbers = data1['direction'].replace('多数字-', '')
+                    pattern_desc = f'PK10十位置完整覆盖-多数字{numbers}'
+                elif data1['direction'].startswith('数字-'):
+                    number = data1['direction'].replace('数字-', '')
                     pattern_desc = f'PK10十位置完整覆盖-数字{number}'
-                    opposite_type = f'完整覆盖协作-数字-{number}'
                 else:
-                    pattern_desc = f'PK10十位置完整覆盖-{base_direction1}'
-                    opposite_type = f'完整覆盖协作-{base_direction1}'
+                    pattern_desc = f'PK10十位置完整覆盖-{data1["direction"]}'
                 
                 record = {
                     '期号': period,
                     '彩种': 'PK10',
                     '彩种类型': 'PK10',
                     '账户组': account_group,
-                    '方向组': [base_direction1, base_direction2],  # 使用基础方向
+                    '方向组': directions,
                     '金额组': amounts,
                     '总金额': total_amount,
                     '相似度': 1.0,
                     '账户数量': 2,
                     '模式': pattern_desc,
-                    '对立类型': opposite_type,
-                    '检测类型': 'PK10序列位置',
-                    '位置覆盖详情': {
-                        acc1: f"1-5名: {data1['position_count']}/5个位置",
-                        acc2: f"6-10名: {data2['position_count']}/5个位置"
-                    }
+                    '对立类型': f'完整覆盖协作-{data1["direction"]}',
+                    '检测类型': 'PK10序列位置'
                 }
                 
                 patterns.append(record)
