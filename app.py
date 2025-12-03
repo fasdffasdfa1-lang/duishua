@@ -1870,7 +1870,7 @@ class WashTradeDetector:
         return self.find_continuous_patterns_optimized(wash_records)
 
     def detect_pk10_sequence_patterns(self, df_filtered):
-        """PK10序列位置模式检测"""
+        """增强PK10序列位置模式检测"""
         try:
             if hasattr(self, 'df_valid') and self.df_valid is not None:
                 df_pk10 = self.df_valid[
@@ -1885,23 +1885,23 @@ class WashTradeDetector:
             
             sequence_patterns = []
             
-            for period in sorted(df_pk10['期号'].unique()):
-                period_data = df_pk10[df_pk10['期号'] == period]
-                
+            # 按期号分组处理
+            period_groups = df_pk10.groupby('期号')
+            
+            for period, period_data in period_groups:
+                # 检测1-5名和6-10名协作模式
                 patterns_1 = self._detect_1_5_6_10_collaboration(period_data, period)
                 sequence_patterns.extend(patterns_1)
                 
-                play_categories = period_data['玩法分类'].unique()
-                if any(cat in ['冠军', '亚军', '第三名', '第四名', '第五名', 
-                              '第六名', '第七名', '第八名', '第九名', '第十名'] 
-                       for cat in play_categories):
-                    patterns_2 = self._detect_single_position_full_coverage(period_data, period)
-                    sequence_patterns.extend(patterns_2)
+                # 检测其他PK10模式
+                patterns_2 = self._detect_single_position_full_coverage(period_data, period)
+                sequence_patterns.extend(patterns_2)
                 
-                # 新增：检测竖线格式的协作模式
+                # 检测竖线格式的协作模式（新添加的调用）
                 patterns_3 = self._detect_vertical_format_collaboration(period_data, period)
                 sequence_patterns.extend(patterns_3)
             
+            # 查找连续模式
             continuous_patterns = self.find_continuous_patterns_optimized(sequence_patterns)
             
             return continuous_patterns
@@ -1962,6 +1962,21 @@ class WashTradeDetector:
         patterns = []
         detected_combinations = set()
         
+        # 确保lottery_type有默认值
+        lottery_type = '未知'
+        
+        # 尝试从不同列获取彩种类型
+        if len(period_data) > 0:
+            if '彩种类型' in period_data.columns:
+                lottery_type = period_data['彩种类型'].iloc[0]
+            elif '原始彩种' in period_data.columns:
+                # 从原始彩种推断类型
+                lottery_name = period_data['原始彩种'].iloc[0]
+                lottery_type = self.lottery_identifier.identify_lottery_type(lottery_name)
+            elif '彩种' in period_data.columns:
+                lottery_name = period_data['彩种'].iloc[0]
+                lottery_type = self.lottery_identifier.identify_lottery_type(lottery_name)
+        
         lottery = period_data['原始彩种'].iloc[0] if '原始彩种' in period_data.columns else period_data['彩种'].iloc[0]
         
         current_period = period_data['期号'].iloc[0]
@@ -1988,31 +2003,12 @@ class WashTradeDetector:
             
             for account in account_group:
                 if account in account_info and account_info[account]:
-                    # 取该账户在该期号的第一条记录
                     first_bet = account_info[account][0]
                     group_directions.append(first_bet['direction'])
                     group_amounts.append(first_bet['amount'])
-                else:
-                    # 如果账户没有数据，跳过这个组合
-                    break
             
             if len(group_directions) != n_accounts:
                 continue
-            
-            # 记录时确保顺序正确
-            record = {
-                '期号': period_data['期号'].iloc[0],
-                '彩种': lottery,
-                '彩种类型': lottery_type,
-                '账户组': list(account_group),  # 保持原始顺序
-                '方向组': group_directions,     # 按相同顺序
-                '金额组': group_amounts,        # 按相同顺序
-                '总金额': dir1_total + dir2_total,
-                '相似度': similarity,
-                '账户数量': n_accounts,
-                '模式': pattern_str,
-                '对立类型': combo['opposite_type']
-            }
             
             filtered_account_group, filtered_directions, filtered_amounts = self.filter_accounts_by_amount_balance(
                 account_group, group_directions, group_amounts
@@ -2062,8 +2058,7 @@ class WashTradeDetector:
                         similarity = min(dir1_total, dir2_total) / max(dir1_total, dir2_total)
                         
                         if similarity >= similarity_threshold:
-                            lottery_type = period_data['彩种类型'].iloc[0] if '彩种类型' in period_data.columns else '未知'
-                            
+                            # 使用已经定义好的lottery_type
                             if ' vs ' in combo['opposite_type']:
                                 pattern_parts = combo['opposite_type'].split(' vs ')
                                 if len(pattern_parts) == 2:
