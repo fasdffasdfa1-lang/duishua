@@ -718,8 +718,9 @@ class ContentParser:
     """内容解析器 - 全面增强版，支持数字、方向、复杂格式"""
     
     @staticmethod
+    @staticmethod
     def extract_basic_directions(content, config):
-        """提取方向"""
+        """提取基础方向"""
         content_str = str(content).strip()
         directions = []
         
@@ -748,10 +749,7 @@ class ContentParser:
             
             content_str = str(content).strip()
             
-            numbers = ContentParser.extract_all_numbers(content_str)
-            if numbers:
-                return [f"数字-{numbers[0]}"]
-            
+            # 1. 首先检查是否是"特码两面-"开头
             if '特码两面-' in content_str:
                 direction_part = content_str.split('特码两面-')[-1].strip()
                 for direction, patterns in config.direction_patterns.items():
@@ -759,6 +757,7 @@ class ContentParser:
                         if direction_part == pattern or direction_part in pattern:
                             return [direction]
             
+            # 2. LHC特殊模式处理
             lhc_special_patterns = {
                 '特码两面-尾大': '尾大',
                 '特码两面-尾小': '尾小', 
@@ -776,15 +775,47 @@ class ContentParser:
                 if pattern in content_str:
                     return [direction]
             
+            # 3. 预处理内容
             content_clean = ContentParser.preprocess_content(content_str)
-            directions = ContentParser.multi_level_direction_extraction(content_clean, config)
             
-            return directions
+            # 4. 多层级方向提取
+            directions = set()
+            
+            # 4.1 精确匹配
+            for direction, patterns in config.direction_patterns.items():
+                for pattern in patterns:
+                    if pattern == content_clean:
+                        directions.add(direction)
+                        break
+            
+            # 4.2 部分匹配
+            if not directions:
+                for direction, patterns in config.direction_patterns.items():
+                    for pattern in patterns:
+                        if pattern in content_clean:
+                            directions.add(direction)
+            
+            # 4.3 智能LHC位置提取
+            if not directions:
+                directions = ContentParser.smart_lhc_position_extraction(content_clean, config)
+            
+            # 5. 提取数字（如果没有找到方向）
+            if not directions:
+                numbers = ContentParser.extract_all_numbers(content_str)
+                if numbers:
+                    if len(numbers) > 1:
+                        unique_numbers = sorted(set(numbers))
+                        return [f"多数字-{','.join(unique_numbers)}"]
+                    else:
+                        return [f"数字-{numbers[0]}"]
+            
+            return list(directions)
                 
         except Exception as e:
             logger.warning(f"方向提取失败: {content}, 错误: {e}")
             return []
 
+    @staticmethod
     @staticmethod
     def extract_all_numbers(content):
         """提取所有数字"""
@@ -807,6 +838,7 @@ class ContentParser:
             return []
 
     @staticmethod
+    @staticmethod
     def parse_complex_content(content, play_category):
         """解析复杂内容格式"""
         try:
@@ -815,6 +847,7 @@ class ContentParser:
             
             content_str = str(content).strip()
             
+            # 处理位置-方向-数字格式：第三名-06,第四名-06,...
             if ',' in content_str and any(pos in content_str for pos in ['冠军', '亚军', '第']):
                 items = content_str.split(',')
                 positions = []
@@ -846,6 +879,7 @@ class ContentParser:
                         'values': values
                     }
             
+            # 处理单个位置-值格式
             if '-' in content_str:
                 parts = content_str.split('-')
                 if len(parts) >= 2:
@@ -858,6 +892,7 @@ class ContentParser:
                         'value': value
                     }
             
+            # 提取数字
             numbers = ContentParser.extract_all_numbers(content_str)
             if numbers:
                 return {'type': 'number', 'value': numbers[0], 'values': numbers}
@@ -873,10 +908,13 @@ class ContentParser:
         """内容预处理"""
         content_str = str(content).strip()
         
+        # 替换中文标点为英文标点
         content_str = content_str.replace('，', ',').replace('；', ';').replace('：', ':')
         
+        # 压缩多余空格
         content_str = re.sub(r'\s+', ' ', content_str).strip()
         
+        # 移除括号
         content_str = re.sub(r'[\(\)（）【】]', '', content_str)
         
         return content_str
@@ -931,6 +969,7 @@ class ContentParser:
             '双': ['双', 'even', 'shuang', '偶']
         }
         
+        # 检查是否是位置-方向组合
         for position, keywords in lhc_position_map.items():
             for keyword in keywords:
                 if keyword in content_lower:
@@ -941,6 +980,7 @@ class ContentParser:
                                 directions.add(combined_direction)
                                 break
         
+        # 如果没有找到组合，查找基础方向
         if not directions:
             for direction, keywords in base_directions.items():
                 for keyword in keywords:
@@ -973,17 +1013,21 @@ class ContentParser:
         for direction in directions:
             score = 0
             
+            # 精确匹配得分最高
             if direction == content_lower:
                 score += 100
             
+            # 玩法分类优先级
             if any(word in play_lower for word in ['两面', '和值', '大小单双']):
                 score += 50
             
+            # 特殊模式优先级
             if '总' in content_lower and '总和' in direction:
                 score += 30
             elif '特' in content_lower and '特' in direction:
                 score += 30
             
+            # 基础方向优先级
             if direction in ['大', '小', '单', '双']:
                 score += 20
             
@@ -1006,6 +1050,7 @@ class ContentParser:
                 if keyword in play_str:
                     return position
         
+        # LHC特殊处理
         if lottery_type == 'LHC':
             if '正码特' in play_str or '正特' in play_str:
                 return '特码'
@@ -1054,7 +1099,7 @@ class ContentParser:
         except Exception as e:
             logger.warning(f"解析PK10竖线格式失败: {content}, 错误: {str(e)}")
             return defaultdict(list)
-
+    
     @staticmethod
     def parse_3d_vertical_format(content):
         """解析3D竖线分隔格式"""
@@ -1766,17 +1811,18 @@ class WashTradeDetector:
             return 0
     
     def enhanced_extract_direction_with_position(self, content, play_category, lottery_type):
-        """修复方向提取 - 正确处理多个数字的情况"""
+        """全面修复方向提取 - 支持所有格式"""
         try:
             if pd.isna(content):
                 return ""
             
             content_str = str(content).strip()
             
-            # 对于PK10，检查是否是多个位置-多个数字的格式（如：冠军-01,04,05）
+            # 如果是PK10类型
             if lottery_type == 'PK10':
+                # 格式1: 冠军-01,04,05（多个数字）
                 if '-' in content_str and ',' in content_str:
-                    # 格式如：冠军-01,04,05
+                    # 检查是否是位置-数字格式
                     parts = content_str.split('-', 1)
                     if len(parts) >= 2:
                         number_part = parts[1].strip()
@@ -1788,6 +1834,16 @@ class WashTradeDetector:
                                 return f"多数字-{','.join(unique_numbers)}"
                             elif len(unique_numbers) == 1:
                                 return f"数字-{unique_numbers[0]}"
+                
+                # 格式2: 冠军-双（方向）
+                if '-' in content_str:
+                    parts = content_str.split('-', 1)
+                    if len(parts) >= 2:
+                        value_part = parts[1].strip()
+                        # 检查是否是方向（大小单双等）
+                        directions = self.content_parser.enhanced_extract_directions(value_part, self.config)
+                        if directions:
+                            return directions[0]  # 取第一个方向
             
             # 通用数字提取
             numbers = re.findall(r'\b\d{1,2}\b', content_str)
@@ -1798,29 +1854,12 @@ class WashTradeDetector:
                 elif len(unique_numbers) == 1:
                     return f"数字-{unique_numbers[0]}"
             
-            # 方向提取（大小单双等）
+            # 通用方向提取
             directions = self.content_parser.enhanced_extract_directions(content_str, self.config)
+            if directions:
+                return directions[0]  # 取第一个方向
             
-            if not directions:
-                return ""
-            
-            # 处理位置-方向的组合
-            position = self.content_parser.extract_position_from_play_category(play_category, lottery_type, self.config)
-            
-            main_direction = self.content_parser.prioritize_directions(directions, content_str, play_category)
-            
-            if not main_direction:
-                return ""
-            
-            if position and position != '未知位置':
-                if main_direction.startswith('数字-') or main_direction.startswith('多数字-'):
-                    result = f"{position}-{main_direction}"
-                else:
-                    result = f"{position}-{main_direction}"
-            else:
-                result = main_direction
-            
-            return result
+            return ""
                 
         except Exception as e:
             logger.warning(f"方向提取失败: {content}, 错误: {e}")
@@ -2355,7 +2394,7 @@ class WashTradeDetector:
         return continuous_patterns
 
     def _detect_single_position_full_coverage(self, period_data, period):
-        """修复单个位置全覆盖检测 - 确保能检测1222706期"""
+        """修复单个位置全覆盖检测 - 确保能检测所有方向类型"""
         patterns = []
         
         pk10_positions = ['冠军', '亚军', '第三名', '第四名', '第五名', 
@@ -2374,10 +2413,15 @@ class WashTradeDetector:
             if position not in pk10_positions:
                 continue
             
+            # 如果方向为空，尝试重新提取
+            if not direction:
+                direction = self.enhanced_extract_direction_with_position(content, play_category, 'PK10')
+                if not direction:
+                    continue
+            
             account_position_bets[account][position].append({
-                'content': direction,  # 使用提取的方向
-                'amount': amount,
                 'direction': direction,
+                'amount': amount,
                 'original_content': content
             })
         
@@ -2396,6 +2440,9 @@ class WashTradeDetector:
                 common_directions = set()
                 all_positions_covered = True
                 
+                # 跟踪每个位置的方向
+                position_directions = {}
+                
                 for position in pk10_positions:
                     account1_bets = account_position_bets[account1].get(position, [])
                     account2_bets = account_position_bets[account2].get(position, [])
@@ -2405,23 +2452,31 @@ class WashTradeDetector:
                         all_positions_covered = False
                         break
                     
+                    # 确定这个位置的投注方向
+                    position_direction = None
+                    
                     if account1_bets and account2_bets:
                         # 两个账户都在这个位置投注，检查方向是否相同
                         direction1 = account1_bets[0]['direction']
                         direction2 = account2_bets[0]['direction']
                         
                         if direction1 == direction2:
+                            position_direction = direction1
                             common_directions.add(direction1)
                         else:
                             # 方向不同，不构成对刷
                             all_positions_covered = False
                             break
-                    elif account1_bets or account2_bets:
-                        # 只有一个账户在这个位置投注，可以接受
-                        if account1_bets:
-                            common_directions.add(account1_bets[0]['direction'])
-                        else:
-                            common_directions.add(account2_bets[0]['direction'])
+                    elif account1_bets:
+                        # 只有账户1投注
+                        position_direction = account1_bets[0]['direction']
+                        common_directions.add(position_direction)
+                    else:
+                        # 只有账户2投注
+                        position_direction = account2_bets[0]['direction']
+                        common_directions.add(position_direction)
+                    
+                    position_directions[position] = position_direction
                 
                 # 如果覆盖了所有位置且投注方向一致（或只有一个方向）
                 if all_positions_covered and len(common_directions) == 1:
@@ -2439,6 +2494,16 @@ class WashTradeDetector:
                     
                     total_amount = account1_amount + account2_amount
                     
+                    # 生成模式描述
+                    if common_direction.startswith('多数字-'):
+                        numbers = common_direction.replace('多数字-', '')
+                        pattern_desc = f'PK10十位置全覆盖-多数字{numbers}'
+                    elif common_direction.startswith('数字-'):
+                        number = common_direction.replace('数字-', '')
+                        pattern_desc = f'PK10十位置全覆盖-数字{number}'
+                    else:
+                        pattern_desc = f'PK10十位置全覆盖-{common_direction}'
+                    
                     pattern = {
                         '期号': period,
                         '彩种': 'PK10',
@@ -2449,9 +2514,10 @@ class WashTradeDetector:
                         '总金额': total_amount,
                         '相似度': 1.0,
                         '账户数量': 2,
-                        '模式': f'PK10十位置全覆盖-{common_direction.replace("多数字-", "多").replace("数字-", "")}',
+                        '模式': pattern_desc,
                         '对立类型': f'全覆盖协作-{common_direction}',
-                        '检测类型': 'PK10序列位置'
+                        '检测类型': 'PK10序列位置',
+                        '位置方向详情': position_directions
                     }
                     
                     patterns.append(pattern)
@@ -2527,32 +2593,68 @@ class WashTradeDetector:
         return result
     
     def _extract_position_from_play_category(self, play_category):
-        """从玩法分类中提取位置信息"""
+        """从玩法分类中提取位置信息 - 增强版"""
         play_str = str(play_category).strip()
         
         position_mapping = {
+            # 冠军
             '冠军': '冠军',
-            '亚军': '亚军', 
-            '第三名': '第三名',
+            '第1名': '冠军',
+            '第一名': '冠军',
+            '前一': '冠军',
+            '冠 军': '冠军',
+            '冠　军': '冠军',
+            
+            # 亚军
+            '亚军': '亚军',
+            '第2名': '亚军',
+            '第二名': '亚军',
+            '前二': '亚军',
+            '亚 军': '亚军',
+            '亚　军': '亚军',
+            
+            # 第三名
             '季军': '第三名',
             '第3名': '第三名',
-            '第四名': '第四名',
+            '第三名': '第三名',
+            '前三': '第三名',
+            
+            # 第四名
             '第4名': '第四名',
-            '第五名': '第五名', 
+            '第四名': '第四名',
+            '前四': '第四名',
+            
+            # 第五名
             '第5名': '第五名',
-            '第六名': '第六名',
+            '第五名': '第五名',
+            '前五': '第五名',
+            
+            # 第六名
             '第6名': '第六名',
-            '第七名': '第七名',
+            '第六名': '第六名',
+            
+            # 第七名
             '第7名': '第七名',
-            '第八名': '第八名',
+            '第七名': '第七名',
+            
+            # 第八名
             '第8名': '第八名',
-            '第九名': '第九名',
+            '第八名': '第八名',
+            
+            # 第九名
             '第9名': '第九名',
-            '第十名': '第十名',
-            '第10名': '第十名'
+            '第九名': '第九名',
+            
+            # 第十名
+            '第10名': '第十名',
+            '第十名': '第十名'
         }
         
-        return position_mapping.get(play_str, '')
+        for key, position in position_mapping.items():
+            if key in play_str:
+                return position
+        
+        return ''
     
     def _detect_1_5_6_10_collaboration(self, period_data, period):
         """恢复原始检测逻辑，但添加完整性检查"""
