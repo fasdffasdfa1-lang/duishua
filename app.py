@@ -2658,7 +2658,7 @@ class WashTradeDetector:
         return ''
     
     def _detect_1_5_6_10_collaboration(self, period_data, period, specific_lottery='PK10'):
-        """修复版：检测1-5名和6-10名的协作模式 - 保持原有逻辑，不额外限制"""
+        """修复版：检测1-5名和6-10名的协作模式 - 添加位置信息"""
         patterns = []
         
         play_1_5 = period_data[period_data['玩法分类'] == '1-5名']
@@ -2682,7 +2682,8 @@ class WashTradeDetector:
                 account_1_5_data[account] = {
                     'direction': direction,
                     'amount': amount,
-                    'content': content
+                    'content': content,
+                    'play_category': '1-5名'
                 }
         
         # 处理6-10名数据
@@ -2696,7 +2697,8 @@ class WashTradeDetector:
                 account_6_10_data[account] = {
                     'direction': direction,
                     'amount': amount,
-                    'content': content
+                    'content': content,
+                    'play_category': '6-10名'
                 }
         
         # 查找协作模式
@@ -2735,6 +2737,7 @@ class WashTradeDetector:
                     '彩种类型': 'PK10',
                     '账户组': account_group,
                     '方向组': directions,
+                    '玩法分类': ['1-5名', '6-10名'],  # 添加位置信息
                     '金额组': amounts,
                     '总金额': total_amount,
                     '相似度': 1.0,
@@ -2749,7 +2752,7 @@ class WashTradeDetector:
         return patterns
 
     def _detect_vertical_format_collaboration(self, period_data, period, specific_lottery='PK10'):
-        """修复版：检测竖线分隔格式的协作模式 - 只检测互补的投注"""
+        """修复版：检测竖线分隔格式的协作模式 - 确保添加位置信息"""
         patterns = []
         
         # 查找使用竖线分隔的内容
@@ -2853,7 +2856,6 @@ class WashTradeDetector:
                                 '账户组': [acc1, acc2],
                                 '方向组': [bet1['direction'], bet2['direction']],
                                 '玩法分类': [position_detail1, position_detail2],  # 使用简化的位置详情
-                                '原始玩法': [play1, play2],  # 原始玩法字段
                                 '金额组': [bet1['amount'], bet2['amount']],
                                 '总金额': bet1['amount'] + bet2['amount'],
                                 '相似度': 1.0,
