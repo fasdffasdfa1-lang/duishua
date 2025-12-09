@@ -2280,16 +2280,22 @@ class WashTradeDetector:
         return True
     
     def find_continuous_patterns_optimized(self, wash_records):
-        """连续对刷模式检测 - 过滤不完整的覆盖"""
+        """连续对刷模式检测 - 增强过滤逻辑"""
         if not wash_records:
             return []
         
         account_group_patterns = defaultdict(list)
         for record in wash_records:
+            # 对于PK10序列位置检测，需要特别处理
             if '检测类型' in record and record['检测类型'] == 'PK10序列位置':
-                # 对于PK10序列位置检测，检查是否是完整覆盖
+                # 检查是否是完整协作
+                if '协作类型' in record:
+                    if record['协作类型'] == 'both_1_5_only' or record['协作类型'] == 'both_6_10_only':
+                        # 跳过不完整的协作
+                        continue
+                
+                # 检查位置覆盖详情
                 if '位置覆盖详情' in record:
-                    # 检查是否都是完整覆盖
                     is_full_coverage = True
                     for detail in record['位置覆盖详情'].values():
                         if '5/5' not in detail:
@@ -2299,11 +2305,8 @@ class WashTradeDetector:
                     if not is_full_coverage:
                         # 跳过不完整覆盖的记录
                         continue
-                
-                account_group_key = tuple(sorted(record['账户组']))
-            else:
-                account_group_key = (tuple(sorted(record['账户组'])), record['彩种'])
             
+            account_group_key = (tuple(sorted(record['账户组'])), record['彩种'])
             account_group_patterns[account_group_key].append(record)
         
         # 后续代码保持不变...
@@ -2322,8 +2325,12 @@ class WashTradeDetector:
             else:
                 continue
             
-            if '检测类型' in records[0] and records[0]['检测类型'] == 'PK10序列位置':
-                required_min_periods = 3
+            # 根据检测类型设置不同的最小期数要求
+            if records and '检测类型' in records[0]:
+                if records[0]['检测类型'] == 'PK10序列位置':
+                    required_min_periods = 3  # PK10完整协作要求至少3期
+                else:
+                    required_min_periods = self.get_required_min_periods(account_group, lottery)
             else:
                 required_min_periods = self.get_required_min_periods(account_group, lottery)
             
@@ -2770,7 +2777,7 @@ class WashTradeDetector:
         return patterns
 
     def _detect_vertical_format_collaboration(self, period_data, period, specific_lottery='PK10'):
-        """检测竖线分隔格式的协作模式"""
+        """增强版：检测竖线分隔格式的协作模式 - 区分完整协作和普通协作"""
         patterns = []
         
         # 查找使用竖线分隔的内容
@@ -2783,17 +2790,49 @@ class WashTradeDetector:
         account_bets = {}
         for _, row in vertical_bets.iterrows():
             account = row['会员账号']
-            content = row['内容']
+            content = str(row['内容']).strip()
             direction = row.get('投注方向', '')
             amount = row.get('投注金额', 0)
+            play_category = row.get('玩法分类', '')
             
             if account not in account_bets:
                 account_bets[account] = []
             
+            # 分析投注内容，检查是否是完整覆盖
+            is_complete_1_5 = False
+            is_complete_6_10 = False
+            coverage_ratio = 0
+            
+            if '|' in content:
+                parts = content.split('|')
+                # 检查前5个位置
+                if len(parts) >= 5:
+                    valid_parts_1_5 = [p.strip() for p in parts[:5] if p.strip() and p.strip() != '_']
+                    if len(valid_parts_1_5) == 5:
+                        # 检查5个位置是否相同
+                        if len(set(valid_parts_1_5)) == 1:
+                            is_complete_1_5 = True
+                
+                # 检查后5个位置（如果有）
+                if len(parts) >= 10:
+                    valid_parts_6_10 = [p.strip() for p in parts[5:10] if p.strip() and p.strip() != '_']
+                    if len(valid_parts_6_10) == 5:
+                        if len(set(valid_parts_6_10)) == 1:
+                            is_complete_6_10 = True
+                
+                # 计算覆盖度
+                total_valid = sum(1 for p in parts if p.strip() and p.strip() != '_')
+                coverage_ratio = total_valid / 10 if len(parts) >= 10 else total_valid / 5
+            
             account_bets[account].append({
                 'content': content,
                 'direction': direction,
-                'amount': amount
+                'amount': amount,
+                'play_category': play_category,
+                'is_complete_1_5': is_complete_1_5,
+                'is_complete_6_10': is_complete_6_10,
+                'coverage_ratio': coverage_ratio,
+                'original_row': row
             })
         
         # 比较账户间的投注内容
@@ -2809,27 +2848,94 @@ class WashTradeDetector:
                 bets1 = account_bets[acc1]
                 bets2 = account_bets[acc2]
                 
-                # 检查是否有相同方向的对刷
+                # 检查所有可能的投注组合
                 for bet1 in bets1:
                     for bet2 in bets2:
                         if bet1['direction'] and bet2['direction'] and bet1['direction'] == bet2['direction']:
+                            # 分析协作类型
+                            collaboration_type = self._analyze_collaboration_type(bet1, bet2)
+                            
+                            # 跳过两个账户都只投注1-5名的情况
+                            if collaboration_type == 'both_1_5_only':
+                                continue
+                            
+                            # 检查金额平衡
+                            amount1 = bet1['amount']
+                            amount2 = bet2['amount']
+                            max_ratio = self.config.amount_threshold.get('max_amount_ratio', 10)
+                            
+                            if max_ratio < 2:
+                                max_ratio = 2  # 最小允许2倍差异
+                            
+                            if max(amount1, amount2) / min(amount1, amount2) > max_ratio:
+                                continue
+                            
+                            # 生成模式描述
+                            if collaboration_type == 'complete_collaboration':
+                                pattern_desc = f'PK10完整协作-{bet1["direction"]}'
+                                detection_type = 'PK10序列位置'
+                                coverage_info = {
+                                    '1-5名': '5/5',
+                                    '6-10名': '5/5'
+                                }
+                            elif collaboration_type == 'partial_collaboration':
+                                pattern_desc = f'PK10部分协作-{bet1["direction"]}'
+                                detection_type = 'PK10普通协作'
+                                coverage_info = {
+                                    '覆盖度': f'{bet1["coverage_ratio"]:.0%}'
+                                }
+                            else:
+                                pattern_desc = f'PK10竖线格式协作-{bet1["direction"]}'
+                                detection_type = 'PK10普通协作'
+                                coverage_info = {}
+                            
                             record = {
                                 '期号': period,
                                 '彩种': specific_lottery,
                                 '彩种类型': 'PK10',
                                 '账户组': [acc1, acc2],
                                 '方向组': [bet1['direction'], bet2['direction']],
-                                '金额组': [bet1['amount'], bet2['amount']],
-                                '总金额': bet1['amount'] + bet2['amount'],
+                                '金额组': [amount1, amount2],
+                                '总金额': amount1 + amount2,
                                 '相似度': 1.0,
                                 '账户数量': 2,
-                                '模式': f'PK10竖线格式协作-{bet1["direction"]}',
+                                '模式': pattern_desc,
                                 '对立类型': f'竖线格式协作-{bet1["direction"]}',
-                                '检测类型': 'PK10序列位置'
+                                '检测类型': detection_type,
+                                '协作类型': collaboration_type
                             }
+                            
+                            # 添加覆盖信息
+                            if coverage_info:
+                                record['位置覆盖详情'] = coverage_info
+                            
                             patterns.append(record)
         
         return patterns
+    
+    def _analyze_collaboration_type(self, bet1, bet2):
+        """分析协作类型"""
+        # 情况1：完整协作 - 一个账户投注完整1-5名，另一个投注完整6-10名
+        if (bet1['is_complete_1_5'] and bet2['is_complete_6_10']) or \
+           (bet1['is_complete_6_10'] and bet2['is_complete_1_5']):
+            return 'complete_collaboration'
+        
+        # 情况2：两个账户都只投注1-5名（需要排除）
+        elif bet1['is_complete_1_5'] and bet2['is_complete_1_5']:
+            return 'both_1_5_only'
+        
+        # 情况3：两个账户都只投注6-10名（需要排除）
+        elif bet1['is_complete_6_10'] and bet2['is_complete_6_10']:
+            return 'both_6_10_only'
+        
+        # 情况4：部分协作 - 有重叠覆盖但不完整
+        elif bet1['coverage_ratio'] > 0 and bet2['coverage_ratio'] > 0:
+            total_coverage = bet1['coverage_ratio'] + bet2['coverage_ratio']
+            if total_coverage >= 1.0:  # 合计覆盖超过10个位置
+                return 'partial_collaboration'
+        
+        # 情况5：普通协作 - 方向相同但覆盖不完整
+        return 'general_collaboration'
 
     def find_continuous_sequence_patterns(self, sequence_patterns):
         """查找连续的序列模式"""
@@ -3346,8 +3452,39 @@ class WashTradeDetector:
                     self._display_single_pattern_by_lottery(pattern, i, lottery)
     
     def _display_single_pattern_by_lottery(self, pattern, index, lottery):
-        """按彩种显示单个对刷组详情"""
+        """按彩种显示单个对刷组详情 - 增强过滤"""
+        # 对于PK10序列位置检测，检查是否是完整协作
+        if pattern['彩种类型'] == 'PK10' and pattern.get('检测类型') == 'PK10序列位置':
+            # 检查协作类型
+            collaboration_type = pattern.get('协作类型', '')
+            if collaboration_type in ['both_1_5_only', 'both_6_10_only']:
+                # 不显示不完整的协作
+                return
+            
+            # 检查位置覆盖详情
+            if '位置覆盖详情' in pattern:
+                is_full_coverage = True
+                for coverage in pattern['位置覆盖详情'].values():
+                    if '5/5' not in coverage:
+                        is_full_coverage = False
+                        break
+                
+                if not is_full_coverage and pattern.get('协作类型') != 'partial_collaboration':
+                    # 不显示不完整覆盖且不是部分协作的情况
+                    return
+        
+        # 原有的显示逻辑保持不变...
         st.markdown(f"**对刷组 {index}:** {' ↔ '.join(pattern['账户组'])}")
+        
+        # 添加协作类型显示
+        if pattern.get('协作类型'):
+            collab_type_map = {
+                'complete_collaboration': '完整协作',
+                'partial_collaboration': '部分协作', 
+                'general_collaboration': '普通协作'
+            }
+            collab_type = collab_type_map.get(pattern['协作类型'], pattern['协作类型'])
+            st.markdown(f"**协作类型:** {collab_type}")
         
         activity_icon = "🟢" if pattern['账户活跃度'] == 'low' else "🟡" if pattern['账户活跃度'] == 'medium' else "🟠" if pattern['账户活跃度'] == 'high' else "🔴"
         activity_text = {
