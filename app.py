@@ -2749,7 +2749,7 @@ class WashTradeDetector:
         return patterns
 
     def _detect_vertical_format_collaboration(self, period_data, period, specific_lottery='PK10'):
-        """修复版：检测竖线分隔格式的协作模式 - 更准确地判断互补性"""
+        """修复版：检测竖线分隔格式的协作模式 - 只检测互补的投注"""
         patterns = []
         
         # 查找使用竖线分隔的内容
@@ -2834,13 +2834,13 @@ class WashTradeDetector:
                             
                             is_complementary = condition1 or condition2
                             
+                            # 关键修复：只保留互补的投注
+                            if not is_complementary:
+                                continue  # 跳过不互补的投注
+                            
                             # 确定模式类型
-                            if is_complementary:
-                                pattern_type = 'PK10完整协作'
-                                detection_type = 'PK10序列位置'
-                            else:
-                                pattern_type = 'PK10竖线格式协作'
-                                detection_type = 'PK10可疑协作'
+                            pattern_type = 'PK10完整协作'
+                            detection_type = 'PK10序列位置'
                             
                             # 获取投注位置详情
                             position_detail1 = self._get_position_detail(play1, play1)
@@ -2864,27 +2864,19 @@ class WashTradeDetector:
                                 '是否互补': is_complementary
                             }
                             
-                            # 如果是完整协作，添加位置覆盖详情
-                            if is_complementary:
-                                # 判断哪个账户投1-5名，哪个投6-10名
-                                if any(keyword in play1_str for keyword in one_to_five_keywords):
-                                    acc1_positions = '1-5名'
-                                    acc2_positions = '6-10名'
-                                else:
-                                    acc1_positions = '6-10名'
-                                    acc2_positions = '1-5名'
-                                
-                                record['位置覆盖详情'] = {
-                                    '覆盖类型': '完整覆盖',
-                                    acc1: acc1_positions,
-                                    acc2: acc2_positions
-                                }
+                            # 判断哪个账户投1-5名，哪个投6-10名
+                            if any(keyword in play1_str for keyword in one_to_five_keywords):
+                                acc1_positions = '1-5名'
+                                acc2_positions = '6-10名'
                             else:
-                                record['位置覆盖详情'] = {
-                                    '覆盖类型': '部分覆盖',
-                                    acc1: position_detail1,
-                                    acc2: position_detail2
-                                }
+                                acc1_positions = '6-10名'
+                                acc2_positions = '1-5名'
+                            
+                            record['位置覆盖详情'] = {
+                                '覆盖类型': '完整覆盖',
+                                acc1: acc1_positions,
+                                acc2: acc2_positions
+                            }
                             
                             patterns.append(record)
         
@@ -3542,9 +3534,7 @@ class WashTradeDetector:
             record_count += 1
             
             # 获取位置详情
-            position_details = record.get('位置详情', [])
             play_categories = record.get('玩法分类', [])
-            original_plays = record.get('原始玩法', [])
             
             account_directions = []
             for idx, (account, direction, amount) in enumerate(zip(record['账户组'], record['方向组'], record['金额组'])):
@@ -3554,21 +3544,16 @@ class WashTradeDetector:
                     clean_direction = direction
                 
                 # 显示位置详情
-                if idx < len(position_details):
-                    position = position_details[idx]
-                    account_directions.append(f"{account}({position},{clean_direction}:¥{amount})")
-                elif idx < len(play_categories):
-                    # 如果没有位置详情，使用玩法分类
-                    play_category = play_categories[idx]
-                    if '1-5' in play_category or '第1~5名' in play_category:
-                        position = '1-5名'
-                    elif '6-10' in play_category or '第6~10名' in play_category:
-                        position = '6-10名'
-                    else:
-                        position = play_category
+                if idx < len(play_categories):
+                    position = play_categories[idx]
                     account_directions.append(f"{account}({position},{clean_direction}:¥{amount})")
                 else:
-                    account_directions.append(f"{account}({clean_direction}:¥{amount})")
+                    # 尝试从位置覆盖详情中获取
+                    if '位置覆盖详情' in record and account in record['位置覆盖详情']:
+                        position = record['位置覆盖详情'][account]
+                        account_directions.append(f"{account}({position},{clean_direction}:¥{amount})")
+                    else:
+                        account_directions.append(f"{account}({clean_direction}:¥{amount})")
             
             # 显示位置覆盖详情（如果有）
             coverage_text = ""
@@ -3582,19 +3567,12 @@ class WashTradeDetector:
                 
                 if coverage_info:
                     coverage_text = f" | 位置覆盖: {' | '.join(coverage_info)}"
-                    if coverage_type:
-                        coverage_text = f" | {coverage_type}: {' | '.join(coverage_info)}"
-            
-            # 显示是否互补
-            complementary_text = ""
-            if '是否互补' in record:
-                complementary_text = " | 互补: ✓" if record['是否互补'] else " | 互补: ✗"
             
             if detect_type == 'PK10序列位置':
-                st.write(f"{record_count}. 期号: {record['期号']} | 方向: {' ↔ '.join(account_directions)}{coverage_text}{complementary_text}")
+                st.write(f"{record_count}. 期号: {record['期号']} | 方向: {' ↔ '.join(account_directions)}{coverage_text}")
             else:
                 similarity_display = f"{record['相似度']:.2%}" if '相似度' in record else "100.00%"
-                st.write(f"{record_count}. 期号: {record['期号']} | 方向: {' ↔ '.join(account_directions)} | 匹配度: {similarity_display}{coverage_text}{complementary_text}")
+                st.write(f"{record_count}. 期号: {record['期号']} | 方向: {' ↔ '.join(account_directions)} | 匹配度: {similarity_display}{coverage_text}")
         
         if index < len(pattern):
             st.markdown("---")
