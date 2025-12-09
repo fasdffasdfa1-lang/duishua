@@ -2399,12 +2399,13 @@ class WashTradeDetector:
         return continuous_patterns
 
     def _detect_single_position_full_coverage(self, period_data, period, specific_lottery='PK10'):
-        """修复版：检测单个位置全覆盖模式 - 添加位置信息"""
+        """修复版：检测单个位置全覆盖模式 - 处理单个位置投注"""
         patterns = []
         
         pk10_positions = ['冠军', '亚军', '第三名', '第四名', '第五名', 
                          '第六名', '第七名', '第八名', '第九名', '第十名']
         
+        # 按账户分组，收集每个账户在每个位置的投注
         account_position_bets = defaultdict(lambda: defaultdict(list))
         
         for _, row in period_data.iterrows():
@@ -2414,8 +2415,9 @@ class WashTradeDetector:
             amount = row.get('投注金额', 0)
             direction = row.get('投注方向', '')
             
-            position = self._extract_position_from_play_category(play_category)
-            if position not in pk10_positions:
+            # 提取位置信息
+            position = self._extract_single_position(play_category, content)
+            if not position or position not in pk10_positions:
                 continue
             
             # 如果方向为空，尝试重新提取
@@ -2436,7 +2438,7 @@ class WashTradeDetector:
         if len(all_accounts) < 2:
             return patterns
         
-        # 检查两个账户是否能覆盖十个位置
+        # 检查任意两个账户是否能覆盖十个位置
         for i in range(len(all_accounts)):
             for j in range(i+1, len(all_accounts)):
                 account1 = all_accounts[i]
@@ -2446,7 +2448,7 @@ class WashTradeDetector:
                 common_directions = set()
                 all_positions_covered = True
                 
-                # 跟踪每个位置的方向和账户投注
+                # 跟踪每个位置的方向
                 position_details = {}
                 
                 for position in pk10_positions:
@@ -2519,38 +2521,43 @@ class WashTradeDetector:
                     
                     total_amount = account1_amount + account2_amount
                     
-                    # 确定位置描述
-                    # 如果账户1投了所有1-5名位置，账户2投了所有6-10名位置
-                    account1_all_1_5 = all(pos in ['冠军', '亚军', '第三名', '第四名', '第五名'] for pos in account1_positions)
-                    account2_all_6_10 = all(pos in ['第六名', '第七名', '第八名', '第九名', '第十名'] for pos in account2_positions)
-                    
-                    # 或者反过来
-                    account1_all_6_10 = all(pos in ['第六名', '第七名', '第八名', '第九名', '第十名'] for pos in account1_positions)
-                    account2_all_1_5 = all(pos in ['冠军', '亚军', '第三名', '第四名', '第五名'] for pos in account2_positions)
-                    
-                    if account1_all_1_5 and account2_all_6_10:
-                        account1_position_desc = '1-5名'
-                        account2_position_desc = '6-10名'
-                        pattern_type = 'PK10完整协作'
-                    elif account1_all_6_10 and account2_all_1_5:
-                        account1_position_desc = '6-10名'
-                        account2_position_desc = '1-5名'
-                        pattern_type = 'PK10完整协作'
+                    # 生成位置描述
+                    # 检查是否每个账户都投了5个位置
+                    if len(account1_positions) == 5 and len(account2_positions) == 5:
+                        # 检查是否是标准的1-5名和6-10名
+                        account1_1_5 = all(pos in ['冠军', '亚军', '第三名', '第四名', '第五名'] for pos in account1_positions)
+                        account2_6_10 = all(pos in ['第六名', '第七名', '第八名', '第九名', '第十名'] for pos in account2_positions)
+                        account1_6_10 = all(pos in ['第六名', '第七名', '第八名', '第九名', '第十名'] for pos in account1_positions)
+                        account2_1_5 = all(pos in ['冠军', '亚军', '第三名', '第四名', '第五名'] for pos in account2_positions)
+                        
+                        if account1_1_5 and account2_6_10:
+                            account1_position_desc = '1-5名'
+                            account2_position_desc = '6-10名'
+                            pattern_type = '标准分组'
+                        elif account1_6_10 and account2_1_5:
+                            account1_position_desc = '6-10名'
+                            account2_position_desc = '1-5名'
+                            pattern_type = '标准分组'
+                        else:
+                            # 非标准分组，显示具体位置
+                            account1_position_desc = f"位置:{','.join(sorted(account1_positions))}"
+                            account2_position_desc = f"位置:{','.join(sorted(account2_positions))}"
+                            pattern_type = '非标分组'
                     else:
-                        # 部分覆盖
+                        # 非均衡分配
                         account1_position_desc = f"{len(account1_positions)}个位置"
                         account2_position_desc = f"{len(account2_positions)}个位置"
-                        pattern_type = 'PK10部分协作'
+                        pattern_type = '非均分组'
                     
                     # 生成模式描述
                     if common_direction.startswith('多数字-'):
                         numbers = common_direction.replace('多数字-', '')
-                        pattern_desc = f'{pattern_type}-多数字{numbers}'
+                        pattern_desc = f'PK10十位置{pattern_type}-多数字{numbers}'
                     elif common_direction.startswith('数字-'):
                         number = common_direction.replace('数字-', '')
-                        pattern_desc = f'{pattern_type}-数字{number}'
+                        pattern_desc = f'PK10十位置{pattern_type}-数字{number}'
                     else:
-                        pattern_desc = f'{pattern_type}-{common_direction}'
+                        pattern_desc = f'PK10十位置{pattern_type}-{common_direction}'
                     
                     record = {
                         '期号': period,
@@ -2558,7 +2565,7 @@ class WashTradeDetector:
                         '彩种类型': 'PK10',
                         '账户组': [account1, account2],
                         '方向组': [common_direction, common_direction],
-                        '玩法分类': [account1_position_desc, account2_position_desc],  # 添加位置信息
+                        '玩法分类': [account1_position_desc, account2_position_desc],
                         '金额组': [account1_amount, account2_amount],
                         '总金额': total_amount,
                         '相似度': 1.0,
@@ -2566,17 +2573,72 @@ class WashTradeDetector:
                         '模式': pattern_desc,
                         '对立类型': f'位置协作-{common_direction}',
                         '检测类型': 'PK10序列位置',
-                        '是否互补': pattern_type == 'PK10完整协作',
+                        '是否互补': True,
                         '位置覆盖详情': {
-                            '覆盖类型': '完整覆盖' if pattern_type == 'PK10完整协作' else '部分覆盖',
+                            '覆盖类型': '完整覆盖',
                             account1: account1_position_desc,
-                            account2: account2_position_desc
+                            account2: account2_position_desc,
+                            '详细分配': {
+                                account1: sorted(account1_positions),
+                                account2: sorted(account2_positions)
+                            }
                         }
                     }
                     
                     patterns.append(record)
         
         return patterns
+    
+    def _extract_single_position(self, play_category, content):
+        """从单个位置投注中提取位置信息"""
+        # 首先从玩法分类中提取
+        play_str = str(play_category).strip()
+        
+        if '冠军' in play_str:
+            return '冠军'
+        elif '亚军' in play_str:
+            return '亚军'
+        elif '第三名' in play_str or '季军' in play_str or '第3名' in play_str:
+            return '第三名'
+        elif '第四名' in play_str or '第4名' in play_str:
+            return '第四名'
+        elif '第五名' in play_str or '第5名' in play_str:
+            return '第五名'
+        elif '第六名' in play_str or '第6名' in play_str:
+            return '第六名'
+        elif '第七名' in play_str or '第7名' in play_str:
+            return '第七名'
+        elif '第八名' in play_str or '第8名' in play_str:
+            return '第八名'
+        elif '第九名' in play_str or '第9名' in play_str:
+            return '第九名'
+        elif '第十名' in play_str or '第10名' in play_str:
+            return '第十名'
+        
+        # 如果玩法分类中没有，尝试从内容中提取
+        content_str = str(content)
+        if '冠军' in content_str:
+            return '冠军'
+        elif '亚军' in content_str:
+            return '亚军'
+        elif '第三名' in content_str or '季军' in content_str or '第3名' in content_str:
+            return '第三名'
+        elif '第四名' in content_str or '第4名' in content_str:
+            return '第四名'
+        elif '第五名' in content_str or '第5名' in content_str:
+            return '第五名'
+        elif '第六名' in content_str or '第6名' in content_str:
+            return '第六名'
+        elif '第七名' in content_str or '第7名' in content_str:
+            return '第七名'
+        elif '第八名' in content_str or '第8名' in content_str:
+            return '第八名'
+        elif '第九名' in content_str or '第9名' in content_str:
+            return '第九名'
+        elif '第十名' in content_str or '第10名' in content_str:
+            return '第十名'
+        
+        return None
 
     def _detect_arbitrary_position_coverage(self, period_data, period, specific_lottery='PK10'):
         """检测任意位置分配组合 - 两个账户合起来覆盖十个位置且投注内容相同"""
