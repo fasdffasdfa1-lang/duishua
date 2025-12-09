@@ -3480,6 +3480,13 @@ class WashTradeDetector:
         # ========== 总体统计 ==========
         st.subheader("📊 总体统计")
         
+        # 修复彩种类型统计
+        lottery_stats = defaultdict(int)
+        for pattern in patterns:
+            # 使用正确的彩种字段
+            lottery = pattern.get('彩种', pattern.get('彩种类型', '未知'))
+            lottery_stats[lottery] += 1
+        
         # 基础数据统计 + 对刷检测统计
         if hasattr(self, 'df_valid') and self.df_valid is not None:
             df_enhanced = self.df_valid
@@ -3534,19 +3541,39 @@ class WashTradeDetector:
         # ========== 彩种类型统计 ==========
         st.subheader("🎲 彩种类型统计")
         
-        lottery_stats = defaultdict(int)
-        for pattern in patterns:
-            lottery_stats[pattern['彩种']] += 1
-        
-        lottery_cols = st.columns(min(5, len(lottery_stats)))
-        
-        for i, (lottery, count) in enumerate(lottery_stats.items()):
-            if i < len(lottery_cols):
-                with lottery_cols[i]:
-                    st.metric(
-                        label=lottery,
-                        value=f"{count}组"
-                    )
+        # 显示所有彩种，使用弹性布局
+        if lottery_stats:
+            # 按数量排序
+            sorted_lotteries = sorted(lottery_stats.items(), key=lambda x: x[1], reverse=True)
+            
+            # 动态确定列数（最多5列）
+            num_cols = min(5, len(sorted_lotteries))
+            if num_cols > 0:
+                lottery_cols = st.columns(num_cols)
+                
+                for i, (lottery, count) in enumerate(sorted_lotteries[:num_cols]):
+                    with lottery_cols[i]:
+                        # 简化显示名称
+                        display_name = lottery
+                        if len(display_name) > 12:
+                            display_name = display_name[:10] + "..."
+                        
+                        st.metric(
+                            label=display_name,
+                            value=f"{count}组",
+                            help=f"彩种: {lottery}"
+                        )
+            
+            # 如果还有更多，显示在展开器中
+            if len(sorted_lotteries) > num_cols:
+                with st.expander(f"查看更多彩种（共{len(sorted_lotteries)}种）", expanded=False):
+                    remaining = sorted_lotteries[num_cols:]
+                    remaining_cols = st.columns(min(5, len(remaining)))
+                    for i, (lottery, count) in enumerate(remaining):
+                        if i < len(remaining_cols):
+                            with remaining_cols[i]:
+                                short_name = lottery[:8] + "..." if len(lottery) > 8 else lottery
+                                st.metric(short_name, f"{count}组")
         
         # ========== 参与账户详细统计 ==========
         st.subheader("👥 参与账户详细统计")
@@ -3716,10 +3743,10 @@ class WashTradeDetector:
             st.markdown("---")
 
     def display_summary_statistics(self, patterns):
-        """显示总体统计"""
+        """显示总体统计 - 修复彩种显示问题"""
         if not patterns:
             return
-            
+                
         st.subheader("📊 总体统计")
         
         total_groups = len(patterns)
@@ -3731,9 +3758,12 @@ class WashTradeDetector:
         for pattern in patterns:
             account_count_stats[pattern['账户数量']] += 1
         
+        # 修复彩种统计逻辑
         lottery_stats = defaultdict(int)
         for pattern in patterns:
-            lottery_stats[pattern['彩种']] += 1
+            # 使用pattern中的'彩种'字段，如果不存在则使用'彩种类型'
+            lottery = pattern.get('彩种', pattern.get('彩种类型', '未知'))
+            lottery_stats[lottery] += 1
         
         activity_stats = defaultdict(int)
         for pattern in patterns:
@@ -3760,24 +3790,35 @@ class WashTradeDetector:
         
         st.subheader("🎲 彩种类型统计")
         
-        lottery_display_names = {
-            'PK10': 'PK10/赛车',
-            'K3': '快三',
-            'LHC': '六合彩', 
-            'SSC': '时时彩',
-            '3D': '3D系列'
-        }
+        # 不再使用硬编码的映射表，直接显示实际彩种名称
+        lottery_cols = st.columns(min(6, len(lottery_stats)))  # 增加到最多6列
         
-        lottery_cols = st.columns(min(5, len(lottery_stats)))
+        # 按数量排序，显示最多的几个
+        sorted_lotteries = sorted(lottery_stats.items(), key=lambda x: x[1], reverse=True)
         
-        for i, (lottery, count) in enumerate(lottery_stats.items()):
+        for i, (lottery, count) in enumerate(sorted_lotteries[:6]):  # 显示最多6个
             if i < len(lottery_cols):
                 with lottery_cols[i]:
-                    display_name = lottery_display_names.get(lottery, lottery)
+                    # 简化彩种名称显示
+                    display_name = lottery
+                    # 如果是长名称，截断显示
+                    if len(display_name) > 15:
+                        display_name = display_name[:12] + "..."
+                    
                     st.metric(
                         label=display_name,
                         value=f"{count}组"
                     )
+        
+        # 如果有更多彩种，显示查看更多
+        if len(lottery_stats) > 6:
+            with st.expander(f"查看更多彩种（共{len(lottery_stats)}种）", expanded=False):
+                more_cols = st.columns(min(6, len(lottery_stats) - 6))
+                for i, (lottery, count) in enumerate(sorted_lotteries[6:]):
+                    if i < len(more_cols):
+                        with more_cols[i]:
+                            st.metric(f"{lottery[:10]}..." if len(lottery) > 10 else lottery, 
+                                     f"{count}组")
         
         col_left, col_right = st.columns(2)
         
@@ -3786,7 +3827,7 @@ class WashTradeDetector:
             
             for account_count, group_count in sorted(account_count_stats.items()):
                 account_type_periods = sum(p['对刷期数'] for p in patterns if p['账户数量'] == account_count)
-                st.write(f"- **{account_count}组**: {group_count}组 ({account_type_periods}期)")
+                st.write(f"- **{account_count}账户组合**: {group_count}组 ({account_type_periods}期)")
         
         with col_right:
             st.subheader("📈 活跃度分布")
@@ -3814,14 +3855,14 @@ class WashTradeDetector:
         
         with metric_col2:
             business_total = total_amount
-            st.metric("业务类型总额", f"¥{business_total:,.2f}")
+            st.metric("总涉及金额", f"¥{business_total:,.2f}")
         
         with metric_col3:
             st.metric("参与总账户数", total_accounts)
         
         st.subheader("🎯 主要对立类型")
         
-        top_opposites = sorted(opposite_type_stats.items(), key=lambda x: x[1], reverse=True)[:3]
+        top_opposites = sorted(opposite_type_stats.items(), key=lambda x: x[1], reverse=True)[:5]
         
         for opposite_type, count in top_opposites:
             if ' vs ' in opposite_type:
