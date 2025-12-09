@@ -3873,39 +3873,22 @@ class WashTradeDetector:
                 # 显示位置详情
                 if idx < len(play_categories):
                     position = play_categories[idx]
+                    # 不再添加额外的位置分配信息
                     account_directions.append(f"{account}({position},{clean_direction}:¥{amount})")
                 else:
                     account_directions.append(f"{account}({clean_direction}:¥{amount})")
             
-            # 简化位置覆盖详情显示
+            # 移除所有的位置分配和位置覆盖信息
             coverage_text = ""
             
-            # 如果有详细的位置分配信息，显示简洁版
-            if '位置覆盖详情' in record and '详细分配' in record['位置覆盖详情']:
-                detailed_info = []
-                for account, positions in record['位置覆盖详情']['详细分配'].items():
-                    if account in record['账户组']:
-                        # 只显示简化的位置信息，不显示"位置:"前缀
-                        position_str = ','.join(positions)
-                        detailed_info.append(f"{account}:{position_str}")
-                
-                if detailed_info:
-                    coverage_text = f" | 位置分配: {' | '.join(detailed_info)}"
-            
-            # 如果没有详细分配，但有玩法分类，则使用玩法分类
-            elif play_categories:
-                coverage_info = []
-                for account, position in zip(record['账户组'], play_categories):
-                    coverage_info.append(f"{account}:{position}")
-                
-                if coverage_info:
-                    coverage_text = f" | 位置分配: {' | '.join(coverage_info)}"
+            # 不再显示位置分配信息，因为已经在账户方向中包含了
+            # coverage_text = ""
             
             if detect_type == 'PK10序列位置':
-                st.write(f"{record_count}. 期号: {record['期号']} | 方向: {' ↔ '.join(account_directions)}{coverage_text}")
+                st.write(f"{record_count}. 期号: {record['期号']} | 方向: {' ↔ '.join(account_directions)}")
             else:
                 similarity_display = f"{record['相似度']:.2%}" if '相似度' in record else "100.00%"
-                st.write(f"{record_count}. 期号: {record['期号']} | 方向: {' ↔ '.join(account_directions)} | 匹配度: {similarity_display}{coverage_text}")
+                st.write(f"{record_count}. 期号: {record['期号']} | 方向: {' ↔ '.join(account_directions)} | 匹配度: {similarity_display}")
         
         if index < len(pattern):
             st.markdown("---")
