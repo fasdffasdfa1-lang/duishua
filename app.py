@@ -3541,39 +3541,88 @@ class WashTradeDetector:
         # ========== 彩种类型统计 ==========
         st.subheader("🎲 彩种类型统计")
         
-        # 显示所有彩种，使用弹性布局
-        if lottery_stats:
-            # 按数量排序
-            sorted_lotteries = sorted(lottery_stats.items(), key=lambda x: x[1], reverse=True)
+    # 修复彩种类型统计
+    lottery_stats = defaultdict(int)
+    for pattern in patterns:
+        lottery = pattern.get('彩种', pattern.get('彩种类型', '未知'))
+        lottery_stats[lottery] += 1
+    
+    # 按数量排序
+    sorted_lotteries = sorted(lottery_stats.items(), key=lambda x: x[1], reverse=True)
+    
+    if sorted_lotteries:
+        # 显示卡片式统计（上方）
+        st.write("**彩种分布:**")
+        
+        # 计算需要几行，每行最多显示6个
+        max_per_row = 6
+        num_lotteries = len(sorted_lotteries)
+        
+        if num_lotteries <= max_per_row:
+            # 如果数量少，显示在一行
+            cols = st.columns(num_lotteries)
+            for i, (lottery, count) in enumerate(sorted_lotteries):
+                with cols[i]:
+                    display_name = lottery
+                    if len(display_name) > 10:
+                        display_name = display_name[:8] + "..."
+                    
+                    st.metric(
+                        label=display_name,
+                        value=f"{count}组",
+                        help=f"完整名称: {lottery}"
+                    )
+        else:
+            # 如果数量多，分多行显示
+            num_rows = (num_lotteries + max_per_row - 1) // max_per_row
             
-            # 动态确定列数（最多5列）
-            num_cols = min(5, len(sorted_lotteries))
-            if num_cols > 0:
-                lottery_cols = st.columns(num_cols)
+            for row in range(num_rows):
+                start_idx = row * max_per_row
+                end_idx = min((row + 1) * max_per_row, num_lotteries)
+                row_lotteries = sorted_lotteries[start_idx:end_idx]
                 
-                for i, (lottery, count) in enumerate(sorted_lotteries[:num_cols]):
-                    with lottery_cols[i]:
-                        # 简化显示名称
+                # 创建这一行的列
+                cols = st.columns(len(row_lotteries))
+                
+                for i, (lottery, count) in enumerate(row_lotteries):
+                    with cols[i]:
                         display_name = lottery
-                        if len(display_name) > 12:
-                            display_name = display_name[:10] + "..."
+                        if len(display_name) > 10:
+                            display_name = display_name[:8] + "..."
                         
                         st.metric(
                             label=display_name,
                             value=f"{count}组",
-                            help=f"彩种: {lottery}"
+                            help=f"完整名称: {lottery}"
                         )
+        
+        # 下方显示详细表格
+        with st.expander("📋 查看彩种统计详情", expanded=False):
+            # 创建数据框
+            df_lottery = pd.DataFrame(
+                [(lottery, count) for lottery, count in sorted_lotteries],
+                columns=['彩种名称', '对刷组数']
+            )
             
-            # 如果还有更多，显示在展开器中
-            if len(sorted_lotteries) > num_cols:
-                with st.expander(f"查看更多彩种（共{len(sorted_lotteries)}种）", expanded=False):
-                    remaining = sorted_lotteries[num_cols:]
-                    remaining_cols = st.columns(min(5, len(remaining)))
-                    for i, (lottery, count) in enumerate(remaining):
-                        if i < len(remaining_cols):
-                            with remaining_cols[i]:
-                                short_name = lottery[:8] + "..." if len(lottery) > 8 else lottery
-                                st.metric(short_name, f"{count}组")
+            # 添加百分比
+            total_groups = df_lottery['对刷组数'].sum()
+            df_lottery['占比'] = df_lottery['对刷组数'].apply(
+                lambda x: f"{x/total_groups*100:.1f}%"
+            )
+            
+            # 添加序号
+            df_lottery.insert(0, '序号', range(1, len(df_lottery) + 1))
+            
+            # 显示表格
+            st.dataframe(
+                df_lottery,
+                use_container_width=True,
+                hide_index=True,
+                height=min(400, len(df_lottery) * 35 + 38)
+            )
+            
+            # 显示总计
+            st.markdown(f"**总计: {total_groups} 对刷组**")
         
         # ========== 参与账户详细统计 ==========
         st.subheader("👥 参与账户详细统计")
