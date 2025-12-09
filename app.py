@@ -613,6 +613,19 @@ class PlayCategoryNormalizer:
             '第7名': '第七名', '第七名': '第七名', '第8名': '第八名', '第八名': '第八名',
             '第9名': '第九名', '第九名': '第九名', '第10名': '第十名', '第十名': '第十名',
             '双面': '两面', '冠亚和': '冠亚和',
+
+            # PK10定位胆玩法映射
+            '定位胆_第1~5名': '1-5名',
+            '定位胆_第6~10名': '6-10名',
+            '定位胆_第1~5名定位胆': '1-5名',
+            '定位胆_第6~10名定位胆': '6-10名',
+            '定位胆1-5名': '1-5名',
+            '定位胆6-10名': '6-10名',
+            '第1~5名定位胆': '1-5名',
+            '第6~10名定位胆': '6-10名',
+            '定位胆_冠军': '冠军',
+            '定位胆_亚军': '亚军',
+            '定位胆_季军': '第三名',
             
             '1-5名': '1-5名',
             '6-10名': '6-10名', 
@@ -2736,7 +2749,7 @@ class WashTradeDetector:
         return patterns
 
     def _detect_vertical_format_collaboration(self, period_data, period, specific_lottery='PK10'):
-        """修复版：检测竖线分隔格式的协作模式 - 修复漏洞，保持原有能力"""
+        """修复版：检测竖线分隔格式的协作模式 - 更准确地判断互补性"""
         patterns = []
         
         # 查找使用竖线分隔的内容
@@ -2753,6 +2766,7 @@ class WashTradeDetector:
             direction = row.get('投注方向', '')
             amount = row.get('投注金额', 0)
             play_category = row.get('玩法分类', '')
+            original_play = row.get('玩法', '')  # 原始玩法字段
             
             if account not in account_bets:
                 account_bets[account] = []
@@ -2762,7 +2776,7 @@ class WashTradeDetector:
                 'direction': direction,
                 'amount': amount,
                 'play_category': play_category,
-                'original_play': row.get('玩法', '')  # 保留原始玩法字段
+                'original_play': original_play
             })
         
         # 比较账户间的投注内容
@@ -2798,43 +2812,39 @@ class WashTradeDetector:
                                 continue
                             
                             # 获取玩法分类
-                            play1 = bet1['play_category']
-                            play2 = bet2['play_category']
-                            original_play1 = bet1.get('original_play', '')
-                            original_play2 = bet2.get('original_play', '')
-                            
-                            # 判断协作类型
-                            play1_lower = play1.lower()
-                            play2_lower = play2.lower()
+                            play1 = bet1['original_play'] or bet1['play_category']
+                            play2 = bet2['original_play'] or bet2['play_category']
                             
                             # 判断是否互补
                             is_complementary = False
-                            if ('1-5' in play1_lower or '第1~5名' in play1_lower or 
-                                any(pos in play1_lower for pos in ['冠军', '亚军', '第三名', '第四名', '第五名'])):
-                                if ('6-10' in play2_lower or '第6~10名' in play2_lower or 
-                                    any(pos in play2_lower for pos in ['第六名', '第七名', '第八名', '第九名', '第十名'])):
-                                    is_complementary = True
                             
-                            if ('6-10' in play1_lower or '第6~10名' in play1_lower or 
-                                any(pos in play1_lower for pos in ['第六名', '第七名', '第八名', '第九名', '第十名'])):
-                                if ('1-5' in play2_lower or '第1~5名' in play2_lower or 
-                                    any(pos in play2_lower for pos in ['冠军', '亚军', '第三名', '第四名', '第五名'])):
-                                    is_complementary = True
+                            # 检查play1和play2是否一个包含1-5，另一个包含6-10
+                            play1_str = str(play1).lower()
+                            play2_str = str(play2).lower()
+                            
+                            # 定义1-5名的关键词
+                            one_to_five_keywords = ['1-5名', '第1~5名', '定位胆_第1~5名', '冠军', '亚军', '第三名', '第四名', '第五名', '第1名', '第2名', '第3名', '第4名', '第5名']
+                            # 定义6-10名的关键词  
+                            six_to_ten_keywords = ['6-10名', '第6~10名', '定位胆_第6~10名', '第六名', '第七名', '第八名', '第九名', '第十名', '第6名', '第7名', '第8名', '第9名', '第10名']
+                            
+                            # 检查play1是否包含1-5关键词，play2是否包含6-10关键词
+                            condition1 = any(keyword in play1_str for keyword in one_to_five_keywords) and any(keyword in play2_str for keyword in six_to_ten_keywords)
+                            # 检查play1是否包含6-10关键词，play2是否包含1-5关键词
+                            condition2 = any(keyword in play1_str for keyword in six_to_ten_keywords) and any(keyword in play2_str for keyword in one_to_five_keywords)
+                            
+                            is_complementary = condition1 or condition2
                             
                             # 确定模式类型
                             if is_complementary:
                                 pattern_type = 'PK10完整协作'
                                 detection_type = 'PK10序列位置'
                             else:
-                                # 如果玩法分类相同，进一步分析是否可能是完整协作的不同形式
-                                # 例如：两个账户都投1-5名，但实际上是分开投注
-                                # 这里我们标记为可疑协作，让连续模式检测来过滤
                                 pattern_type = 'PK10竖线格式协作'
                                 detection_type = 'PK10可疑协作'
                             
                             # 获取投注位置详情
-                            position_detail1 = self._get_position_detail(play1, original_play1)
-                            position_detail2 = self._get_position_detail(play2, original_play2)
+                            position_detail1 = self._get_position_detail(play1, play1)
+                            position_detail2 = self._get_position_detail(play2, play2)
                             
                             record = {
                                 '期号': period,
@@ -2842,9 +2852,8 @@ class WashTradeDetector:
                                 '彩种类型': 'PK10',
                                 '账户组': [acc1, acc2],
                                 '方向组': [bet1['direction'], bet2['direction']],
-                                '玩法分类': [play1, play2],  # 简化后的玩法分类
-                                '原始玩法': [original_play1, original_play2],  # 原始玩法字段
-                                '位置详情': [position_detail1, position_detail2],  # 位置详情
+                                '玩法分类': [position_detail1, position_detail2],  # 使用简化的位置详情
+                                '原始玩法': [play1, play2],  # 原始玩法字段
                                 '金额组': [bet1['amount'], bet2['amount']],
                                 '总金额': bet1['amount'] + bet2['amount'],
                                 '相似度': 1.0,
@@ -2857,7 +2866,8 @@ class WashTradeDetector:
                             
                             # 如果是完整协作，添加位置覆盖详情
                             if is_complementary:
-                                if '1-5' in play1_lower or '第1~5名' in play1_lower:
+                                # 判断哪个账户投1-5名，哪个投6-10名
+                                if any(keyword in play1_str for keyword in one_to_five_keywords):
                                     acc1_positions = '1-5名'
                                     acc2_positions = '6-10名'
                                 else:
@@ -2881,58 +2891,48 @@ class WashTradeDetector:
         return patterns
     
     def _get_position_detail(self, play_category, original_play):
-        """获取位置详情"""
-        play_str = str(play_category).lower()
+        """获取位置详情 - 修正版"""
+        # 首先检查原始玩法
+        original_str = str(original_play).lower() if original_play else ""
+        play_str = str(play_category).lower() if play_category else ""
         
-        if '1-5' in play_str or '第1~5名' in play_str:
+        # 检查是否是"定位胆_第1~5名"格式
+        if '定位胆_第1~5名' in original_str or '定位胆_第1~5名' in play_str:
             return '1-5名'
-        elif '6-10' in play_str or '第6~10名' in play_str:
+        elif '定位胆_第6~10名' in original_str or '定位胆_第6~10名' in play_str:
             return '6-10名'
-        elif '冠军' in play_str:
+        # 检查是否是"定位胆"简写
+        elif '定位胆' in original_str or '定位胆' in play_str:
+            # 尝试从内容推断具体位置
+            return '定位胆'  # 暂时返回通用名称
+        elif '1-5名' in original_str or '1-5名' in play_str:
+            return '1-5名'
+        elif '6-10名' in original_str or '6-10名' in play_str:
+            return '6-10名'
+        # 检查具体位置
+        elif any(pos in original_str for pos in ['冠军', '第1名', '第一名', '前一']):
             return '冠军'
-        elif '亚军' in play_str:
+        elif any(pos in original_str for pos in ['亚军', '第2名', '第二名', '前二']):
             return '亚军'
-        elif '第三名' in play_str or '季军' in play_str:
+        elif any(pos in original_str for pos in ['第三名', '第3名', '季军', '前三']):
             return '第三名'
-        elif '第四名' in play_str:
+        elif any(pos in original_str for pos in ['第四名', '第4名', '前四']):
             return '第四名'
-        elif '第五名' in play_str:
+        elif any(pos in original_str for pos in ['第五名', '第5名', '前五']):
             return '第五名'
-        elif '第六名' in play_str:
+        elif any(pos in original_str for pos in ['第六名', '第6名']):
             return '第六名'
-        elif '第七名' in play_str:
+        elif any(pos in original_str for pos in ['第七名', '第7名']):
             return '第七名'
-        elif '第八名' in play_str:
+        elif any(pos in original_str for pos in ['第八名', '第8名']):
             return '第八名'
-        elif '第九名' in play_str:
+        elif any(pos in original_str for pos in ['第九名', '第9名']):
             return '第九名'
-        elif '第十名' in play_str:
+        elif any(pos in original_str for pos in ['第十名', '第10名']):
             return '第十名'
         else:
-            # 尝试从原始玩法中提取
-            original_str = str(original_play).lower()
-            if '冠军' in original_str:
-                return '冠军'
-            elif '亚军' in original_str:
-                return '亚军'
-            elif '第3名' in original_str or '季军' in original_str:
-                return '第三名'
-            elif '第4名' in original_str:
-                return '第四名'
-            elif '第5名' in original_str:
-                return '第五名'
-            elif '第6名' in original_str:
-                return '第六名'
-            elif '第7名' in original_str:
-                return '第七名'
-            elif '第8名' in original_str:
-                return '第八名'
-            elif '第9名' in original_str:
-                return '第九名'
-            elif '第10名' in original_str:
-                return '第十名'
-            else:
-                return play_category
+            # 如果还是无法确定，返回玩法分类
+            return play_category if play_category else original_play
 
     def find_continuous_sequence_patterns(self, sequence_patterns):
         """查找连续的序列模式"""
