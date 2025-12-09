@@ -1999,7 +1999,7 @@ class WashTradeDetector:
         return self.find_continuous_patterns_optimized(wash_records)
 
     def detect_pk10_sequence_patterns(self, df_filtered):
-        """PK10序列位置模式检测 - 优化检测逻辑"""
+        """PK10序列位置模式检测 - 保持所有检测逻辑"""
         try:
             if hasattr(self, 'df_valid') and self.df_valid is not None:
                 df_pk10 = self.df_valid[
@@ -2027,53 +2027,18 @@ class WashTradeDetector:
                 else:
                     specific_lottery = 'PK10'
                 
-                # 1. 使用增强版方法检测1-5名和6-10名的完整协作
+                # 调用所有检测方法，不限制
                 patterns_1 = self._detect_1_5_6_10_collaboration(period_data, period, specific_lottery)
+                sequence_patterns.extend(patterns_1)
                 
-                # 2. 使用增强版方法检测竖线格式的完整协作
-                patterns_2 = self._detect_vertical_format_collaboration(period_data, period, specific_lottery)
+                patterns_2 = self._detect_single_position_full_coverage(period_data, period, specific_lottery)
+                sequence_patterns.extend(patterns_2)
                 
-                # 3. 原有的其他检测方法
-                patterns_3 = self._detect_single_position_full_coverage(period_data, period, specific_lottery)
-                patterns_4 = self._detect_vertical_format_collaboration(period_data, period, specific_lottery)
-                
-                # 合并所有模式
-                all_patterns = patterns_1 + patterns_2 + patterns_3 + patterns_4
-                
-                # 对当期检测结果进行去重
-                seen_keys = set()
-                unique_patterns = []
-                
-                for pattern in all_patterns:
-                    key = (
-                        pattern['期号'],
-                        tuple(sorted(pattern['账户组'])),
-                        tuple(sorted(pattern['方向组']))
-                    )
-                    if key not in seen_keys:
-                        seen_keys.add(key)
-                        unique_patterns.append(pattern)
-                
-                sequence_patterns.extend(unique_patterns)
+                patterns_3 = self._detect_vertical_format_collaboration(period_data, period, specific_lottery)
+                sequence_patterns.extend(patterns_3)
             
-            # 过滤：只保留完整覆盖的记录
-            filtered_patterns = []
-            for pattern in sequence_patterns:
-                if '位置覆盖详情' in pattern:
-                    is_full = True
-                    for detail in pattern['位置覆盖详情'].values():
-                        if '5/5' not in detail:
-                            is_full = False
-                            break
-                    
-                    if is_full:
-                        filtered_patterns.append(pattern)
-                else:
-                    # 对于没有位置覆盖详情的传统对刷模式，保留
-                    filtered_patterns.append(pattern)
-            
-            # 连续模式检测
-            continuous_patterns = self.find_continuous_patterns_optimized(filtered_patterns)
+            # 使用修复后的连续模式检测方法，它会进行适当的去重
+            continuous_patterns = self.find_continuous_patterns_optimized(sequence_patterns)
             
             return continuous_patterns
                     
@@ -2295,15 +2260,15 @@ class WashTradeDetector:
         return True
     
     def find_continuous_patterns_optimized(self, wash_records):
-        """连续对刷模式检测 - 增强去重逻辑"""
+        """连续对刷模式检测 - 修复重复记录问题，但不过滤有效检测"""
         if not wash_records:
             return []
         
         account_group_patterns = defaultdict(list)
         
-        # 首先对原始记录进行去重
-        seen_records = set()
+        # 首先对原始记录进行简单的去重（同一期号、同一账户组、同一方向）
         unique_records = []
+        seen_keys = set()
         
         for record in wash_records:
             # 创建唯一标识键
@@ -2311,29 +2276,15 @@ class WashTradeDetector:
                 record['期号'],
                 tuple(sorted(record['账户组'])),
                 tuple(sorted(record['方向组'])),
-                record.get('检测类型', '')
+                record.get('彩种', '')
             )
             
-            if key not in seen_records:
-                seen_records.add(key)
+            if key not in seen_keys:
+                seen_keys.add(key)
                 unique_records.append(record)
         
         # 使用去重后的记录进行分组
         for record in unique_records:
-            # 对于PK10序列位置检测，检查是否是完整协作
-            if '检测类型' in record and record['检测类型'] == 'PK10序列位置':
-                # 检查是否是完整覆盖
-                if '位置覆盖详情' in record:
-                    is_full_coverage = True
-                    for detail in record['位置覆盖详情'].values():
-                        if '5/5' not in detail:
-                            is_full_coverage = False
-                            break
-                    
-                    if not is_full_coverage:
-                        # 跳过不完整覆盖的记录
-                        continue
-            
             account_group_key = (tuple(sorted(record['账户组'])), record['彩种'])
             account_group_patterns[account_group_key].append(record)
         
@@ -2373,8 +2324,19 @@ class WashTradeDetector:
                         seen_periods.add(period)
                         unique_detailed_records.append(record)
                 
-                total_investment = sum(r['总金额'] for r in unique_detailed_records)
-                similarities = [r['相似度'] for r in unique_detailed_records if '相似度' in r]
+                # 重新计算总金额（基于唯一记录）
+                total_investment = 0
+                for r in unique_detailed_records:
+                    # 确保金额是数值类型
+                    if isinstance(r['总金额'], (int, float)):
+                        total_investment += r['总金额']
+                    else:
+                        try:
+                            total_investment += float(r['总金额'])
+                        except:
+                            pass
+                
+                similarities = [r['相似度'] for r in unique_detailed_records if '相似度' in r and isinstance(r['相似度'], (int, float))]
                 avg_similarity = np.mean(similarities) if similarities else 1.0
                 
                 opposite_type_counts = defaultdict(int)
@@ -2696,97 +2658,90 @@ class WashTradeDetector:
         return ''
     
     def _detect_1_5_6_10_collaboration(self, period_data, period, specific_lottery='PK10'):
-        """增强版：检测1-5名和6-10名的协作模式"""
+        """修复版：检测1-5名和6-10名的协作模式 - 保持原有逻辑，不额外限制"""
         patterns = []
         
-        # 按玩法分类分组
         play_1_5 = period_data[period_data['玩法分类'] == '1-5名']
         play_6_10 = period_data[period_data['玩法分类'] == '6-10名']
         
         if len(play_1_5) == 0 or len(play_6_10) == 0:
             return patterns
         
-        # 去重集合，避免同一期号重复检测相同账户对
-        detected_pairs = set()
+        # 按账户分组
+        account_1_5_data = {}
+        account_6_10_data = {}
         
-        for _, row1 in play_1_5.iterrows():
-            for _, row2 in play_6_10.iterrows():
-                account1 = row1['会员账号']
-                account2 = row2['会员账号']
-                
-                if account1 == account2:
+        # 处理1-5名数据
+        for _, row in play_1_5.iterrows():
+            account = row['会员账号']
+            direction = row.get('投注方向', '')
+            amount = row.get('投注金额', 0)
+            content = row['内容']
+            
+            if direction:
+                account_1_5_data[account] = {
+                    'direction': direction,
+                    'amount': amount,
+                    'content': content
+                }
+        
+        # 处理6-10名数据
+        for _, row in play_6_10.iterrows():
+            account = row['会员账号']
+            direction = row.get('投注方向', '')
+            amount = row.get('投注金额', 0)
+            content = row['内容']
+            
+            if direction:
+                account_6_10_data[account] = {
+                    'direction': direction,
+                    'amount': amount,
+                    'content': content
+                }
+        
+        # 查找协作模式
+        for acc1, data1 in account_1_5_data.items():
+            for acc2, data2 in account_6_10_data.items():
+                if acc1 == acc2:
                     continue
-                
-                # 创建去重键
-                pair_key = (period, tuple(sorted([account1, account2])))
-                if pair_key in detected_pairs:
-                    continue
-                
-                direction1 = row1.get('投注方向', '')
-                direction2 = row2.get('投注方向', '')
-                amount1 = row1.get('投注金额', 0)
-                amount2 = row2.get('投注金额', 0)
                 
                 # 检查投注方向是否相同
-                if not direction1 or not direction2 or direction1 != direction2:
+                if data1['direction'] != data2['direction']:
                     continue
                 
                 # 检查金额平衡
                 max_ratio = self.config.amount_threshold.get('max_amount_ratio', 10)
-                if min(amount1, amount2) > 0 and max(amount1, amount2) / min(amount1, amount2) > max_ratio:
+                if max(data1['amount'], data2['amount']) / min(data1['amount'], data2['amount']) > max_ratio:
                     continue
                 
-                # 检查投注内容是否完整
-                content1 = str(row1['内容']).strip()
-                content2 = str(row2['内容']).strip()
+                account_group = [acc1, acc2]
+                directions = [data1['direction'], data2['direction']]
+                amounts = [data1['amount'], data2['amount']]
+                total_amount = data1['amount'] + data2['amount']
                 
-                # 对于竖线格式，检查是否完整覆盖5个位置
-                is_complete_1_5 = False
-                if '|' in content1:
-                    parts = content1.split('|')
-                    if len(parts) >= 5:
-                        valid_parts = [p.strip() for p in parts[:5] if p.strip() and p.strip() != '_']
-                        if len(valid_parts) == 5 and len(set(valid_parts)) == 1:
-                            is_complete_1_5 = True
-                
-                is_complete_6_10 = False
-                if '|' in content2:
-                    parts = content2.split('|')
-                    if len(parts) >= 5:
-                        valid_parts = [p.strip() for p in parts[:5] if p.strip() and p.strip() != '_']
-                        if len(valid_parts) == 5 and len(set(valid_parts)) == 1:
-                            is_complete_6_10 = True
-                
-                # 只有当两个投注都完整覆盖时才认为是完整协作
-                if not (is_complete_1_5 and is_complete_6_10):
-                    continue
-                
-                detected_pairs.add(pair_key)
-                
-                # 生成模式描述
-                if direction1.startswith('数字-'):
-                    num = direction1.replace('数字-', '')
-                    pattern_desc = f'PK10完整协作-数字{num}'
+                # 提取投注内容
+                if data1['direction'].startswith('数字-'):
+                    numbers = data1['direction'].replace('数字-', '')
+                    pattern_desc = f'PK10十位置协作-数字{numbers}'
+                elif data1['direction'].startswith('多数字-'):
+                    numbers = data1['direction'].replace('多数字-', '')
+                    pattern_desc = f'PK10十位置协作-多数字{numbers}'
                 else:
-                    pattern_desc = f'PK10完整协作-{direction1}'
+                    pattern_desc = f'PK10十位置协作-{data1["direction"]}'
                 
                 record = {
                     '期号': period,
                     '彩种': specific_lottery,
                     '彩种类型': 'PK10',
-                    '账户组': [account1, account2],
-                    '方向组': [direction1, direction2],
-                    '金额组': [amount1, amount2],
-                    '总金额': amount1 + amount2,
+                    '账户组': account_group,
+                    '方向组': directions,
+                    '金额组': amounts,
+                    '总金额': total_amount,
                     '相似度': 1.0,
                     '账户数量': 2,
                     '模式': pattern_desc,
-                    '对立类型': f'完整协作-{direction1}',
-                    '检测类型': 'PK10序列位置',
-                    '位置覆盖详情': {
-                        '1-5名': '5/5',
-                        '6-10名': '5/5'
-                    }
+                    '对立类型': f'位置协作-{data1["direction"]}',
+                    '检测类型': 'PK10序列位置'
                 }
                 
                 patterns.append(record)
@@ -2794,7 +2749,7 @@ class WashTradeDetector:
         return patterns
 
     def _detect_vertical_format_collaboration(self, period_data, period, specific_lottery='PK10'):
-        """增强版：检测竖线分隔格式的协作模式 - 区分完整协作和普通协作"""
+        """修复版：检测竖线分隔格式的协作模式 - 保持原有检测逻辑，只修复误判"""
         patterns = []
         
         # 查找使用竖线分隔的内容
@@ -2806,70 +2761,39 @@ class WashTradeDetector:
         # 按玩法分类分组
         play_1_5 = vertical_bets[vertical_bets['玩法分类'] == '1-5名']
         play_6_10 = vertical_bets[vertical_bets['玩法分类'] == '6-10名']
+        play_other = vertical_bets[~vertical_bets['玩法分类'].isin(['1-5名', '6-10名'])]
         
         # 情况1：一个账户投1-5名，另一个投6-10名（完整协作）
         if len(play_1_5) > 0 and len(play_6_10) > 0:
+            # 只检测这种真正的完整协作
             for _, row1 in play_1_5.iterrows():
-                account1 = row1['会员账号']
-                content1 = str(row1['内容']).strip()
-                direction1 = row1.get('投注方向', '')
-                amount1 = row1.get('投注金额', 0)
-                
-                # 检查1-5名是否完整覆盖5个位置
-                is_complete_1_5 = False
-                if '|' in content1:
-                    parts = content1.split('|')
-                    if len(parts) >= 5:
-                        valid_parts = [p.strip() for p in parts[:5] if p.strip() and p.strip() != '_']
-                        if len(valid_parts) == 5:
-                            # 检查5个位置是否相同
-                            if len(set(valid_parts)) == 1:
-                                is_complete_1_5 = True
-                
-                if not is_complete_1_5:
-                    continue
-                
                 for _, row2 in play_6_10.iterrows():
+                    account1 = row1['会员账号']
                     account2 = row2['会员账号']
-                    content2 = str(row2['内容']).strip()
-                    direction2 = row2.get('投注方向', '')
-                    amount2 = row2.get('投注金额', 0)
                     
                     if account1 == account2:
                         continue
                     
-                    # 检查6-10名是否完整覆盖5个位置
-                    is_complete_6_10 = False
-                    if '|' in content2:
-                        parts = content2.split('|')
-                        if len(parts) >= 5:
-                            valid_parts = [p.strip() for p in parts[:5] if p.strip() and p.strip() != '_']
-                            if len(valid_parts) == 5:
-                                if len(set(valid_parts)) == 1:
-                                    is_complete_6_10 = True
-                    
-                    if not is_complete_6_10:
-                        continue
+                    direction1 = row1.get('投注方向', '')
+                    direction2 = row2.get('投注方向', '')
+                    amount1 = row1.get('投注金额', 0)
+                    amount2 = row2.get('投注金额', 0)
                     
                     # 检查投注方向是否相同
-                    if direction1 != direction2:
+                    if not direction1 or not direction2 or direction1 != direction2:
                         continue
                     
                     # 检查金额平衡
                     max_ratio = self.config.amount_threshold.get('max_amount_ratio', 10)
-                    if max(amount1, amount2) / min(amount1, amount2) > max_ratio:
-                        continue
-                    
-                    # 检查投注内容是否匹配（相同的数字/方向）
-                    parts1 = content1.split('|')[:5]
-                    parts2 = content2.split('|')[:5]
-                    first_value1 = parts1[0].strip()
-                    first_value2 = parts2[0].strip()
-                    if first_value1 != first_value2:
+                    if min(amount1, amount2) > 0 and max(amount1, amount2) / min(amount1, amount2) > max_ratio:
                         continue
                     
                     # 生成模式描述
-                    pattern_desc = f'PK10完整协作-{direction1}' if direction1 else 'PK10完整协作'
+                    if direction1.startswith('数字-'):
+                        num = direction1.replace('数字-', '')
+                        pattern_desc = f'PK10完整协作-数字{num}'
+                    else:
+                        pattern_desc = f'PK10完整协作-{direction1}'
                     
                     record = {
                         '期号': period,
@@ -2882,15 +2806,70 @@ class WashTradeDetector:
                         '相似度': 1.0,
                         '账户数量': 2,
                         '模式': pattern_desc,
-                        '对立类型': f'完整协作-{direction1}' if direction1 else '完整协作',
-                        '检测类型': 'PK10序列位置',
-                        '位置覆盖详情': {
-                            '1-5名': '5/5',
-                            '6-10名': '5/5'
-                        }
+                        '对立类型': f'完整协作-{direction1}',
+                        '检测类型': 'PK10序列位置'
                     }
                     
                     patterns.append(record)
+        
+        # 情况2：其他竖线格式的协作（保留原有逻辑）
+        # 按账户分组
+        account_bets = {}
+        for _, row in vertical_bets.iterrows():
+            account = row['会员账号']
+            content = row['内容']
+            direction = row.get('投注方向', '')
+            amount = row.get('投注金额', 0)
+            
+            if account not in account_bets:
+                account_bets[account] = []
+            
+            account_bets[account].append({
+                'content': content,
+                'direction': direction,
+                'amount': amount
+            })
+        
+        # 比较账户间的投注内容
+        accounts = list(account_bets.keys())
+        if len(accounts) < 2:
+            return patterns
+        
+        for i in range(len(accounts)):
+            for j in range(i+1, len(accounts)):
+                acc1 = accounts[i]
+                acc2 = accounts[j]
+                
+                bets1 = account_bets[acc1]
+                bets2 = account_bets[acc2]
+                
+                # 检查是否有相同方向的对刷
+                for bet1 in bets1:
+                    for bet2 in bets2:
+                        if bet1['direction'] and bet2['direction'] and bet1['direction'] == bet2['direction']:
+                            # 对于两个账户都投注1-5名的情况，我们不再过滤
+                            # 因为可能是正常的对刷模式
+                            
+                            # 检查金额平衡
+                            max_ratio = self.config.amount_threshold.get('max_amount_ratio', 10)
+                            if max(bet1['amount'], bet2['amount']) / min(bet1['amount'], bet2['amount']) > max_ratio:
+                                continue
+                            
+                            record = {
+                                '期号': period,
+                                '彩种': specific_lottery,
+                                '彩种类型': 'PK10',
+                                '账户组': [acc1, acc2],
+                                '方向组': [bet1['direction'], bet2['direction']],
+                                '金额组': [bet1['amount'], bet2['amount']],
+                                '总金额': bet1['amount'] + bet2['amount'],
+                                '相似度': 1.0,
+                                '账户数量': 2,
+                                '模式': f'PK10竖线格式协作-{bet1["direction"]}',
+                                '对立类型': f'竖线格式协作-{bet1["direction"]}',
+                                '检测类型': 'PK10普通协作'
+                            }
+                            patterns.append(record)
         
         return patterns
 
@@ -3409,21 +3388,7 @@ class WashTradeDetector:
                     self._display_single_pattern_by_lottery(pattern, i, lottery)
     
     def _display_single_pattern_by_lottery(self, pattern, index, lottery):
-        """按彩种显示单个对刷组详情 - 修复重复记录显示"""
-        # 对于PK10序列位置检测，检查是否是完整协作
-        if pattern['彩种类型'] == 'PK10' and pattern.get('检测类型') == 'PK10序列位置':
-            # 检查协作类型
-            if '位置覆盖详情' in pattern:
-                is_full_coverage = True
-                for coverage in pattern['位置覆盖详情'].values():
-                    if '5/5' not in coverage:
-                        is_full_coverage = False
-                        break
-                
-                if not is_full_coverage:
-                    # 不显示不完整覆盖的情况
-                    return
-        
+        """按彩种显示单个对刷组详情 - 修复重复显示问题"""
         # 原有的显示逻辑...
         st.markdown(f"**对刷组 {index}:** {' ↔ '.join(pattern['账户组'])}")
         
@@ -3488,7 +3453,7 @@ class WashTradeDetector:
         
         st.markdown("**详细记录:**")
         
-        # 确保详细记录不重复
+        # 修复：显示详细记录时去重（基于期号）
         seen_periods = set()
         record_count = 0
         
