@@ -729,8 +729,7 @@ class PlayCategoryNormalizer:
 # ==================== 内容解析器 ====================
 class ContentParser:
     """内容解析器 - 全面增强版，支持数字、方向、复杂格式"""
-    
-    @staticmethod
+
     @staticmethod
     def extract_basic_directions(content, config):
         """提取基础方向"""
@@ -828,7 +827,6 @@ class ContentParser:
             logger.warning(f"方向提取失败: {content}, 错误: {e}")
             return []
 
-    @staticmethod
     @staticmethod
     def extract_all_numbers(content):
         """提取所有数字"""
