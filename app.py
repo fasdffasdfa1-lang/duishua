@@ -2671,110 +2671,99 @@ class WashTradeDetector:
         return ''
     
     def _detect_1_5_6_10_collaboration(self, period_data, period, specific_lottery='PK10'):
-        """修复版：检测1-5名和6-10名的协作模式 - 只检测真正的对刷，排除合买行为"""
+        """修复版：检测1-5名和6-10名的协作模式 - 只检测真正的对刷"""
         patterns = []
         
         play_1_5 = period_data[period_data['玩法分类'] == '1-5名']
         play_6_10 = period_data[period_data['玩法分类'] == '6-10名']
         
-        # 只检测完整协作对刷：一个账户投1-5名，另一个投6-10名，内容相同
-        if len(play_1_5) > 0 and len(play_6_10) > 0:
-            # 按账户分组
-            account_1_5_data = {}
-            account_6_10_data = {}
+        # 完整协作对刷：必须有1-5名和6-10名的投注
+        if len(play_1_5) == 0 or len(play_6_10) == 0:
+            return patterns
+        
+        # 按账户分组
+        account_1_5_data = {}
+        account_6_10_data = {}
+        
+        # 处理1-5名数据
+        for _, row in play_1_5.iterrows():
+            account = row['会员账号']
+            direction = row.get('投注方向', '')
+            amount = row.get('投注金额', 0)
+            content = row['内容']
             
-            # 处理1-5名数据
-            for _, row in play_1_5.iterrows():
-                account = row['会员账号']
-                direction = row.get('投注方向', '')
-                amount = row.get('投注金额', 0)
-                content = row['内容']
+            if direction:
+                account_1_5_data[account] = {
+                    'direction': direction,
+                    'amount': amount,
+                    'content': content,
+                    'coverage': '1-5名'
+                }
+        
+        # 处理6-10名数据
+        for _, row in play_6_10.iterrows():
+            account = row['会员账号']
+            direction = row.get('投注方向', '')
+            amount = row.get('投注金额', 0)
+            content = row['内容']
+            
+            if direction:
+                account_6_10_data[account] = {
+                    'direction': direction,
+                    'amount': amount,
+                    'content': content,
+                    'coverage': '6-10名'
+                }
+        
+        # 查找协作模式
+        for acc1, data1 in account_1_5_data.items():
+            for acc2, data2 in account_6_10_data.items():
+                if acc1 == acc2:
+                    continue
                 
-                if direction:
-                    account_1_5_data[account] = {
-                        'direction': direction,
-                        'amount': amount,
-                        'content': content,
-                        'coverage': '1-5名'
-                    }
-            
-            # 处理6-10名数据
-            for _, row in play_6_10.iterrows():
-                account = row['会员账号']
-                direction = row.get('投注方向', '')
-                amount = row.get('投注金额', 0)
-                content = row['内容']
+                # 检查投注方向是否相同
+                if data1['direction'] != data2['direction']:
+                    continue
                 
-                if direction:
-                    account_6_10_data[account] = {
-                        'direction': direction,
-                        'amount': amount,
-                        'content': content,
-                        'coverage': '6-10名'
-                    }
-            
-            # 查找完整协作对刷模式（一个账户投1-5名，另一个投6-10名）
-            for acc1, data1 in account_1_5_data.items():
-                for acc2, data2 in account_6_10_data.items():
-                    if acc1 == acc2:
-                        continue
-                    
-                    # 检查投注方向是否相同
-                    if data1['direction'] != data2['direction']:
-                        continue
-                    
-                    # 检查金额平衡
-                    max_ratio = self.config.amount_threshold.get('max_amount_ratio', 10)
-                    amount1 = data1['amount']
-                    amount2 = data2['amount']
-                    
-                    # 防止除零错误
-                    if min(amount1, amount2) == 0:
-                        continue
-                        
-                    if max(amount1, amount2) / min(amount1, amount2) > max_ratio:
-                        continue
-                    
-                    account_group = [acc1, acc2]
-                    directions = [data1['direction'], data2['direction']]
-                    amounts = [amount1, amount2]
-                    total_amount = amount1 + amount2
-                    
-                    # 计算相似度（金额匹配度）
-                    similarity = min(amount1, amount2) / max(amount1, amount2) if max(amount1, amount2) > 0 else 0
-                    
-                    # 提取投注内容
-                    if data1['direction'].startswith('数字-'):
-                        numbers = data1['direction'].replace('数字-', '')
-                        pattern_desc = f'PK10十位置完整对刷-数字{numbers}'
-                    elif data1['direction'].startswith('多数字-'):
-                        numbers = data1['direction'].replace('多数字-', '')
-                        pattern_desc = f'PK10十位置完整对刷-多数字{numbers}'
-                    else:
-                        pattern_desc = f'PK10十位置完整对刷-{data1["direction"]}'
-                    
-                    record = {
-                        '期号': period,
-                        '彩种': specific_lottery,
-                        '彩种类型': 'PK10',
-                        '账户组': account_group,
-                        '方向组': directions,
-                        '金额组': amounts,
-                        '总金额': total_amount,
-                        '相似度': similarity,
-                        '账户数量': 2,
-                        '模式': pattern_desc,
-                        '对立类型': f'PK10完整对刷-{data1["direction"]}',
-                        '检测类型': 'PK10完整对刷',
-                        '覆盖范围': '十位置完整覆盖',
-                        '玩法分类对比': f'{data1["coverage"]} ↔ {data2["coverage"]}',
-                        '位置分配': {
-                            acc1: '1-5名',
-                            acc2: '6-10名'
-                        }
-                    }
-                    
-                    patterns.append(record)
+                # 检查金额平衡
+                max_ratio = self.config.amount_threshold.get('max_amount_ratio', 10)
+                if max(data1['amount'], data2['amount']) / min(data1['amount'], data2['amount']) > max_ratio:
+                    continue
+                
+                account_group = [acc1, acc2]
+                directions = [data1['direction'], data2['direction']]
+                amounts = [data1['amount'], data2['amount']]
+                total_amount = data1['amount'] + data2['amount']
+                
+                # 提取投注内容
+                if data1['direction'].startswith('数字-'):
+                    numbers = data1['direction'].replace('数字-', '')
+                    pattern_desc = f'PK10十位置协作-数字{numbers}'
+                elif data1['direction'].startswith('多数字-'):
+                    numbers = data1['direction'].replace('多数字-', '')
+                    pattern_desc = f'PK10十位置协作-多数字{numbers}'
+                else:
+                    pattern_desc = f'PK10十位置协作-{data1["direction"]}'
+                
+                record = {
+                    '期号': period,
+                    '彩种': specific_lottery,
+                    '彩种类型': 'PK10',
+                    '账户组': account_group,
+                    '方向组': directions,
+                    '金额组': amounts,
+                    '总金额': total_amount,
+                    '相似度': 1.0,
+                    '账户数量': 2,
+                    '模式': pattern_desc,
+                    '对立类型': f'位置协作-{data1["direction"]}',
+                    '检测类型': 'PK10序列位置'
+                }
+                
+                patterns.append(record)
+        
+        # 删除下面这部分代码，不检测两个账户都在相同玩法分类的情况
+        # 这就是问题的根源！
         
         return patterns
 
