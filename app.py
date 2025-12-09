@@ -2038,78 +2038,6 @@ class WashTradeDetector:
                 wash_records.extend(batch_patterns)
         
         return self.find_continuous_patterns_optimized(wash_records)
-
-    def detect_pk10_sequence_patterns(self, df_filtered):
-        """PK10序列位置模式检测"""
-        try:
-            if hasattr(self, 'df_valid') and self.df_valid is not None:
-                df_pk10 = self.df_valid[
-                    (self.df_valid['彩种类型'] == 'PK10') & 
-                    (self.df_valid['投注金额'] >= self.config.min_amount)
-                ].copy()
-            else:
-                df_pk10 = df_filtered[
-                    (df_filtered['彩种类型'] == 'PK10') & 
-                    (df_filtered['投注金额'] >= self.config.min_amount)
-                ].copy()
-            
-            if len(df_pk10) == 0:
-                return []
-            
-            sequence_patterns = []
-            period_groups = df_pk10.groupby('期号')
-            
-            for period, period_data in period_groups:
-                if len(period_data) > 0:
-                    if '原始彩种' in period_data.columns:
-                        specific_lottery = period_data['原始彩种'].iloc[0]
-                    else:
-                        specific_lottery = period_data['彩种'].iloc[0]
-                else:
-                    specific_lottery = 'PK10'
-                
-                # 1. 专门检测PK10完整协作
-                patterns_1 = self._detect_pk10_complete_collaboration(period_data, period, specific_lottery)
-                sequence_patterns.extend(patterns_1)
-                
-                # 2. 原有的其他检测方法（保持原有）
-                patterns_2 = self._detect_1_5_6_10_collaboration(period_data, period, specific_lottery)
-                sequence_patterns.extend(patterns_2)
-                
-                patterns_3 = self._detect_single_position_full_coverage(period_data, period, specific_lottery)
-                sequence_patterns.extend(patterns_3)
-                
-                patterns_4 = self._detect_vertical_format_collaboration(period_data, period, specific_lottery)
-                sequence_patterns.extend(patterns_4)
-            
-            # 原有的过滤逻辑
-            filtered_patterns = []
-            for pattern in sequence_patterns:
-                if '位置覆盖详情' in pattern:
-                    is_full = True
-                    for detail in pattern['位置覆盖详情'].values():
-                        if '5/5' not in detail:
-                            is_full = False
-                            break
-                    
-                    if is_full:
-                        filtered_patterns.append(pattern)
-                else:
-                    # 对于没有位置覆盖详情的，检查是否是协作模式
-                    if pattern.get('检测类型') == 'PK10序列位置' and \
-                       '协作' in pattern.get('模式', ''):
-                        filtered_patterns.append(pattern)
-                    else:
-                        filtered_patterns.append(pattern)
-            
-            # 连续模式检测
-            continuous_patterns = self.find_continuous_patterns_optimized(filtered_patterns)
-            
-            return continuous_patterns
-                    
-        except Exception as e:
-            logger.error(f"PK10序列检测失败: {str(e)}")
-            return []
     
     def _get_valid_direction_combinations(self, n_accounts):
         """有效方向组合生成"""
@@ -2928,6 +2856,78 @@ class WashTradeDetector:
                     patterns.append(record)
             
             return patterns
+
+    def detect_pk10_sequence_patterns(self, df_filtered):
+        """PK10序列位置模式检测"""
+        try:
+            if hasattr(self, 'df_valid') and self.df_valid is not None:
+                df_pk10 = self.df_valid[
+                    (self.df_valid['彩种类型'] == 'PK10') & 
+                    (self.df_valid['投注金额'] >= self.config.min_amount)
+                ].copy()
+            else:
+                df_pk10 = df_filtered[
+                    (df_filtered['彩种类型'] == 'PK10') & 
+                    (df_filtered['投注金额'] >= self.config.min_amount)
+                ].copy()
+            
+            if len(df_pk10) == 0:
+                return []
+            
+            sequence_patterns = []
+            period_groups = df_pk10.groupby('期号')
+            
+            for period, period_data in period_groups:
+                if len(period_data) > 0:
+                    if '原始彩种' in period_data.columns:
+                        specific_lottery = period_data['原始彩种'].iloc[0]
+                    else:
+                        specific_lottery = period_data['彩种'].iloc[0]
+                else:
+                    specific_lottery = 'PK10'
+                
+                # 1. 专门检测PK10完整协作
+                patterns_1 = self._detect_pk10_complete_collaboration(period_data, period, specific_lottery)
+                sequence_patterns.extend(patterns_1)
+                
+                # 2. 原有的其他检测方法（保持原有）
+                patterns_2 = self._detect_1_5_6_10_collaboration(period_data, period, specific_lottery)
+                sequence_patterns.extend(patterns_2)
+                
+                patterns_3 = self._detect_single_position_full_coverage(period_data, period, specific_lottery)
+                sequence_patterns.extend(patterns_3)
+                
+                patterns_4 = self._detect_vertical_format_collaboration(period_data, period, specific_lottery)
+                sequence_patterns.extend(patterns_4)
+            
+            # 原有的过滤逻辑
+            filtered_patterns = []
+            for pattern in sequence_patterns:
+                if '位置覆盖详情' in pattern:
+                    is_full = True
+                    for detail in pattern['位置覆盖详情'].values():
+                        if '5/5' not in detail:
+                            is_full = False
+                            break
+                    
+                    if is_full:
+                        filtered_patterns.append(pattern)
+                else:
+                    # 对于没有位置覆盖详情的，检查是否是协作模式
+                    if pattern.get('检测类型') == 'PK10序列位置' and \
+                       '协作' in pattern.get('模式', ''):
+                        filtered_patterns.append(pattern)
+                    else:
+                        filtered_patterns.append(pattern)
+            
+            # 连续模式检测
+            continuous_patterns = self.find_continuous_patterns_optimized(filtered_patterns)
+            
+            return continuous_patterns
+                    
+        except Exception as e:
+            logger.error(f"PK10序列检测失败: {str(e)}")
+            return []
 
     def _detect_vertical_format_collaboration(self, period_data, period, specific_lottery='PK10'):
         """增强版：检测竖线分隔格式的协作模式 - 区分完整协作和普通协作"""
