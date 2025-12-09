@@ -3877,45 +3877,35 @@ class WashTradeDetector:
                 else:
                     account_directions.append(f"{account}({clean_direction}:¥{amount})")
             
-            # 显示位置覆盖详情（如果有）
+            # 简化位置覆盖详情显示
             coverage_text = ""
-            detailed_allocation_text = ""
             
-            if '位置覆盖详情' in record:
-                coverage_info = []
-                coverage_type = record['位置覆盖详情'].get('覆盖类型', '')
+            # 如果有详细的位置分配信息，显示简洁版
+            if '位置覆盖详情' in record and '详细分配' in record['位置覆盖详情']:
+                detailed_info = []
+                for account, positions in record['位置覆盖详情']['详细分配'].items():
+                    if account in record['账户组']:
+                        # 只显示简化的位置信息，不显示"位置:"前缀
+                        position_str = ','.join(positions)
+                        detailed_info.append(f"{account}:{position_str}")
                 
-                for key, value in record['位置覆盖详情'].items():
-                    if key not in ['覆盖类型', '详细分配'] and key in record['账户组']:
-                        coverage_info.append(f"{key}:{value}")
+                if detailed_info:
+                    coverage_text = f" | 位置分配: {' | '.join(detailed_info)}"
+            
+            # 如果没有详细分配，但有玩法分类，则使用玩法分类
+            elif play_categories:
+                coverage_info = []
+                for account, position in zip(record['账户组'], play_categories):
+                    coverage_info.append(f"{account}:{position}")
                 
                 if coverage_info:
-                    coverage_text = f" | 位置覆盖: {' | '.join(coverage_info)}"
-                
-                # 显示详细位置分配
-                if '详细分配' in record['位置覆盖详情']:
-                    detailed_allocation = []
-                    for account, positions in record['位置覆盖详情']['详细分配'].items():
-                        if account in record['账户组']:
-                            detailed_allocation.append(f"{account}:{','.join(positions)}")
-                    
-                    if detailed_allocation:
-                        detailed_allocation_text = f" | 详细分配: {' | '.join(detailed_allocation)}"
-            
-            # 组合所有信息
-            all_info = []
-            if coverage_text:
-                all_info.append(coverage_text)
-            if detailed_allocation_text:
-                all_info.append(detailed_allocation_text)
-            
-            combined_info = "".join(all_info)
+                    coverage_text = f" | 位置分配: {' | '.join(coverage_info)}"
             
             if detect_type == 'PK10序列位置':
-                st.write(f"{record_count}. 期号: {record['期号']} | 方向: {' ↔ '.join(account_directions)}{combined_info}")
+                st.write(f"{record_count}. 期号: {record['期号']} | 方向: {' ↔ '.join(account_directions)}{coverage_text}")
             else:
                 similarity_display = f"{record['相似度']:.2%}" if '相似度' in record else "100.00%"
-                st.write(f"{record_count}. 期号: {record['期号']} | 方向: {' ↔ '.join(account_directions)} | 匹配度: {similarity_display}{combined_info}")
+                st.write(f"{record_count}. 期号: {record['期号']} | 方向: {' ↔ '.join(account_directions)} | 匹配度: {similarity_display}{coverage_text}")
         
         if index < len(pattern):
             st.markdown("---")
