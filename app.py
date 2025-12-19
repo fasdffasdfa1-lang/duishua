@@ -89,10 +89,12 @@ class Config:
             '特大': ['特大', '极大', '最大', '特单大', '特双大', '特码-大', '特码大', '特码_大'],
             '特单': ['特单', '特码-单', '特码单', '特码_单'],
             '特双': ['特双', '特码-双', '特码双', '特码_双'],
-            '总和小': ['总和小', '和小', '总和-小', '和值小', '和值-小', '冠亚和小', '冠亚和-小'],
-            '总和大': ['总和大', '和大', '总和-大', '和值大', '和值-大', '冠亚和大', '冠亚和-大'],
-            '总和单': ['总和单', '和单', '总和-单', '和值单', '和值-单', '冠亚和单', '冠亚和-单'],
-            '总和双': ['总和双', '和双', '总和-双', '和值双', '和值-双', '冠亚和双', '冠亚和-双'],
+            
+            # 添加总和龙虎格式
+            '总和小': ['总和小', '和小', '总和-小', '和值小', '和值-小', '冠亚和小', '冠亚和-小', '总和、龙虎-总和小'],
+            '总和大': ['总和大', '和大', '总和-大', '和值大', '和值-大', '冠亚和大', '冠亚和-大', '总和、龙虎-总和大'],
+            '总和单': ['总和单', '和单', '总和-单', '和值单', '和值-单', '冠亚和单', '冠亚和-单', '总和、龙虎-总和单'],
+            '总和双': ['总和双', '和双', '总和-双', '和值双', '和值-双', '冠亚和双', '冠亚和-双', '总和、龙虎-总和双'],
             
             '大单': ['大单', '单大', 'big-odd', '大-单', '单-大'],
             '大双': ['大双', '双大', 'big-even', '大-双', '双-大'],
@@ -105,7 +107,7 @@ class Config:
             '野肖': ['野肖', '野兽', '野肖', '野', '野兽肖', '野生肖'],
             '尾大': ['尾大', '尾大', '大尾', '尾数大', '尾數大'],
             '尾小': ['尾小', '尾小', '小尾', '尾数小', '尾數小'],
-
+        
             '尾大': ['尾大', '尾大', '大尾', '尾数大', '尾數大', '特码两面-尾大'],
             '尾小': ['尾小', '尾小', '小尾', '尾数小', '尾數小', '特码两面-尾小'],
             '特大': ['特大', '极大', '最大', '特单大', '特双大', '特码-大', '特码大', '特码_大', '特码两面-特大'],
@@ -752,6 +754,40 @@ class ContentParser:
         return directions
 
     @staticmethod
+    def extract_sum_and_dragon_tiger(content, config):
+        """专门解析总和龙虎格式：总和、龙虎-总和双"""
+        try:
+            if pd.isna(content):
+                return []
+            
+            content_str = str(content).strip()
+            directions = []
+            
+            # 格式：总和、龙虎-总和双
+            if '总和、龙虎-' in content_str:
+                direction_part = content_str.split('总和、龙虎-')[-1].strip()
+                
+                # 检查是否是总和方向
+                sum_keywords = {
+                    '总和双': ['总和双', '和双', '总和-双', '和值双', '总和、龙虎-总和双'],
+                    '总和单': ['总和单', '和单', '总和-单', '和值单', '总和、龙虎-总和单'],
+                    '总和小': ['总和小', '和小', '总和-小', '和值小', '总和、龙虎-总和小'],
+                    '总和大': ['总和大', '和大', '总和-大', '和值大', '总和、龙虎-总和大']
+                }
+                
+                for direction, patterns in sum_keywords.items():
+                    for pattern in patterns:
+                        if pattern in direction_part or direction_part == pattern:
+                            directions.append(direction)
+                            break
+            
+            return directions
+                
+        except Exception as e:
+            logger.warning(f"总和龙虎解析失败: {content}, 错误: {e}")
+            return []
+
+    @staticmethod
     def enhanced_extract_directions(content, config):
         """全面增强版方向提取"""
         try:
@@ -760,7 +796,13 @@ class ContentParser:
             
             content_str = str(content).strip()
             
-            # 1. 首先检查是否是"特码两面-"开头
+            # 1. 首先处理特殊格式：总和、龙虎-总和双
+            if '总和、龙虎-' in content_str:
+                sum_directions = ContentParser.extract_sum_and_dragon_tiger(content_str, config)
+                if sum_directions:
+                    return sum_directions
+            
+            # 2. 处理特码两面格式
             if '特码两面-' in content_str:
                 direction_part = content_str.split('特码两面-')[-1].strip()
                 for direction, patterns in config.direction_patterns.items():
@@ -768,7 +810,7 @@ class ContentParser:
                         if direction_part == pattern or direction_part in pattern:
                             return [direction]
             
-            # 2. LHC特殊模式处理
+            # 3. LHC特殊模式处理
             lhc_special_patterns = {
                 '特码两面-尾大': '尾大',
                 '特码两面-尾小': '尾小', 
@@ -786,31 +828,31 @@ class ContentParser:
                 if pattern in content_str:
                     return [direction]
             
-            # 3. 预处理内容
+            # 4. 预处理内容
             content_clean = ContentParser.preprocess_content(content_str)
             
-            # 4. 多层级方向提取
+            # 5. 多层级方向提取
             directions = set()
             
-            # 4.1 精确匹配
+            # 5.1 精确匹配
             for direction, patterns in config.direction_patterns.items():
                 for pattern in patterns:
                     if pattern == content_clean:
                         directions.add(direction)
                         break
             
-            # 4.2 部分匹配
+            # 5.2 部分匹配
             if not directions:
                 for direction, patterns in config.direction_patterns.items():
                     for pattern in patterns:
                         if pattern in content_clean:
                             directions.add(direction)
             
-            # 4.3 智能LHC位置提取
+            # 5.3 智能LHC位置提取
             if not directions:
                 directions = ContentParser.smart_lhc_position_extraction(content_clean, config)
             
-            # 5. 提取数字（如果没有找到方向）
+            # 6. 提取数字（如果没有找到方向）
             if not directions:
                 numbers = ContentParser.extract_all_numbers(content_str)
                 if numbers:
