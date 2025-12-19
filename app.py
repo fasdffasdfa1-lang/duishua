@@ -286,7 +286,6 @@ class DataProcessor:
         identified_columns = {}
         actual_columns = [str(col).strip() for col in df_columns]
         
-        # 删除展开器和所有日志输出
         for standard_col, possible_names in self.column_mapping.items():
             found = False
             for actual_col in actual_columns:
@@ -1106,8 +1105,7 @@ class ContentParser:
                     bets_by_position[position].extend(numbers)
             
             return bets_by_position
-        except Exception as e:
-            logger.warning(f"解析PK10竖线格式失败: {content}, 错误: {str(e)}")
+        except Exception:
             return defaultdict(list)
     
     @staticmethod
@@ -1146,8 +1144,7 @@ class ContentParser:
                     bets_by_position[position].extend(numbers)
             
             return bets_by_position
-        except Exception as e:
-            logger.warning(f"解析3D竖线格式失败: {content}, 错误: {str(e)}")
+        except Exception:
             return defaultdict(list)
 
 # ==================== PK拾序列位置检测器 ====================
@@ -1746,15 +1743,17 @@ class WashTradeDetector:
             
             text = str(amount_text).strip()
             
+            # 处理特殊格式：投注：xx抵用：xx
             if '投注：' in text and '抵用：' in text:
                 try:
                     bet_part = text.split('投注：')[1].split('抵用：')[0].strip()
                     amount = float(bet_part.replace(',', ''))
                     if amount >= self.config.min_amount:
                         return amount
-                except (ValueError, IndexError) as e:
-                    logger.debug(f"特殊格式金额提取失败: {text}, 错误: {e}")
+                except (ValueError, IndexError):
+                    pass
             
+            # 处理简化格式：投注：xx
             if text.startswith('投注：'):
                 try:
                     bet_part = text.replace('投注：', '').strip()
@@ -1762,18 +1761,20 @@ class WashTradeDetector:
                     amount = float(bet_part_clean)
                     if amount >= self.config.min_amount:
                         return amount
-                except (ValueError, IndexError) as e:
-                    logger.debug(f"简化格式金额提取失败: {text}, 错误: {e}")
+                except (ValueError, IndexError):
+                    pass
             
+            # 处理英文冒号格式
             if '投注:' in text:
                 try:
                     bet_part = text.split('投注:')[1].split()[0].strip()
                     amount = float(bet_part.replace(',', ''))
                     if amount >= self.config.min_amount:
                         return amount
-                except (ValueError, IndexError) as e:
-                    logger.debug(f"中文冒号格式金额提取失败: {text}, 错误: {e}")
+                except (ValueError, IndexError):
+                    pass
             
+            # 处理科学计数法
             if 'E' in text or 'e' in text:
                 try:
                     amount = float(text)
@@ -1782,6 +1783,7 @@ class WashTradeDetector:
                 except:
                     pass
             
+            # 尝试提取纯数字
             try:
                 cleaned_text = re.sub(r'[^\d.-]', '', text)
                 if cleaned_text and cleaned_text != '-':
@@ -1791,6 +1793,7 @@ class WashTradeDetector:
             except:
                 pass
             
+            # 使用正则表达式模式匹配
             patterns = [
                 r'投注[:：]?\s*([-]?\d+[,，]?\d*\.?\d*)',
                 r'下注[:：]?\s*([-]?\d+[,，]?\d*\.?\d*)',
@@ -1815,9 +1818,8 @@ class WashTradeDetector:
                         continue
             
             return 0
-            
-        except Exception as e:
-            logger.warning(f"金额提取失败: {amount_text}, 错误: {e}")
+                
+        except Exception:
             return 0
     
     def enhanced_extract_direction_with_position(self, content, play_category, lottery_type):
@@ -1974,9 +1976,7 @@ class WashTradeDetector:
         all_patterns.extend(pk10_patterns)
         
         progress_bar.progress(1.0)
-        # 删除或注释掉检测完成提示
-        # status_text.text("✅ 检测完成")
-        status_text.text("")  # 清空状态文本
+        status_text.empty()
         
         return all_patterns
     
@@ -2268,7 +2268,6 @@ class WashTradeDetector:
         period_diff = max_period - min_period
         
         if period_diff > self.config.account_period_diff_threshold:
-            logger.info(f"跳过账户组 {account_group}，期数差异 {period_diff} > {self.config.account_period_diff_threshold}")
             return False
         
         return True
