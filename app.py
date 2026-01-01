@@ -4301,28 +4301,28 @@ def main():
         st.markdown("**2个账户:**")
         similarity_2_accounts = st.slider(
             "2个账户匹配度阈值", 
-            min_value=0.5, max_value=1.0, value=0.8, step=0.01,
+            min_value=0.3, max_value=1.0, value=0.7, step=0.01,
             help="2个账户对刷的金额匹配度阈值"
         )
         
         st.markdown("**3个账户:**")
         similarity_3_accounts = st.slider(
             "3个账户匹配度阈值", 
-            min_value=0.5, max_value=1.0, value=0.85, step=0.01,
+            min_value=0.3, max_value=1.0, value=0.8, step=0.01,
             help="3个账户对刷的金额匹配度阈值"
         )
         
         st.markdown("**4个账户:**")
         similarity_4_accounts = st.slider(
             "4个账户匹配度阈值", 
-            min_value=0.5, max_value=1.0, value=0.9, step=0.01,
+            min_value=0.3, max_value=1.0, value=0.85, step=0.01,
             help="4个账户对刷的金额匹配度阈值"
         )
         
         st.markdown("**5个账户:**")
         similarity_5_accounts = st.slider(
             "5个账户匹配度阈值", 
-            min_value=0.5, max_value=1.0, value=0.95, step=0.01,
+            min_value=0.3, max_value=1.0, value=0.9, step=0.01,
             help="5个账户对刷的金额匹配度阈值"
         )
         
