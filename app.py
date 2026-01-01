@@ -62,10 +62,10 @@ class Config:
         
         # 多账户匹配度阈值
         self.account_count_similarity_thresholds = {
-            2: 0.8,
-            3: 0.85,
-            4: 0.9,
-            5: 0.95
+            2: 0.7,
+            3: 0.8,
+            4: 0.85,
+            5: 0.9
         }
         
         # 账户期数差异阈值
