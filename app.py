@@ -2173,18 +2173,31 @@ class WashTradeDetector:
         
         current_period = period_data['期号'].iloc[0]
         
-        account_info = {}
+        # 修复点：同一账户同一方向的多笔投注金额合并
+        # 使用嵌套的defaultdict来合并同一账户同一方向的金额
+        account_direction_amounts = defaultdict(lambda: defaultdict(float))
+        
         for _, row in period_data.iterrows():
             account = row['会员账号']
             direction = row['投注方向']
             amount = row['投注金额']
             
-            if account not in account_info:
-                account_info[account] = []
-            account_info[account].append({
-                'direction': direction,
-                'amount': amount
-            })
+            if direction:  # 只处理有方向的记录
+                # 累加同一账户同一方向的金额
+                account_direction_amounts[account][direction] += amount
+        
+        # 将合并后的数据转换回原来的数据结构格式
+        account_info = {}
+        for account, direction_amounts in account_direction_amounts.items():
+            # 每个账户可能有多个方向，但我们只取一个（因为已过滤多方向账户）
+            if direction_amounts:
+                # 取第一个方向（因为我们过滤了多方向账户）
+                direction = list(direction_amounts.keys())[0]
+                total_amount = direction_amounts[direction]
+                account_info[account] = [{
+                    'direction': direction,
+                    'amount': total_amount
+                }]
         
         for account_group in combinations(period_accounts, n_accounts):
             if not self._check_account_period_difference(account_group, lottery):
@@ -2213,7 +2226,7 @@ class WashTradeDetector:
             group_directions = filtered_directions
             group_amounts = filtered_amounts
             n_accounts = len(account_group)
-    
+
             combination_key = (
                 tuple(sorted(account_group)), 
                 tuple(sorted(group_directions)),
