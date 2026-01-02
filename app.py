@@ -2450,8 +2450,12 @@ class WashTradeDetector:
         return continuous_patterns
 
     def _detect_single_position_full_coverage(self, period_data, period, specific_lottery='PK10'):
-        """修复版：检测单个位置全覆盖模式 - 处理单个位置投注"""
+        """修复版：检测单个位置全覆盖模式 - 修复金额计算"""
         patterns = []
+        
+        # 添加调试
+        if period == '202601020361':
+            logger.info(f"🔵 进入 _detect_single_position_full_coverage 方法")
         
         pk10_positions = ['冠军', '亚军', '第三名', '第四名', '第五名', 
                          '第六名', '第七名', '第八名', '第九名', '第十名']
@@ -2477,9 +2481,10 @@ class WashTradeDetector:
                 if not direction:
                     continue
             
+            # 关键修复：使用原始金额，不乘以位置数量
             account_position_bets[account][position].append({
                 'direction': direction,
-                'amount': amount,
+                'amount': amount,  # 这是原始金额
                 'original_content': content,
                 'play_category': play_category
             })
