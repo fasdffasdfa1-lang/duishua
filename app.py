@@ -1677,7 +1677,7 @@ class WashTradeDetector:
         self.performance_stats = {}
 
     def filter_accounts_by_amount_balance(self, account_group, directions, amounts):
-        """根据组内金额平衡性过滤账户"""
+        """根据组内金额平衡性过滤账户 - 修复版本"""
         if not self.config.amount_threshold['enable_threshold_filter']:
             return account_group, directions, amounts
         
@@ -1691,25 +1691,16 @@ class WashTradeDetector:
         
         max_allowed_ratio = self.config.amount_threshold['max_amount_ratio']
         
-        # 添加调试信息
-        logger.info(f"金额平衡检查: 账户组={account_group}, 金额={amounts}, 比例={amount_ratio:.2f}, 允许比例={max_allowed_ratio}")
+        # 调试信息
+        logger.debug(f"金额平衡检查: 账户组={account_group}, 金额={amounts}, 比例={amount_ratio:.2f}倍, 允许比例={max_allowed_ratio}倍")
         
+        # 关键修复：如果比例超过阈值，返回空数组
         if amount_ratio > max_allowed_ratio:
-            min_required = max_amount / max_allowed_ratio
-            valid_indices = [i for i, amount in enumerate(amounts) if amount >= min_required]
-            
-            if len(valid_indices) >= 2:
-                filtered_accounts = [account_group[i] for i in valid_indices]
-                filtered_directions = [directions[i] for i in valid_indices]
-                filtered_amounts = [amounts[i] for i in valid_indices]
-                
-                logger.info(f"金额平衡过滤: {len(account_group)} -> {len(filtered_accounts)} 个账户 (原比例: {amount_ratio:.1f}倍)")
-                
-                return filtered_accounts, filtered_directions, filtered_amounts
-            else:
-                logger.info(f"金额平衡过滤: 无有效组合, 比例: {amount_ratio:.1f}倍 > {max_allowed_ratio}倍")
-                return [], [], []
+            logger.info(f"金额平衡过滤: 账户组 {account_group} 金额比例 {amount_ratio:.2f}倍 > {max_allowed_ratio}倍，被过滤")
+            return [], [], []  # 返回空数组表示过滤失败
         
+        # 比例在允许范围内，返回原始数据
+        logger.debug(f"金额平衡通过: 账户组 {account_group} 金额比例 {amount_ratio:.2f}倍 ≤ {max_allowed_ratio}倍")
         return account_group, directions, amounts
 
     def upload_and_process(self, uploaded_file):
@@ -3003,7 +2994,7 @@ class WashTradeDetector:
         return ''
     
     def _detect_1_5_6_10_collaboration(self, period_data, period, specific_lottery='PK10'):
-        """修复版：检测1-5名和6-10名的协作模式 - 修复金额计算"""
+        """修复版：检测1-5名和6-10名的协作模式 - 添加金额平衡过滤"""
         patterns = []
         
         play_1_5 = period_data[period_data['玩法分类'] == '1-5名']
@@ -3011,9 +3002,6 @@ class WashTradeDetector:
         
         if len(play_1_5) == 0 or len(play_6_10) == 0:
             return patterns
-        
-        # 修复点：对于1-5名或6-10名玩法，一条记录包含多个位置，但金额是整个投注的总金额
-        # 不需要拆分到每个位置，直接使用原始金额即可
         
         # 按账户分组，只取第一条记录（避免重复）
         account_1_5_data = {}
@@ -3034,7 +3022,7 @@ class WashTradeDetector:
             if direction:
                 account_1_5_data[account] = {
                     'direction': direction,
-                    'amount': amount,  # 使用原始金额，不拆分
+                    'amount': amount,
                     'content': content,
                     'play_category': '1-5名'
                 }
@@ -3054,7 +3042,7 @@ class WashTradeDetector:
             if direction:
                 account_6_10_data[account] = {
                     'direction': direction,
-                    'amount': amount,  # 使用原始金额，不拆分
+                    'amount': amount,
                     'content': content,
                     'play_category': '6-10名'
                 }
@@ -3069,44 +3057,53 @@ class WashTradeDetector:
                 if data1['direction'] != data2['direction']:
                     continue
                 
-                # 检查金额平衡（使用原始金额）
-                max_ratio = self.config.amount_threshold.get('max_amount_ratio', 10)
-                amount1 = data1['amount']
-                amount2 = data2['amount']
-                
-                if amount1 > 0 and amount2 > 0:
-                    amount_ratio = max(amount1, amount2) / min(amount1, amount2)
-                    if amount_ratio > max_ratio:
-                        continue
-                
+                # 调用金额平衡过滤
                 account_group = [acc1, acc2]
                 directions = [data1['direction'], data2['direction']]
-                amounts = [amount1, amount2]  # 使用原始金额
+                amounts = [data1['amount'], data2['amount']]
+                
+                # 调用金额平衡过滤
+                filtered_account_group, filtered_directions, filtered_amounts = self.filter_accounts_by_amount_balance(
+                    account_group, directions, amounts
+                )
+                
+                # 如果过滤后账户数量不足2个，跳过
+                if len(filtered_account_group) < 2:
+                    continue
+                
+                # 使用过滤后的数据
+                acc1_filtered = filtered_account_group[0]
+                acc2_filtered = filtered_account_group[1]
+                direction1 = filtered_directions[0]
+                direction2 = filtered_directions[1]
+                amount1 = filtered_amounts[0]
+                amount2 = filtered_amounts[1]
+                
                 total_amount = amount1 + amount2
                 
                 # 提取投注内容
-                if data1['direction'].startswith('数字-'):
-                    numbers = data1['direction'].replace('数字-', '')
+                if direction1.startswith('数字-'):
+                    numbers = direction1.replace('数字-', '')
                     pattern_desc = f'PK10十位置协作-数字{numbers}'
-                elif data1['direction'].startswith('多数字-'):
-                    numbers = data1['direction'].replace('多数字-', '')
+                elif direction1.startswith('多数字-'):
+                    numbers = direction1.replace('多数字-', '')
                     pattern_desc = f'PK10十位置协作-多数字{numbers}'
                 else:
-                    pattern_desc = f'PK10十位置协作-{data1["direction"]}'
+                    pattern_desc = f'PK10十位置协作-{direction1}'
                 
                 record = {
                     '期号': period,
                     '彩种': specific_lottery,
                     '彩种类型': 'PK10',
-                    '账户组': account_group,
-                    '方向组': directions,
+                    '账户组': filtered_account_group,
+                    '方向组': filtered_directions,
                     '玩法分类': ['1-5名', '6-10名'],
-                    '金额组': amounts,
+                    '金额组': filtered_amounts,
                     '总金额': total_amount,
                     '相似度': 1.0,
                     '账户数量': 2,
                     '模式': pattern_desc,
-                    '对立类型': f'位置协作-{data1["direction"]}',
+                    '对立类型': f'位置协作-{direction1}',
                     '检测类型': 'PK10序列位置'
                 }
                 
