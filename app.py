@@ -1677,7 +1677,7 @@ class WashTradeDetector:
         self.performance_stats = {}
 
     def filter_accounts_by_amount_balance(self, account_group, directions, amounts):
-        """根据组内金额平衡性过滤账户 - 修复版本"""
+        """根据组内金额平衡性过滤账户"""
         if not self.config.amount_threshold['enable_threshold_filter']:
             return account_group, directions, amounts
         
@@ -1690,17 +1690,21 @@ class WashTradeDetector:
         amount_ratio = max_amount / min_amount if min_amount > 0 else float('inf')
         
         max_allowed_ratio = self.config.amount_threshold['max_amount_ratio']
-        
-        # 调试信息
-        logger.debug(f"金额平衡检查: 账户组={account_group}, 金额={amounts}, 比例={amount_ratio:.2f}倍, 允许比例={max_allowed_ratio}倍")
-        
-        # 关键修复：如果比例超过阈值，返回空数组
         if amount_ratio > max_allowed_ratio:
-            logger.info(f"金额平衡过滤: 账户组 {account_group} 金额比例 {amount_ratio:.2f}倍 > {max_allowed_ratio}倍，被过滤")
-            return [], [], []  # 返回空数组表示过滤失败
+            min_required = max_amount / max_allowed_ratio
+            valid_indices = [i for i, amount in enumerate(amounts) if amount >= min_required]
+            
+            if len(valid_indices) >= 2:
+                filtered_accounts = [account_group[i] for i in valid_indices]
+                filtered_directions = [directions[i] for i in valid_indices]
+                filtered_amounts = [amounts[i] for i in valid_indices]
+                
+                logger.info(f"金额平衡过滤: {len(account_group)} -> {len(filtered_accounts)} 个账户 (原比例: {amount_ratio:.1f}倍)")
+                
+                return filtered_accounts, filtered_directions, filtered_amounts
+            else:
+                return [], [], []
         
-        # 比例在允许范围内，返回原始数据
-        logger.debug(f"金额平衡通过: 账户组 {account_group} 金额比例 {amount_ratio:.2f}倍 ≤ {max_allowed_ratio}倍")
         return account_group, directions, amounts
 
     def upload_and_process(self, uploaded_file):
@@ -2215,7 +2219,6 @@ class WashTradeDetector:
                 account_group, group_directions, group_amounts
             )
             
-            # 修复：如果返回空数组，表示过滤失败，跳过这个组合
             if len(filtered_account_group) < 2:
                 continue
             
@@ -2450,12 +2453,8 @@ class WashTradeDetector:
         return continuous_patterns
 
     def _detect_single_position_full_coverage(self, period_data, period, specific_lottery='PK10'):
-        """修复版：检测单个位置全覆盖模式 - 修复金额计算"""
+        """修复版：检测单个位置全覆盖模式 - 处理单个位置投注"""
         patterns = []
-        
-        # 添加调试
-        if period == '202601020361':
-            logger.info(f"🔵 进入 _detect_single_position_full_coverage 方法")
         
         pk10_positions = ['冠军', '亚军', '第三名', '第四名', '第五名', 
                          '第六名', '第七名', '第八名', '第九名', '第十名']
@@ -2481,10 +2480,9 @@ class WashTradeDetector:
                 if not direction:
                     continue
             
-            # 关键修复：使用原始金额，不乘以位置数量
             account_position_bets[account][position].append({
                 'direction': direction,
-                'amount': amount,  # 这是原始金额
+                'amount': amount,
                 'original_content': content,
                 'play_category': play_category
             })
@@ -2696,67 +2694,15 @@ class WashTradeDetector:
         
         return None
 
-    def _extract_positions_from_record(self, play_category, content):
-        """从记录中提取位置信息"""
-        positions = []
-        
-        # 从玩法分类提取
-        if play_category == '1-5名':
-            positions = ['冠军', '亚军', '第三名', '第四名', '第五名']
-        elif play_category == '6-10名':
-            positions = ['第六名', '第七名', '第八名', '第九名', '第十名']
-        elif play_category in ['冠军', '亚军', '第三名', '第四名', '第五名', 
-                              '第六名', '第七名', '第八名', '第九名', '第十名']:
-            positions = [play_category]
-        else:
-            # 从内容中提取
-            content_str = str(content)
-            pk10_positions = ['冠军', '亚军', '第三名', '第四名', '第五名',
-                             '第六名', '第七名', '第八名', '第九名', '第十名']
-            for position in pk10_positions:
-                if position in content_str:
-                    positions.append(position)
-        
-        return positions
-
-    def calculate_amount_per_position(self, amount, play_category, content):
-        """计算每个位置的平均金额"""
-        if not amount or amount == 0:
-            return 0
-        
-        # 确定位置数量
-        position_count = self._get_position_count(play_category, content)
-        
-        # 如果是多个位置，金额平均分配
-        if position_count > 1:
-            return amount / position_count
-        
-        return amount
-    
-    def _get_position_count(self, play_category, content):
-        """获取位置数量"""
-        play_str = str(play_category)
-        content_str = str(content)
-        
-        # 1-5名或6-10名玩法：固定5个位置
-        if play_str == '1-5名' or play_str == '6-10名':
-            return 5
-        
-        # 从内容中提取具体位置
-        positions = self._extract_positions_from_record(play_category, content)
-        
-        # 返回实际位置数量
-        return len(positions) if positions else 1
-
     def _detect_arbitrary_position_coverage(self, period_data, period, specific_lottery='PK10'):
-        """检测任意位置分配组合 - 修复金额计算"""
+        """检测任意位置分配组合 - 两个账户合起来覆盖十个位置且投注内容相同"""
         patterns = []
         
         pk10_positions = ['冠军', '亚军', '第三名', '第四名', '第五名', 
                          '第六名', '第七名', '第八名', '第九名', '第十名']
         
-        # 收集每个账户的投注记录
-        account_records = defaultdict(list)
+        # 收集每个账户在每个位置的投注
+        account_position_data = defaultdict(lambda: defaultdict(list))
         
         for _, row in period_data.iterrows():
             account = row['会员账号']
@@ -2770,22 +2716,43 @@ class WashTradeDetector:
                 if not direction:
                     continue
             
-            # 计算每个位置的平均金额
-            position_count = self._get_position_count(play_category, content)
-            amount_per_position = amount / position_count if position_count > 0 else amount
+            # 获取这个投注覆盖了哪些位置
+            positions_covered = []
             
-            account_records[account].append({
-                'direction': direction,
-                'amount': amount,  # 总金额
-                'amount_per_position': amount_per_position,  # 每个位置金额
-                'content': content,
-                'play_category': play_category,
-                'position_count': position_count,
-                'positions_covered': self._extract_positions_from_record(play_category, content)
-            })
+            # 1. 从玩法分类中提取位置
+            position_from_play = self._extract_position_from_play_category(play_category)
+            if position_from_play in pk10_positions:
+                positions_covered.append(position_from_play)
+            
+            # 2. 从内容中提取多个位置
+            content_str = str(content)
+            for position in pk10_positions:
+                if position in content_str:
+                    positions_covered.append(position)
+            
+            # 3. 如果玩法分类是1-5名或6-10名，则扩展为具体位置
+            if play_category == '1-5名':
+                positions_covered.extend(['冠军', '亚军', '第三名', '第四名', '第五名'])
+            elif play_category == '6-10名':
+                positions_covered.extend(['第六名', '第七名', '第八名', '第九名', '第十名'])
+            
+            # 去重
+            positions_covered = list(set(positions_covered))
+            
+            if not positions_covered:
+                continue
+            
+            # 记录这个投注
+            for position in positions_covered:
+                account_position_data[account][position].append({
+                    'direction': direction,
+                    'amount': amount,
+                    'content': content,
+                    'play_category': play_category
+                })
         
         # 找出所有账户
-        all_accounts = list(account_records.keys())
+        all_accounts = list(account_position_data.keys())
         if len(all_accounts) < 2:
             return patterns
         
@@ -2795,125 +2762,145 @@ class WashTradeDetector:
                 account1 = all_accounts[i]
                 account2 = all_accounts[j]
                 
-                # 获取两个账户的所有投注记录
-                records1 = account_records[account1]
-                records2 = account_records[account2]
+                # 检查是否合起来覆盖了十个位置，且投注方向一致
+                common_direction = None
+                all_positions_covered = True
+                position_coverage = {}  # 记录每个位置是哪个账户投注的
                 
-                if not records1 or not records2:
-                    continue
-                
-                # 找出两个账户的共同投注方向
-                common_directions = set()
-                for rec1 in records1:
-                    for rec2 in records2:
-                        if rec1['direction'] == rec2['direction']:
-                            common_directions.add(rec1['direction'])
-                
-                # 对于每个共同方向，检查是否覆盖了十个位置
-                for direction in common_directions:
-                    # 获取这个方向的所有记录
-                    dir_records1 = [r for r in records1 if r['direction'] == direction]
-                    dir_records2 = [r for r in records2 if r['direction'] == direction]
+                for position in pk10_positions:
+                    acc1_bets = account_position_data[account1].get(position, [])
+                    acc2_bets = account_position_data[account2].get(position, [])
                     
-                    # 检查两个账户的位置覆盖
-                    positions_covered = set()
-                    account1_positions = set()
-                    account2_positions = set()
+                    if not acc1_bets and not acc2_bets:
+                        # 这个位置两个账户都没投注
+                        all_positions_covered = False
+                        break
                     
-                    for rec in dir_records1:
-                        positions_covered.update(rec['positions_covered'])
-                        account1_positions.update(rec['positions_covered'])
+                    # 确定这个位置的投注方向和金额
+                    position_direction = None
+                    betting_account = None
+                    amount = 0
                     
-                    for rec in dir_records2:
-                        positions_covered.update(rec['positions_covered'])
-                        account2_positions.update(rec['positions_covered'])
-                    
-                    # 检查是否覆盖了所有十个位置
-                    if positions_covered == set(pk10_positions):
-                        # 计算每个账户在这个方向的总金额（用于显示）
-                        account1_total = sum(r['amount'] for r in dir_records1)
-                        account2_total = sum(r['amount'] for r in dir_records2)
+                    if acc1_bets and acc2_bets:
+                        # 两个账户都在这个位置投注，检查方向是否相同
+                        direction1 = acc1_bets[0]['direction']
+                        direction2 = acc2_bets[0]['direction']
                         
-                        # 计算每个位置的平均金额（用于平衡过滤）
-                        # 这里需要计算加权平均
-                        account1_positions_count = sum(len(r['positions_covered']) for r in dir_records1)
-                        account2_positions_count = sum(len(r['positions_covered']) for r in dir_records2)
-                        
-                        account1_avg_per_position = account1_total / account1_positions_count if account1_positions_count > 0 else 0
-                        account2_avg_per_position = account2_total / account2_positions_count if account2_positions_count > 0 else 0
-                        
-                        # 调用金额平衡过滤（使用每个位置平均金额）
-                        account_group = [account1, account2]
-                        directions = [direction, direction]
-                        amounts = [account1_avg_per_position, account2_avg_per_position]
-                        
-                        filtered_account_group, filtered_directions, filtered_amounts = self.filter_accounts_by_amount_balance(
-                            account_group, directions, amounts
-                        )
-                        
-                        # 如果过滤后账户数量不足2个，跳过
-                        if len(filtered_account_group) < 2:
-                            continue
-                        
-                        total_amount = account1_total + account2_total
-                        
-                        # 生成位置描述
-                        if len(account1_positions) == 5 and len(account2_positions) == 5:
-                            # 检查是否是标准分组
-                            if (account1_positions == set(['冠军', '亚军', '第三名', '第四名', '第五名']) and
-                                account2_positions == set(['第六名', '第七名', '第八名', '第九名', '第十名'])):
-                                account1_position_desc = '1-5名'
-                                account2_position_desc = '6-10名'
-                                pattern_type = '标准分组'
-                            elif (account2_positions == set(['冠军', '亚军', '第三名', '第四名', '第五名']) and
-                                  account1_positions == set(['第六名', '第七名', '第八名', '第九名', '第十名'])):
-                                account1_position_desc = '6-10名'
-                                account2_position_desc = '1-5名'
-                                pattern_type = '标准分组'
+                        if direction1 == direction2:
+                            position_direction = direction1
+                            # 如果两个都投，我们选择金额较大的那个作为主要投注账户
+                            amount1 = sum(bet['amount'] for bet in acc1_bets)
+                            amount2 = sum(bet['amount'] for bet in acc2_bets)
+                            if amount1 >= amount2:
+                                betting_account = account1
+                                amount = amount1
                             else:
-                                account1_position_desc = f"位置:{','.join(sorted(account1_positions))}"
-                                account2_position_desc = f"位置:{','.join(sorted(account2_positions))}"
-                                pattern_type = '非标分组'
+                                betting_account = account2
+                                amount = amount2
                         else:
-                            account1_position_desc = f"{len(account1_positions)}个位置"
-                            account2_position_desc = f"{len(account2_positions)}个位置"
-                            pattern_type = '非均分组'
-                        
-                        # 生成模式描述
-                        if direction.startswith('数字-'):
-                            number = direction.replace('数字-', '')
-                            pattern_desc = f'PK10十位置{pattern_type}-数字{number}'
+                            # 方向不同，不构成对刷
+                            all_positions_covered = False
+                            break
+                    elif acc1_bets:
+                        position_direction = acc1_bets[0]['direction']
+                        betting_account = account1
+                        amount = sum(bet['amount'] for bet in acc1_bets)
+                    else:
+                        position_direction = acc2_bets[0]['direction']
+                        betting_account = account2
+                        amount = sum(bet['amount'] for bet in acc2_bets)
+                    
+                    # 检查所有位置的方向是否一致
+                    if common_direction is None:
+                        common_direction = position_direction
+                    elif position_direction != common_direction:
+                        all_positions_covered = False
+                        break
+                    
+                    position_coverage[position] = {
+                        'account': betting_account,
+                        'direction': position_direction,
+                        'amount': amount
+                    }
+                
+                if all_positions_covered and common_direction:
+                    # 计算每个账户的投注金额和位置
+                    account1_positions = []
+                    account2_positions = []
+                    account1_amount = 0
+                    account2_amount = 0
+                    
+                    for position, info in position_coverage.items():
+                        if info['account'] == account1:
+                            account1_positions.append(position)
+                            account1_amount += info['amount']
                         else:
-                            pattern_desc = f'PK10十位置{pattern_type}-{direction}'
-                        
-                        record = {
-                            '期号': period,
-                            '彩种': specific_lottery,
-                            '彩种类型': 'PK10',
-                            '账户组': filtered_account_group,
-                            '方向组': filtered_directions,
-                            '玩法分类': [account1_position_desc, account2_position_desc],
-                            '金额组': [account1_total, account2_total],  # 显示总金额
-                            '每个位置金额组': filtered_amounts,  # 记录每个位置金额
-                            '总金额': total_amount,
-                            '相似度': 1.0,
-                            '账户数量': 2,
-                            '模式': pattern_desc,
-                            '对立类型': f'位置协作-{direction}',
-                            '检测类型': 'PK10序列位置',
-                            '是否互补': True,
-                            '位置覆盖详情': {
-                                '覆盖类型': '完整覆盖',
-                                account1: account1_position_desc,
-                                account2: account2_position_desc,
-                                '详细分配': {
-                                    account1: sorted(account1_positions),
-                                    account2: sorted(account2_positions)
-                                }
+                            account2_positions.append(position)
+                            account2_amount += info['amount']
+                    
+                    total_amount = account1_amount + account2_amount
+                    
+                    # 生成位置描述
+                    if len(account1_positions) == 5 and len(account2_positions) == 5:
+                        # 检查是否是标准的1-5名/6-10名分组
+                        if (set(account1_positions) == set(['冠军', '亚军', '第三名', '第四名', '第五名']) and
+                            set(account2_positions) == set(['第六名', '第七名', '第八名', '第九名', '第十名'])):
+                            account1_position_desc = '1-5名'
+                            account2_position_desc = '6-10名'
+                            pattern_type = '标准分组'
+                        elif (set(account2_positions) == set(['冠军', '亚军', '第三名', '第四名', '第五名']) and
+                              set(account1_positions) == set(['第六名', '第七名', '第八名', '第九名', '第十名'])):
+                            account1_position_desc = '6-10名'
+                            account2_position_desc = '1-5名'
+                            pattern_type = '标准分组'
+                        else:
+                            # 非标准分组，显示具体位置
+                            account1_position_desc = f"位置:{','.join(sorted(account1_positions))}"
+                            account2_position_desc = f"位置:{','.join(sorted(account2_positions))}"
+                            pattern_type = '非标分组'
+                    else:
+                        # 非均衡分配
+                        account1_position_desc = f"{len(account1_positions)}个位置"
+                        account2_position_desc = f"{len(account2_positions)}个位置"
+                        pattern_type = '非均分组'
+                    
+                    # 生成模式描述
+                    if common_direction.startswith('多数字-'):
+                        numbers = common_direction.replace('多数字-', '')
+                        pattern_desc = f'PK10十位置{pattern_type}-多数字{numbers}'
+                    elif common_direction.startswith('数字-'):
+                        number = common_direction.replace('数字-', '')
+                        pattern_desc = f'PK10十位置{pattern_type}-数字{number}'
+                    else:
+                        pattern_desc = f'PK10十位置{pattern_type}-{common_direction}'
+                    
+                    record = {
+                        '期号': period,
+                        '彩种': specific_lottery,
+                        '彩种类型': 'PK10',
+                        '账户组': [account1, account2],
+                        '方向组': [common_direction, common_direction],
+                        '玩法分类': [account1_position_desc, account2_position_desc],
+                        '金额组': [account1_amount, account2_amount],
+                        '总金额': total_amount,
+                        '相似度': 1.0,
+                        '账户数量': 2,
+                        '模式': pattern_desc,
+                        '对立类型': f'位置协作-{common_direction}',
+                        '检测类型': 'PK10序列位置',
+                        '是否互补': True,
+                        '位置覆盖详情': {
+                            '覆盖类型': '完整覆盖',
+                            account1: account1_position_desc,
+                            account2: account2_position_desc,
+                            '详细分配': {
+                                account1: sorted(account1_positions),
+                                account2: sorted(account2_positions)
                             }
                         }
-                        
-                        patterns.append(record)
+                    }
+                    
+                    patterns.append(record)
         
         return patterns
 
@@ -3050,7 +3037,7 @@ class WashTradeDetector:
         return ''
     
     def _detect_1_5_6_10_collaboration(self, period_data, period, specific_lottery='PK10'):
-        """修复版：检测1-5名和6-10名的协作模式 - 修复金额计算"""
+        """修复版：检测1-5名和6-10名的协作模式 - 添加位置信息"""
         patterns = []
         
         play_1_5 = period_data[period_data['玩法分类'] == '1-5名']
@@ -3059,46 +3046,36 @@ class WashTradeDetector:
         if len(play_1_5) == 0 or len(play_6_10) == 0:
             return patterns
         
-        # 按账户分组，处理1-5名数据
+        # 按账户分组
         account_1_5_data = {}
+        account_6_10_data = {}
+        
+        # 处理1-5名数据
         for _, row in play_1_5.iterrows():
             account = row['会员账号']
             direction = row.get('投注方向', '')
             amount = row.get('投注金额', 0)
             content = row['内容']
             
-            if direction and amount > 0:
-                # 关键修复：计算每个位置的平均金额
-                position_count = self._get_position_count('1-5名', content)
-                amount_per_position = amount / position_count if position_count > 0 else amount
-                
+            if direction:
                 account_1_5_data[account] = {
                     'direction': direction,
-                    'amount': amount,  # 总金额
-                    'amount_per_position': amount_per_position,  # 每个位置金额
-                    'position_count': position_count,
+                    'amount': amount,
                     'content': content,
                     'play_category': '1-5名'
                 }
         
-        # 按账户分组，处理6-10名数据
-        account_6_10_data = {}
+        # 处理6-10名数据
         for _, row in play_6_10.iterrows():
             account = row['会员账号']
             direction = row.get('投注方向', '')
             amount = row.get('投注金额', 0)
             content = row['内容']
             
-            if direction and amount > 0:
-                # 关键修复：计算每个位置的平均金额
-                position_count = self._get_position_count('6-10名', content)
-                amount_per_position = amount / position_count if position_count > 0 else amount
-                
+            if direction:
                 account_6_10_data[account] = {
                     'direction': direction,
-                    'amount': amount,  # 总金额
-                    'amount_per_position': amount_per_position,  # 每个位置金额
-                    'position_count': position_count,
+                    'amount': amount,
                     'content': content,
                     'play_category': '6-10名'
                 }
@@ -3113,55 +3090,39 @@ class WashTradeDetector:
                 if data1['direction'] != data2['direction']:
                     continue
                 
-                # 关键：比较每个位置的平均金额
-                amount1_per_position = data1['amount_per_position']
-                amount2_per_position = data2['amount_per_position']
-                
-                # 调用金额平衡过滤（使用每个位置金额）
-                account_group = [acc1, acc2]
-                directions = [data1['direction'], data2['direction']]
-                amounts_per_position = [amount1_per_position, amount2_per_position]
-                
-                filtered_account_group, filtered_directions, filtered_amounts = self.filter_accounts_by_amount_balance(
-                    account_group, directions, amounts_per_position
-                )
-                
-                # 如果过滤后账户数量不足2个，跳过
-                if len(filtered_account_group) < 2:
+                # 检查金额平衡
+                max_ratio = self.config.amount_threshold.get('max_amount_ratio', 10)
+                if max(data1['amount'], data2['amount']) / min(data1['amount'], data2['amount']) > max_ratio:
                     continue
                 
-                # 计算总金额（用于显示）
+                account_group = [acc1, acc2]
+                directions = [data1['direction'], data2['direction']]
+                amounts = [data1['amount'], data2['amount']]
                 total_amount = data1['amount'] + data2['amount']
                 
                 # 提取投注内容
-                direction = filtered_directions[0]
-                if direction.startswith('数字-'):
-                    numbers = direction.replace('数字-', '')
+                if data1['direction'].startswith('数字-'):
+                    numbers = data1['direction'].replace('数字-', '')
                     pattern_desc = f'PK10十位置协作-数字{numbers}'
-                elif direction.startswith('多数字-'):
-                    numbers = direction.replace('多数字-', '')
+                elif data1['direction'].startswith('多数字-'):
+                    numbers = data1['direction'].replace('多数字-', '')
                     pattern_desc = f'PK10十位置协作-多数字{numbers}'
                 else:
-                    pattern_desc = f'PK10十位置协作-{direction}'
-                
-                # 添加调试信息
-                if period == '202601020361' and acc1 in ['zhao123456', 'Aa002338', 'Yang6666', 'a1b2c3d4e5']:
-                    logger.info(f"PK10协作检测: {acc1}(总{data1['amount']}, 每个位置{amount1_per_position}) vs {acc2}(总{data2['amount']}, 每个位置{amount2_per_position})")
+                    pattern_desc = f'PK10十位置协作-{data1["direction"]}'
                 
                 record = {
                     '期号': period,
                     '彩种': specific_lottery,
                     '彩种类型': 'PK10',
-                    '账户组': filtered_account_group,
-                    '方向组': filtered_directions,
-                    '玩法分类': ['1-5名', '6-10名'],
-                    '金额组': [data1['amount'], data2['amount']],  # 显示总金额
-                    '每个位置金额组': filtered_amounts,  # 记录每个位置金额（用于平衡过滤）
+                    '账户组': account_group,
+                    '方向组': directions,
+                    '玩法分类': ['1-5名', '6-10名'],  # 添加位置信息
+                    '金额组': amounts,
                     '总金额': total_amount,
                     '相似度': 1.0,
                     '账户数量': 2,
                     '模式': pattern_desc,
-                    '对立类型': f'位置协作-{direction}',
+                    '对立类型': f'位置协作-{data1["direction"]}',
                     '检测类型': 'PK10序列位置'
                 }
                 
@@ -3963,19 +3924,25 @@ class WashTradeDetector:
                 else:
                     clean_direction = direction
                 
-                # 显示位置详情和总金额
+                # 显示位置详情
                 if idx < len(play_categories):
                     position = play_categories[idx]
-                    # 如果记录中有"每个位置金额组"，则显示每个位置的金额
-                    if '每个位置金额组' in record and idx < len(record['每个位置金额组']):
-                        amount_per_position = record['每个位置金额组'][idx]
-                        account_directions.append(f"{account}({position},每个位置¥{amount_per_position:.1f},总¥{amount})")
-                    else:
-                        account_directions.append(f"{account}({position},总¥{amount})")
+                    # 不再添加额外的位置分配信息
+                    account_directions.append(f"{account}({position},{clean_direction}:¥{amount})")
                 else:
                     account_directions.append(f"{account}({clean_direction}:¥{amount})")
             
-            st.write(f"{record_count}. 期号: {record['期号']} | 方向: {' ↔ '.join(account_directions)}")
+            # 移除所有的位置分配和位置覆盖信息
+            coverage_text = ""
+            
+            # 不再显示位置分配信息，因为已经在账户方向中包含了
+            # coverage_text = ""
+            
+            if detect_type == 'PK10序列位置':
+                st.write(f"{record_count}. 期号: {record['期号']} | 方向: {' ↔ '.join(account_directions)}")
+            else:
+                similarity_display = f"{record['相似度']:.2%}" if '相似度' in record else "100.00%"
+                st.write(f"{record_count}. 期号: {record['期号']} | 方向: {' ↔ '.join(account_directions)} | 匹配度: {similarity_display}")
         
         if index < len(pattern):
             st.markdown("---")
@@ -4388,15 +4355,6 @@ def main():
             min_value=8, max_value=30, value=11,
             help="总投注期数100期以上的账户，要求的最小连续对刷期数"
         )
-
-        # ↓↓↓ 添加刷新和调试选项 ↓↓↓
-        st.subheader("🔄 刷新选项")
-        if st.button("重新运行检测"):
-            st.experimental_rerun()
-        
-        st.subheader("🔧 调试选项")
-        enable_debug = st.checkbox("启用调试模式", value=False)
-        # ↑↑↑ 添加刷新和调试选项 ↑↑↑
     
     if uploaded_file is not None:
         try:
