@@ -1687,18 +1687,14 @@ class WashTradeDetector:
             return account_group, directions, amounts
         
         # 检查是否有0金额
-        if any(amount == 0 for amount in amounts):
+        if any(amount <= 0 for amount in amounts):
             return [], [], []
         
         # 计算最大最小金额和比例
         max_amount = max(amounts)
         min_amount = min(amounts)
         
-        # 避免除以0
-        if min_amount <= 0:
-            return [], [], []
-        
-        amount_ratio = max_amount / min_amount
+        amount_ratio = max_amount / min_amount if min_amount > 0 else float('inf')
         max_allowed_ratio = self.config.amount_threshold['max_amount_ratio']
         
         # 如果比例超过阈值，直接返回空列表（完全过滤）
@@ -1706,7 +1702,6 @@ class WashTradeDetector:
             # 记录过滤信息
             logger.info(f"金额平衡过滤: 过滤账户组 {account_group}")
             logger.info(f"  金额列表: {amounts}")
-            logger.info(f"  最大金额: {max_amount}, 最小金额: {min_amount}")
             logger.info(f"  金额比例: {amount_ratio:.1f}倍 > 允许最大比例: {max_allowed_ratio}倍")
             return [], [], []
         
@@ -4402,12 +4397,7 @@ def main():
             config.account_period_diff_threshold = period_diff_threshold
             
             config.amount_similarity_threshold = similarity_2_accounts
-            
-            config.amount_threshold = {
-                'max_amount_ratio': max_ratio,
-                'enable_threshold_filter': enable_balance_filter
-            }
-            
+     
             config.account_count_similarity_thresholds = {
                 2: similarity_2_accounts,
                 3: similarity_3_accounts,
@@ -4422,17 +4412,15 @@ def main():
                 'min_periods_very_high': min_periods_very_high
             })
             
+            config.amount_threshold = {
+                'max_amount_ratio': max_ratio,
+                'enable_threshold_filter': enable_balance_filter
+            }
+                   
             detector = WashTradeDetector(config)
             
             st.success(f"✅ 已上传文件: {uploaded_file.name}")
 
-            # 添加调试信息显示区域
-            if enable_debug:
-                st.info("🔧 调试模式已启用")
-                debug_expander = st.expander("查看调试信息", expanded=False)
-            else:
-                debug_expander = None
-            
             with st.spinner("🔄 正在解析数据..."):
                 df_enhanced, filename = detector.upload_and_process(uploaded_file)
                 
