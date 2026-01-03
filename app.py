@@ -4248,9 +4248,9 @@ def main():
         max_ratio = 10
         if enable_balance_filter:
             max_ratio = st.slider("最大金额差距倍数", 
-                                 min_value=2, 
+                                 min_value=1, 
                                  max_value=20, 
-                                 value=2, 
+                                 value=5, 
                                  step=1,
                                  help="组内最大金额与最小金额的允许倍数（例如：10表示10倍差距）")
         
