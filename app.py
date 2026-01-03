@@ -14,6 +14,8 @@ import warnings
 import traceback
 import hashlib
 from functools import lru_cache
+import sys
+from io import StringIO
 
 # 配置日志和警告
 warnings.filterwarnings('ignore')
@@ -28,6 +30,22 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# ==================== 日志处理器类 ====================
+class StreamlitLogHandler(logging.Handler):
+    """自定义日志处理器，将日志发送到Streamlit"""
+    def __init__(self):
+        super().__init__()
+        self.logs = []
+        
+    def emit(self, record):
+        log_entry = self.format(record)
+        self.logs.append(log_entry)
+        
+    def get_logs(self):
+        return self.logs
+    
+    def clear_logs(self):
+        self.logs = []
 # ==================== 配置类 ====================
 class Config:
     def __init__(self):
@@ -1680,14 +1698,17 @@ class WashTradeDetector:
         """根据组内金额平衡性过滤账户 - 修复版"""
         # 如果未启用金额平衡过滤，直接返回
         if not self.config.amount_threshold['enable_threshold_filter']:
+            logger.info(f"金额平衡过滤未启用，返回原数据")
             return account_group, directions, amounts
         
         # 检查是否有足够的金额数据
         if not amounts or len(amounts) < 2:
+            logger.info(f"金额数据不足，返回原数据: amounts={amounts}")
             return account_group, directions, amounts
         
-        # 检查是否有0金额
+        # 检查是否有0或负金额
         if any(amount <= 0 for amount in amounts):
+            logger.info(f"检测到0或负金额，过滤: amounts={amounts}")
             return [], [], []
         
         # 计算最大最小金额和比例
@@ -1697,16 +1718,18 @@ class WashTradeDetector:
         amount_ratio = max_amount / min_amount if min_amount > 0 else float('inf')
         max_allowed_ratio = self.config.amount_threshold['max_amount_ratio']
         
+        logger.info(f"金额平衡检查 - 账户组: {account_group}")
+        logger.info(f"  金额列表: {amounts}")
+        logger.info(f"  最大金额: {max_amount}, 最小金额: {min_amount}")
+        logger.info(f"  金额比例: {amount_ratio:.1f}倍, 允许最大比例: {max_allowed_ratio}倍")
+        
         # 如果比例超过阈值，直接返回空列表（完全过滤）
         if amount_ratio > max_allowed_ratio:
-            # 记录过滤信息
-            logger.info(f"金额平衡过滤: 过滤账户组 {account_group}")
-            logger.info(f"  金额列表: {amounts}")
-            logger.info(f"  金额比例: {amount_ratio:.1f}倍 > 允许最大比例: {max_allowed_ratio}倍")
+            logger.info(f"  比例超过阈值，过滤此组合")
             return [], [], []
         
         # 比例在允许范围内，返回原数据
-        logger.debug(f"金额平衡检查通过: {account_group}, 金额比例: {amount_ratio:.1f}倍")
+        logger.info(f"  比例在允许范围内，保留此组合")
         return account_group, directions, amounts
 
     def upload_and_process(self, uploaded_file):
@@ -2147,9 +2170,14 @@ class WashTradeDetector:
         return valid_combinations
     
     def _detect_combinations_for_period(self, period_data, period_accounts, n_accounts, valid_combinations):
-        """为单个期号检测组合 - 修复金额计算版本"""
+        """为单个期号检测组合"""
         patterns = []
         detected_combinations = set()
+        
+        # 调试信息
+        logger.info(f"开始检测期号: {period_data['期号'].iloc[0] if not period_data.empty else 'N/A'}")
+        logger.info(f"账户列表: {list(period_accounts)}")
+        logger.info(f"检测 {n_accounts} 个账户的组合")
         
         # 确保lottery_type有默认值
         lottery_type = '未知'
@@ -2169,6 +2197,12 @@ class WashTradeDetector:
         lottery = period_data['原始彩种'].iloc[0] if '原始彩种' in period_data.columns else period_data['彩种'].iloc[0]
         
         current_period = period_data['期号'].iloc[0]
+        
+        # 调试：显示前几个账户的原始数据
+        logger.info(f"前5行数据:")
+        for i in range(min(5, len(period_data))):
+            row = period_data.iloc[i]
+            logger.info(f"  行{i}: 账户={row['会员账号']}, 金额字段={row['金额']}, 投注金额={row.get('投注金额', 'N/A')}")
         
         # 修复点：正确计算每个账户的投注金额
         # 对于PK10的1-5名投注，金额应该只计算一次，而不是乘以5
@@ -3124,14 +3158,27 @@ class WashTradeDetector:
                     continue
                 
                 # 检查金额平衡
-                max_ratio = self.config.amount_threshold.get('max_amount_ratio', 10)
-                if max(data1['amount'], data2['amount']) / min(data1['amount'], data2['amount']) > max_ratio:
-                    continue
-                
                 account_group = [acc1, acc2]
                 directions = [data1['direction'], data2['direction']]
                 amounts = [data1['amount'], data2['amount']]
-                total_amount = data1['amount'] + data2['amount']
+                
+                logger.info(f"PK10序列检测 - 检查账户组: {account_group}")
+                logger.info(f"  金额: {amounts}, 方向: {directions}")
+                
+                # 调用金额平衡过滤
+                filtered_account_group, filtered_directions, filtered_amounts = self.filter_accounts_by_amount_balance(
+                    account_group, directions, amounts
+                )
+                
+                # 如果过滤后账户组为空，跳过
+                if len(filtered_account_group) < 2:
+                    logger.info(f"PK10序列检测 - 金额平衡过滤后账户组为空，跳过")
+                    continue
+                
+                # 使用过滤后的数据
+                account_group = filtered_account_group
+                directions = filtered_directions
+                amounts = filtered_amounts
                 
                 # 提取投注内容
                 if data1['direction'].startswith('数字-'):
@@ -4389,15 +4436,39 @@ def main():
             help="总投注期数100期以上的账户，要求的最小连续对刷期数"
         )
     
+        # 添加调试选项
+        st.subheader("🔧 调试选项")
+        show_logs = st.checkbox("显示检测日志", value=False, 
+                               help="显示检测过程中的详细日志信息")
+    
     if uploaded_file is not None:
         try:
+            # 创建日志处理器
+            st_log_handler = StreamlitLogHandler()
+            st_log_handler.setLevel(logging.INFO)
+            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+            st_log_handler.setFormatter(formatter)
+            
+            # 添加到logger
+            logger = logging.getLogger('MultiAccountWashTrade')
+            # 先清除现有的处理器，避免重复
+            logger.handlers = []
+            logger.addHandler(st_log_handler)
+            logger.setLevel(logging.INFO)
+            
             config = Config()
             config.min_amount = min_amount
             config.max_accounts_in_group = max_accounts
             config.account_period_diff_threshold = period_diff_threshold
             
             config.amount_similarity_threshold = similarity_2_accounts
-     
+            
+            # 确保金额阈值配置正确传递
+            config.amount_threshold = {
+                'max_amount_ratio': max_ratio,
+                'enable_threshold_filter': enable_balance_filter
+            }
+            
             config.account_count_similarity_thresholds = {
                 2: similarity_2_accounts,
                 3: similarity_3_accounts,
@@ -4412,21 +4483,36 @@ def main():
                 'min_periods_very_high': min_periods_very_high
             })
             
-            config.amount_threshold = {
-                'max_amount_ratio': max_ratio,
-                'enable_threshold_filter': enable_balance_filter
-            }
-                   
             detector = WashTradeDetector(config)
             
             st.success(f"✅ 已上传文件: {uploaded_file.name}")
-
+            
             with st.spinner("🔄 正在解析数据..."):
                 df_enhanced, filename = detector.upload_and_process(uploaded_file)
                 
                 if df_enhanced is not None and len(df_enhanced) > 0:
+                    # 显示数据摘要
+                    st.info(f"✅ 数据解析完成: {len(df_enhanced)} 条记录")
+                    
+                    # 显示数据样例
+                    if show_logs:
+                        with st.expander("📊 查看数据样例", expanded=False):
+                            st.dataframe(df_enhanced.head(10))
+                    
                     with st.spinner("🔍 正在检测对刷交易..."):
                         patterns = detector.detect_all_wash_trades()
+                    
+                    # 显示检测日志
+                    if show_logs:
+                        with st.expander("📝 查看检测日志", expanded=True):
+                            logs = st_log_handler.get_logs()
+                            if logs:
+                                # 显示最近100条日志
+                                recent_logs = logs[-100:] if len(logs) > 100 else logs
+                                for log in recent_logs:
+                                    st.text(log)
+                            else:
+                                st.info("暂无日志")
                     
                     if patterns:
                         detector.display_detailed_results(patterns)
@@ -4438,6 +4524,7 @@ def main():
             
         except Exception as e:
             st.error(f"❌ 程序执行失败: {str(e)}")
+            st.error(f"错误详情: {traceback.format_exc()}")
     else:
         st.info("👈 请在左侧边栏上传数据文件开始分析")
         
