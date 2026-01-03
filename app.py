@@ -1677,34 +1677,41 @@ class WashTradeDetector:
         self.performance_stats = {}
 
     def filter_accounts_by_amount_balance(self, account_group, directions, amounts):
-        """根据组内金额平衡性过滤账户"""
+        """根据组内金额平衡性过滤账户 - 修复版"""
+        # 如果未启用金额平衡过滤，直接返回
         if not self.config.amount_threshold['enable_threshold_filter']:
             return account_group, directions, amounts
         
+        # 检查是否有足够的金额数据
         if not amounts or len(amounts) < 2:
             return account_group, directions, amounts
         
+        # 检查是否有0金额
+        if any(amount == 0 for amount in amounts):
+            return [], [], []
+        
+        # 计算最大最小金额和比例
         max_amount = max(amounts)
         min_amount = min(amounts)
         
-        amount_ratio = max_amount / min_amount if min_amount > 0 else float('inf')
+        # 避免除以0
+        if min_amount <= 0:
+            return [], [], []
         
+        amount_ratio = max_amount / min_amount
         max_allowed_ratio = self.config.amount_threshold['max_amount_ratio']
-        if amount_ratio > max_allowed_ratio:
-            min_required = max_amount / max_allowed_ratio
-            valid_indices = [i for i, amount in enumerate(amounts) if amount >= min_required]
-            
-            if len(valid_indices) >= 2:
-                filtered_accounts = [account_group[i] for i in valid_indices]
-                filtered_directions = [directions[i] for i in valid_indices]
-                filtered_amounts = [amounts[i] for i in valid_indices]
-                
-                logger.info(f"金额平衡过滤: {len(account_group)} -> {len(filtered_accounts)} 个账户 (原比例: {amount_ratio:.1f}倍)")
-                
-                return filtered_accounts, filtered_directions, filtered_amounts
-            else:
-                return [], [], []
         
+        # 如果比例超过阈值，直接返回空列表（完全过滤）
+        if amount_ratio > max_allowed_ratio:
+            # 记录过滤信息
+            logger.info(f"金额平衡过滤: 过滤账户组 {account_group}")
+            logger.info(f"  金额列表: {amounts}")
+            logger.info(f"  最大金额: {max_amount}, 最小金额: {min_amount}")
+            logger.info(f"  金额比例: {amount_ratio:.1f}倍 > 允许最大比例: {max_allowed_ratio}倍")
+            return [], [], []
+        
+        # 比例在允许范围内，返回原数据
+        logger.debug(f"金额平衡检查通过: {account_group}, 金额比例: {amount_ratio:.1f}倍")
         return account_group, directions, amounts
 
     def upload_and_process(self, uploaded_file):
@@ -1778,90 +1785,85 @@ class WashTradeDetector:
             return pd.DataFrame()
 
     def extract_bet_amount_safe(self, amount_text):
-        """安全提取投注金额"""
+        """安全提取投注金额 - 修复版"""
         try:
             if pd.isna(amount_text):
                 return 0
             
             text = str(amount_text).strip()
             
-            # 处理特殊格式：投注：xx抵用：xx
+            # 处理特殊格式：投注：25.000 抵用：0 中奖：48.500
             if '投注：' in text and '抵用：' in text:
                 try:
+                    # 提取"投注："和"抵用："之间的部分
                     bet_part = text.split('投注：')[1].split('抵用：')[0].strip()
-                    amount = float(bet_part.replace(',', ''))
-                    if amount >= self.config.min_amount:
-                        return amount
-                except (ValueError, IndexError):
+                    
+                    # 清理金额字符串（移除空格和特殊字符）
+                    bet_part_clean = bet_part.replace(',', '').replace('，', '').replace(' ', '')
+                    
+                    # 提取数字部分（包括小数点）
+                    amount_match = re.search(r'(\d+\.?\d*)', bet_part_clean)
+                    if amount_match:
+                        amount = float(amount_match.group(1))
+                        if amount >= self.config.min_amount:
+                            return amount
+                except (ValueError, IndexError, AttributeError) as e:
+                    logger.debug(f"提取投注金额失败: {text}, 错误: {e}")
                     pass
             
-            # 处理简化格式：投注：xx
+            # 处理简化格式：投注：25.000
             if text.startswith('投注：'):
                 try:
                     bet_part = text.replace('投注：', '').strip()
-                    bet_part_clean = re.split(r'[^\d.]', bet_part)[0]
-                    amount = float(bet_part_clean)
-                    if amount >= self.config.min_amount:
-                        return amount
-                except (ValueError, IndexError):
+                    bet_part_clean = bet_part.replace(',', '').replace('，', '').replace(' ', '')
+                    
+                    amount_match = re.search(r'(\d+\.?\d*)', bet_part_clean)
+                    if amount_match:
+                        amount = float(amount_match.group(1))
+                        if amount >= self.config.min_amount:
+                            return amount
+                except (ValueError, AttributeError):
                     pass
             
             # 处理英文冒号格式
             if '投注:' in text:
                 try:
                     bet_part = text.split('投注:')[1].split()[0].strip()
-                    amount = float(bet_part.replace(',', ''))
-                    if amount >= self.config.min_amount:
-                        return amount
-                except (ValueError, IndexError):
-                    pass
-            
-            # 处理科学计数法
-            if 'E' in text or 'e' in text:
-                try:
-                    amount = float(text)
-                    if amount >= self.config.min_amount:
-                        return amount
-                except:
+                    bet_part_clean = bet_part.replace(',', '').replace('，', '').replace(' ', '')
+                    
+                    amount_match = re.search(r'(\d+\.?\d*)', bet_part_clean)
+                    if amount_match:
+                        amount = float(amount_match.group(1))
+                        if amount >= self.config.min_amount:
+                            return amount
+                except (ValueError, AttributeError):
                     pass
             
             # 尝试提取纯数字
             try:
-                cleaned_text = re.sub(r'[^\d.-]', '', text)
-                if cleaned_text and cleaned_text != '-':
-                    amount = float(cleaned_text)
+                # 查找所有数字（包括小数点）
+                amount_matches = re.findall(r'(\d+\.?\d*)', text.replace(',', ''))
+                if amount_matches:
+                    # 取第一个有效的数字
+                    for match in amount_matches:
+                        if match and '.' in match:  # 优先使用带小数点的
+                            amount = float(match)
+                            if amount >= self.config.min_amount:
+                                return amount
+                    
+                    # 如果没有带小数点的，使用第一个整数
+                    amount = float(amount_matches[0])
                     if amount >= self.config.min_amount:
                         return amount
-            except:
+            except (ValueError, IndexError):
                 pass
             
-            # 使用正则表达式模式匹配
-            patterns = [
-                r'投注[:：]?\s*([-]?\d+[,，]?\d*\.?\d*)',
-                r'下注[:：]?\s*([-]?\d+[,，]?\d*\.?\d*)',
-                r'金额[:：]?\s*([-]?\d+[,，]?\d*\.?\d*)',
-                r'总额[:：]?\s*([-]?\d+[,，]?\d*\.?\d*)',
-                r'([-]?\d+[,，]?\d*\.?\d*)\s*元',
-                r'￥\s*([-]?\d+[,，]?\d*\.?\d*)',
-                r'¥\s*([-]?\d+[,，]?\d*\.?\d*)',
-                r'[\$￥¥]?\s*([-]?\d+[,，]?\d*\.?\d+)',
-                r'([-]?\d+[,，]?\d*\.?\d+)',
-            ]
-            
-            for pattern in patterns:
-                match = re.search(pattern, text)
-                if match:
-                    amount_str = match.group(1).replace(',', '').replace('，', '').replace(' ', '')
-                    try:
-                        amount = float(amount_str)
-                        if amount >= self.config.min_amount:
-                            return amount
-                    except:
-                        continue
-            
+            # 如果以上都失败，返回0
+            logger.warning(f"无法提取金额: {text}")
             return 0
                 
-        except Exception:
+        except Exception as e:
+            logger.error(f"金额提取异常: {amount_text}, 错误: {str(e)}")
             return 0
     
     def enhanced_extract_direction_with_position(self, content, play_category, lottery_type):
@@ -2150,7 +2152,7 @@ class WashTradeDetector:
         return valid_combinations
     
     def _detect_combinations_for_period(self, period_data, period_accounts, n_accounts, valid_combinations):
-        """为单个期号检测组合"""
+        """为单个期号检测组合 - 修复金额计算版本"""
         patterns = []
         detected_combinations = set()
         
@@ -2173,18 +2175,44 @@ class WashTradeDetector:
         
         current_period = period_data['期号'].iloc[0]
         
-        # 修复点：同一账户同一方向的多笔投注金额合并
-        # 使用嵌套的defaultdict来合并同一账户同一方向的金额
+        # 修复点：正确计算每个账户的投注金额
+        # 对于PK10的1-5名投注，金额应该只计算一次，而不是乘以5
+        # 使用字典记录每个账户的方向和金额
         account_direction_amounts = defaultdict(lambda: defaultdict(float))
+        
+        # 记录每个账户的原始金额（不重复计算）
+        account_original_amounts = {}
         
         for _, row in period_data.iterrows():
             account = row['会员账号']
             direction = row['投注方向']
             amount = row['投注金额']
+            play_category = row.get('玩法分类', '')
             
-            if direction:  # 只处理有方向的记录
-                # 累加同一账户同一方向的金额
+            if not direction or amount == 0:
+                continue
+            
+            # 关键修复：对于PK10的1-5名或6-10名投注，金额不应该乘以位置数量
+            # 每个投注的金额已经是总金额，不需要再累加
+            
+            # 如果是PK10的玩法，检查是否需要特殊处理
+            is_pk10 = (lottery_type == 'PK10') and play_category in ['1-5名', '6-10名']
+            
+            if is_pk10:
+                # PK10投注：金额已经包含所有位置，不需要重复累加
+                # 如果账户还没有记录这个方向，直接记录金额
+                if direction not in account_direction_amounts[account]:
+                    account_direction_amounts[account][direction] = amount
+                    account_original_amounts[account] = amount
+                else:
+                    # 如果已经有记录，取最大值（避免重复累加）
+                    existing_amount = account_direction_amounts[account][direction]
+                    account_direction_amounts[account][direction] = max(existing_amount, amount)
+                    account_original_amounts[account] = max(account_original_amounts.get(account, 0), amount)
+            else:
+                # 非PK10投注：正常累加同一账户同一方向的金额
                 account_direction_amounts[account][direction] += amount
+                account_original_amounts[account] = account_direction_amounts[account][direction]
         
         # 将合并后的数据转换回原来的数据结构格式
         account_info = {}
@@ -3037,7 +3065,7 @@ class WashTradeDetector:
         return ''
     
     def _detect_1_5_6_10_collaboration(self, period_data, period, specific_lottery='PK10'):
-        """修复版：检测1-5名和6-10名的协作模式 - 添加位置信息"""
+        """修复版：检测1-5名和6-10名的协作模式 - 修复金额计算"""
         patterns = []
         
         play_1_5 = period_data[period_data['玩法分类'] == '1-5名']
@@ -3046,7 +3074,7 @@ class WashTradeDetector:
         if len(play_1_5) == 0 or len(play_6_10) == 0:
             return patterns
         
-        # 按账户分组
+        # 按账户分组，确保每个账户只取一条记录（避免重复）
         account_1_5_data = {}
         account_6_10_data = {}
         
@@ -3057,13 +3085,18 @@ class WashTradeDetector:
             amount = row.get('投注金额', 0)
             content = row['内容']
             
-            if direction:
-                account_1_5_data[account] = {
-                    'direction': direction,
-                    'amount': amount,
-                    'content': content,
-                    'play_category': '1-5名'
-                }
+            if direction and amount > 0:
+                # 关键修复：确保每个账户只记录一次，金额不重复累加
+                if account not in account_1_5_data:
+                    account_1_5_data[account] = {
+                        'direction': direction,
+                        'amount': amount,  # 原始金额，不乘以5
+                        'content': content,
+                        'play_category': '1-5名'
+                    }
+                else:
+                    # 如果账户已经有记录，记录警告（不应该发生）
+                    logger.warning(f"账户 {account} 在1-5名有多条记录，已忽略重复记录")
         
         # 处理6-10名数据
         for _, row in play_6_10.iterrows():
@@ -3072,13 +3105,18 @@ class WashTradeDetector:
             amount = row.get('投注金额', 0)
             content = row['内容']
             
-            if direction:
-                account_6_10_data[account] = {
-                    'direction': direction,
-                    'amount': amount,
-                    'content': content,
-                    'play_category': '6-10名'
-                }
+            if direction and amount > 0:
+                # 关键修复：确保每个账户只记录一次，金额不重复累加
+                if account not in account_6_10_data:
+                    account_6_10_data[account] = {
+                        'direction': direction,
+                        'amount': amount,  # 原始金额，不乘以5
+                        'content': content,
+                        'play_category': '6-10名'
+                    }
+                else:
+                    # 如果账户已经有记录，记录警告（不应该发生）
+                    logger.warning(f"账户 {account} 在6-10名有多条记录，已忽略重复记录")
         
         # 查找协作模式
         for acc1, data1 in account_1_5_data.items():
@@ -4387,6 +4425,13 @@ def main():
             detector = WashTradeDetector(config)
             
             st.success(f"✅ 已上传文件: {uploaded_file.name}")
+
+            # 添加调试信息显示区域
+            if enable_debug:
+                st.info("🔧 调试模式已启用")
+                debug_expander = st.expander("查看调试信息", expanded=False)
+            else:
+                debug_expander = None
             
             with st.spinner("🔄 正在解析数据..."):
                 df_enhanced, filename = detector.upload_and_process(uploaded_file)
